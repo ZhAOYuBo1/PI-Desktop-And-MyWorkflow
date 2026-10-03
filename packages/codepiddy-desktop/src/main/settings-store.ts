@@ -28,6 +28,12 @@ interface StoredSecrets {
 	providerApiKeys?: Record<string, string>;
 }
 
+interface TavilyMcpRuntime {
+	command: string;
+	args: string[];
+	env?: Record<string, string>;
+}
+
 const agentRoles: AgentRole[] = ["requirement-analysis", "coding", "bug-fix", "review"];
 const ROLE_SKILLS_SCHEMA_VERSION = 2;
 
@@ -80,8 +86,8 @@ function normalizeMcpServer(name: string, value: Record<string, unknown>): McpSe
 		url,
 		env: stringRecord(value.env),
 		headers: stringRecord(value.headers),
-		disabled: value.disabled === true,
-		source: "global",
+		disabled: value.enabled === false || value.disabled === true,
+		source: name === "web_search" ? "builtin" : "global",
 	};
 }
 
@@ -145,8 +151,9 @@ export class AppSettingsStore {
 	private readonly piSettingsPath: string;
 	private readonly mcpConfigPath: string;
 	private readonly modelsConfigPath: string;
+	private readonly tavilyMcpRuntime: TavilyMcpRuntime | null;
 
-	constructor(userDataPath: string) {
+	constructor(userDataPath: string, tavilyMcpRuntime?: TavilyMcpRuntime) {
 		const settingsDirectory = path.join(userDataPath, "settings");
 		this.secretsPath = path.join(settingsDirectory, "secrets.json");
 		this.roleSkillsPath = path.join(settingsDirectory, "role-skills.json");
@@ -156,6 +163,7 @@ export class AppSettingsStore {
 		this.piSettingsPath = path.join(resolvePiAgentDir(), "settings.json");
 		this.mcpConfigPath = path.join(resolvePiAgentDir(), "mcp.json");
 		this.modelsConfigPath = path.join(resolvePiAgentDir(), "models.json");
+		this.tavilyMcpRuntime = tavilyMcpRuntime ?? null;
 	}
 
 	/**
@@ -393,37 +401,83 @@ export class AppSettingsStore {
 			.sort((left, right) => left.name.localeCompare(right.name));
 	}
 
+	async ensureTavilyMcpServer(): Promise<void> {
+		if (!this.tavilyMcpRuntime) return;
+		const config = await this.readJsonRecord(this.mcpConfigPath);
+		const servers = isRecord(config.mcpServers) ? { ...config.mcpServers } : {};
+		const existing = isRecord(servers.web_search) ? { ...servers.web_search } : {};
+		const env = stringRecord(existing.env);
+		delete env.ELECTRON_RUN_AS_NODE;
+		const toolExposure = stringRecord(existing.toolExposure);
+		const entry: Record<string, unknown> = {
+			...existing,
+			type: "stdio",
+			command: this.tavilyMcpRuntime.command,
+			args: [...this.tavilyMcpRuntime.args],
+			env: {
+				...env,
+				...this.tavilyMcpRuntime.env,
+				TAVILY_API_KEY: `\${TAVILY_API_KEY}`,
+			},
+			description: "Tavily web search",
+			exposure: "direct",
+			toolExposure: {
+				...toolExposure,
+				web_search: "direct",
+			},
+		};
+		delete entry.disabled;
+		if ((await this.getTavilyApiKey()) === null) entry.enabled = false;
+		else delete entry.enabled;
+		servers.web_search = entry;
+		await this.writeJsonRecord(this.mcpConfigPath, { ...config, mcpServers: servers });
+	}
+
 	async saveMcpServer(input: McpServerInput): Promise<McpServerSummary[]> {
 		const name = input.name.trim();
 		if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new Error("MCP 服务名只能包含字母、数字、点、下划线和连字符");
+		if (name === "web_search") throw new Error("web_search 由 Tavily Search 设置维护");
 		if (input.transport === "stdio" && !input.command?.trim()) throw new Error("stdio 服务需要 command");
 		if (input.transport === "http" && !input.url?.trim()) throw new Error("http 服务需要 url");
 		const config = await this.readJsonRecord(this.mcpConfigPath);
 		const servers = isRecord(config.mcpServers) ? { ...config.mcpServers } : {};
-		const entry: Record<string, unknown> = {};
+		const entry: Record<string, unknown> = isRecord(servers[name]) ? { ...servers[name] } : {};
+		delete entry.disabled;
 		if (input.transport === "http") {
 			entry.type = "http";
 			entry.url = input.url!.trim();
+			delete entry.command;
+			delete entry.args;
+			delete entry.env;
+			delete entry.cwd;
 			const headers = Object.fromEntries(
 				Object.entries(input.headers ?? {}).filter(([key, value]) => key.trim() && value.trim()),
 			);
 			if (Object.keys(headers).length > 0) entry.headers = headers;
+			else delete entry.headers;
 		} else {
+			delete entry.type;
+			delete entry.url;
+			delete entry.headers;
 			entry.command = input.command!.trim();
 			const args = (input.args ?? []).map((arg) => arg.trim()).filter(Boolean);
 			if (args.length > 0) entry.args = args;
+			else delete entry.args;
 			const env = Object.fromEntries(
 				Object.entries(input.env ?? {}).filter(([key, value]) => key.trim() && value.trim()),
 			);
 			if (Object.keys(env).length > 0) entry.env = env;
+			else delete entry.env;
 		}
-		if (input.disabled) entry.disabled = true;
+		if (input.disabled) entry.enabled = false;
+		else delete entry.enabled;
 		servers[name] = entry;
 		await this.writeJsonRecord(this.mcpConfigPath, { ...config, mcpServers: servers });
 		return this.listMcpServers();
 	}
 
 	async deleteMcpServer(name: string): Promise<McpServerSummary[]> {
+		if (name === "web_search") throw new Error("web_search 由 Tavily Search 设置维护");
 		const config = await this.readJsonRecord(this.mcpConfigPath);
 		const servers = isRecord(config.mcpServers) ? { ...config.mcpServers } : {};
 		delete servers[name];
@@ -532,6 +586,7 @@ export class AppSettingsStore {
 		const secrets = await this.readSecrets();
 		secrets.tavilyApiKey = this.encrypt(apiKey);
 		await this.writeSecrets(secrets);
+		await this.ensureTavilyMcpServer();
 		return this.status();
 	}
 
@@ -539,6 +594,7 @@ export class AppSettingsStore {
 		const secrets = await this.readSecrets();
 		delete secrets.tavilyApiKey;
 		await this.writeSecrets(secrets);
+		await this.ensureTavilyMcpServer();
 		return this.status();
 	}
 }

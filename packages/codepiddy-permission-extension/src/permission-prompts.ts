@@ -41,9 +41,9 @@ export function formatUnknownToolReason(toolName: string, availableToolNames: re
 	const availableList = preview.length > 0 ? `${preview.join(", ")}${suffix}` : "none";
 
 	const mcpHint =
-		toolName === "mcp"
+		toolName === "mcp" || toolName.startsWith("mcp__")
 			? ""
-			: ' If this was intended as an MCP server tool, call the registered \'mcp\' tool when available (for example: {"tool":"server:tool"}).';
+			: " If this was intended as an MCP server tool, use its registered native name such as 'mcp__server__tool'.";
 
 	return `Tool '${toolName}' is not registered in this runtime and was blocked before permission checks.${mcpHint} Registered tools: ${availableList}.`;
 }

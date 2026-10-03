@@ -209,6 +209,32 @@ function parseQualifiedMcpToolName(value: string): { server: string; tool: strin
 	return { server, tool };
 }
 
+function parseNativeMcpToolName(value: string): { server: string; tool: string } | null {
+	const match = /^mcp__(.+?)__(.+)$/.exec(value.trim());
+	if (!match?.[1] || !match[2]) {
+		return null;
+	}
+	return { server: match[1], tool: match[2] };
+}
+
+function isMcpToolReference(value: string): boolean {
+	return value === "mcp" || parseNativeMcpToolName(value) !== null;
+}
+
+function createNativeMcpPermissionTargets(toolName: string): string[] {
+	const parsed = parseNativeMcpToolName(toolName);
+	if (!parsed) {
+		return [];
+	}
+	return [
+		`${parsed.server}_${parsed.tool}`,
+		`${parsed.server}:${parsed.tool}`,
+		parsed.server,
+		parsed.tool,
+		toolName,
+	];
+}
+
 function addDerivedMcpServerTargets(
 	toolName: string,
 	configuredServerNames: readonly string[],
@@ -916,7 +942,7 @@ export class PermissionManager {
 			return toolMatch?.state ?? resolveLayeredDefaultPermission(layers, "bash")?.state ?? DEFAULT_POLICY.bash;
 		}
 
-		if (normalizedToolName === "mcp") {
+		if (isMcpToolReference(normalizedToolName)) {
 			return toolMatch?.state ?? resolveLayeredDefaultPermission(layers, "mcp")?.state ?? DEFAULT_POLICY.mcp;
 		}
 
@@ -979,8 +1005,12 @@ export class PermissionManager {
 			};
 		}
 
-		if (normalizedToolName === "mcp") {
-			const mcpTargets = [...createMcpPermissionTargets(input, this.getConfiguredMcpServerNames()), "mcp"];
+		if (isMcpToolReference(normalizedToolName)) {
+			const nativeTargets = createNativeMcpPermissionTargets(normalizedToolName);
+			const mcpTargets =
+				nativeTargets.length > 0
+					? [...nativeTargets, "mcp"]
+					: [...createMcpPermissionTargets(input, this.getConfiguredMcpServerNames()), "mcp"];
 			const fallbackTarget = mcpTargets[0] || "mcp";
 			const defaultMcpState = resolveLayeredDefaultPermission(layers, "mcp")?.state ?? DEFAULT_POLICY.mcp;
 

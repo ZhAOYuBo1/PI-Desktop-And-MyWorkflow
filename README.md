@@ -186,7 +186,6 @@ packages/codepiddy-shared/               共享 IPC 与工作流类型
 packages/codepiddy-agent-skills/         随应用分发的固定 Skill
 packages/codepiddy-permission-extension/ 权限系统适配
 packages/codepiddy-tavily-search-mcp/    Tavily Search MCP
-packages/codepiddy-tavily-tool-extension Pi Search Tool 包装
 packages/coding-agent/                   Pi Coding Agent Runtime
 docs/images/                             README 截图
 ```

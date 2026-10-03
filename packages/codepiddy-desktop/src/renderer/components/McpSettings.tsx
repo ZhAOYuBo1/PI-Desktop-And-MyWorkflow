@@ -161,6 +161,9 @@ export function McpSettings() {
 		}
 	}
 
+	const builtinServer = (servers ?? []).find((server) => server.source === "builtin") ?? null;
+	const customServers = (servers ?? []).filter((server) => server.source !== "builtin");
+
 	return (
 		<section className="settings-card mcp-settings-card">
 			<div className="settings-card-heading">
@@ -183,11 +186,14 @@ export function McpSettings() {
 					</span>
 					<span className="mcp-server-copy">
 						<strong>web_search</strong>
-						<small>内置 Tavily MCP，Key 在「Tavily Search」里配置</small>
+						<small>
+							内置 Tavily MCP，由 Pi 原生 mcp.json 管理
+							{builtinServer?.disabled ? "；Key 未配置，当前已禁用" : ""}
+						</small>
 					</span>
-					<span className="mcp-server-badge">内置</span>
+					<span className="mcp-server-badge">{builtinServer?.disabled ? "待配置" : "内置"}</span>
 				</div>
-				{(servers ?? []).map((server) => (
+				{customServers.map((server) => (
 					<div className={`mcp-server-row${server.disabled ? " is-disabled" : ""}`} key={server.name}>
 						<span className="mcp-server-icon">
 							{server.transport === "http" ? (
@@ -233,7 +239,7 @@ export function McpSettings() {
 						</span>
 					</div>
 				))}
-				{servers !== null && servers.length === 0 ? (
+				{servers !== null && customServers.length === 0 ? (
 					<p className="work-change-note">还没有自定义 MCP 服务。web_search 是内置的 Tavily MCP。</p>
 				) : null}
 			</div>

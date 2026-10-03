@@ -35,11 +35,6 @@ await Promise.all([
 	}),
 	build({
 		...common,
-		entryPoints: [path.join(repositoryRoot, "packages", "codepiddy-tavily-tool-extension", "index.ts")],
-		outfile: path.join(outputRoot, "extensions", "tavily-tool.js"),
-	}),
-	build({
-		...common,
 		entryPoints: [path.join(repositoryRoot, "packages", "codepiddy-review-extension", "index.ts")],
 		outfile: path.join(outputRoot, "extensions", "review.js"),
 	}),

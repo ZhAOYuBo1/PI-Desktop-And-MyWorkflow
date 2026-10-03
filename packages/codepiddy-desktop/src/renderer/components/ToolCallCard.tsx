@@ -18,10 +18,15 @@ export interface ToolCallCardItem {
 const OUTPUT_PREVIEW_LIMIT = 6000;
 
 function friendlyToolText(item: ToolCallCardItem): string {
-	if (/TAVILY_API_KEY is not configured/i.test(item.text)) {
+	if (/TAVILY_API_KEY is (?:not configured|required)/i.test(item.text)) {
 		return "Tavily Search 尚未配置。请在 CodePIddy 设置中保存 Tavily API Key，然后重启或重置当前 Agent。";
 	}
 	return item.text;
+}
+
+function toolDisplayName(toolName: string): string {
+	const match = /^mcp__(.+?)__(.+)$/.exec(toolName);
+	return match?.[2] ?? toolName;
 }
 
 export function ToolCallOutput({ item, showAll }: { item: ToolCallCardItem; showAll: boolean }) {
@@ -68,7 +73,7 @@ export const ToolCallCard = memo(function ToolCallCard({ item }: { item: ToolCal
 			<button className="tool-summary" type="button" onClick={() => setPin(toggleToolPin(expanded))}>
 				<strong className="tool-title">
 					<ToolIcon name={toolIconForTool(item.name)} size={14} />
-					<span>{item.name}</span>
+					<span>{toolDisplayName(item.name)}</span>
 				</strong>
 				<span className={`tool-status ${item.status === "running" ? "running" : item.isError ? "failed" : "done"}`}>
 					<ToolIcon

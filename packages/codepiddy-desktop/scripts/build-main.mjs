@@ -27,14 +27,6 @@ await Promise.all([
     target: "node22",
   }),
   build({
-    entryPoints: ["../codepiddy-tavily-tool-extension/index.ts"],
-    outfile: "dist/runtime-extensions/tavily-tool.js",
-    bundle: true,
-    platform: "node",
-    format: "esm",
-    target: "node22",
-  }),
-  build({
     entryPoints: ["../codepiddy-review-extension/index.ts"],
     outfile: "dist/runtime-extensions/review.js",
     bundle: true,

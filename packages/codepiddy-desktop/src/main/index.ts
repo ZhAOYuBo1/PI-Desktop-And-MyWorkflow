@@ -496,6 +496,7 @@ function roleDocumentContract(agent: StoredAgentInstance): string {
 }
 
 async function rolePrompt(agent: StoredAgentInstance, webSearchAvailable: boolean): Promise<string> {
+	const webSearchToolName = "mcp__web_search__web_search";
 	const [profile, workItem] = await Promise.all([
 		readRoleProfile(agent.projectRoot, agent.role),
 		readWorkItemPromptContext(agent),
@@ -512,8 +513,8 @@ async function rolePrompt(agent: StoredAgentInstance, webSearchAvailable: boolea
 		"",
 		"# Web Search Contract",
 		webSearchAvailable
-			? "web_search is a search engine only. It returns ranked results and snippets; it never opens, fetches, reads, crawls, maps, or extracts a webpage. If the user asks to inspect a specific URL, explain that limitation and use keyword/domain search only for discoverable snippets. Never claim that a webpage was read from web_search results."
-			: "web_search is unavailable because Tavily is not configured. Do not attempt to call it; tell the user that web search requires configuration in CodePIddy Settings.",
+			? `${webSearchToolName} is a search engine only. It returns ranked results and snippets; it never opens, fetches, reads, crawls, maps, or extracts a webpage. If the user asks to inspect a specific URL, explain that limitation and use keyword/domain search only for discoverable snippets. Never claim that a webpage was read from the web search results.`
+			: "The native MCP web search tool is unavailable because Tavily is not configured. Do not attempt to call it; tell the user that web search requires configuration in CodePIddy Settings.",
 		"",
 		profile,
 		"# Work Item and OpenSpec Contract",
@@ -534,7 +535,7 @@ async function probePiUpdate(
 	const extensions = packaged
 		? path.join(repositoryRoot, "extensions")
 		: path.join(app.getAppPath(), "dist", "runtime-extensions");
-	const probeDirectories = ["probe-project", "probe-sessions", "probe-logs"].map((name) =>
+	const probeDirectories = ["probe-project", "probe-sessions", "probe-logs", "probe-agent"].map((name) =>
 		path.join(stagingRoot, name),
 	);
 	if (probeDirectories.some((directory) => path.dirname(directory) !== stagingRoot))
@@ -548,10 +549,10 @@ async function probePiUpdate(
 		env: {
 			...(packaged ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
 			PI_PACKAGE_DIR: runtime.packageDir,
+			PI_CODING_AGENT_DIR: path.join(stagingRoot, "probe-agent"),
 			PI_PERMISSION_SYSTEM_CONFIG_PATH: path.join(userDataRoot, "permissions", "extension.json"),
 			PI_PERMISSION_SYSTEM_LOGS_DIR: path.join(stagingRoot, "probe-logs"),
 			PI_PERMISSION_SYSTEM_POLICY_AGENT_DIR: path.join(userDataRoot, "permissions", "policy"),
-			CODEPIDDY_TAVILY_MCP_ENTRY: path.join(extensions, "tavily-search.js"),
 		},
 		args: [
 			runtime.cliPath,
@@ -563,8 +564,6 @@ async function probePiUpdate(
 			"--continue",
 			"--extension",
 			path.join(extensions, "permission.js"),
-			"--extension",
-			path.join(extensions, "tavily-tool.js"),
 			"--extension",
 			path.join(extensions, "review.js"),
 			"--extension",
@@ -1204,6 +1203,7 @@ class AgentManager {
 				? path.join(this.repositoryRoot, "coding-agent-package", "dist", "bundle", "cli.js")
 				: path.join(this.repositoryRoot, "packages", "coding-agent-runtime", "dist", "bundle", "cli.js"));
 		const nodeExecutable = process.env.CODEPIDDY_NODE_EXECUTABLE ?? (packaged ? process.execPath : "node");
+		await this.settingsStore.ensureTavilyMcpServer();
 		const [tavilyApiKey, roleSkillAssignments] = await Promise.all([
 			this.settingsStore.getTavilyApiKey(),
 			this.settingsStore.getRoleSkillAssignments(),
@@ -1234,18 +1234,6 @@ class AgentManager {
 				PI_PERMISSION_SYSTEM_CONFIG_PATH: path.join(this.runtimeRoot, "permissions", "extension.json"),
 				PI_PERMISSION_SYSTEM_LOGS_DIR: path.join(this.runtimeRoot, "permissions", "logs"),
 				PI_PERMISSION_SYSTEM_POLICY_AGENT_DIR: path.join(this.runtimeRoot, "permissions", "policy"),
-				CODEPIDDY_TAVILY_MCP_ENTRY: packaged
-					? path.join(this.repositoryRoot, "mcp", "tavily-search.js")
-					: compiledRuntime
-						? path.join(extensionRoot, "tavily-search.js")
-						: path.join(this.repositoryRoot, "packages", "codepiddy-tavily-search-mcp", "src", "index.ts"),
-				...(packaged
-					? {}
-					: {
-							CODEPIDDY_TSX_LOADER: pathToFileURL(
-								path.join(this.repositoryRoot, "node_modules", "tsx", "dist", "loader.mjs"),
-							).href,
-						}),
 				...(tavilyApiKey ? { TAVILY_API_KEY: tavilyApiKey } : {}),
 				// shellPath 不走环境变量：Pi 原生从 settings.json 读，AppSettingsStore.setShellPath
 				// 已写进 PI_CODING_AGENT_DIR/settings.json。曾经传的 PI_SHELL_PATH 需要 Pi 源码里的
@@ -1272,10 +1260,6 @@ class AgentManager {
 				compiledRuntime
 					? path.join(extensionRoot, "permission.js")
 					: path.join(this.repositoryRoot, "packages", "codepiddy-permission-extension", "index.ts"),
-				"--extension",
-				compiledRuntime
-					? path.join(extensionRoot, "tavily-tool.js")
-					: path.join(this.repositoryRoot, "packages", "codepiddy-tavily-tool-extension", "index.ts"),
 				"--extension",
 				compiledRuntime
 					? path.join(extensionRoot, "review.js")
@@ -1973,9 +1957,23 @@ if (!hasSingleInstanceLock) {
 		const repositoryRoot =
 			process.env.CODEPIDDY_REPO_ROOT ??
 			(app.isPackaged ? path.join(process.resourcesPath, "runtime") : path.resolve(app.getAppPath(), "..", ".."));
-		const settingsStore = new AppSettingsStore(app.getPath("userData"));
+		const runtimeExtensionsRoot = app.isPackaged
+			? path.join(repositoryRoot, "extensions")
+			: path.join(app.getAppPath(), "dist", "runtime-extensions");
+		const tavilyMcpEntry = app.isPackaged
+			? path.join(repositoryRoot, "mcp", "tavily-search.js")
+			: path.join(runtimeExtensionsRoot, "tavily-search.js");
+		const nodeExecutable = process.env.CODEPIDDY_NODE_EXECUTABLE ?? (app.isPackaged ? process.execPath : "node");
+		const settingsStore = new AppSettingsStore(app.getPath("userData"), {
+			command: nodeExecutable,
+			args: [tavilyMcpEntry],
+			...(path.basename(nodeExecutable).toLowerCase().includes("electron")
+				? { env: { ELECTRON_RUN_AS_NODE: "1" } }
+				: {}),
+		});
 		await settingsStore.ensurePermissionPolicy();
 		await settingsStore.ensurePiRetrySettings();
+		await settingsStore.ensureTavilyMcpServer();
 		const recentProjects = new RecentProjectStore(app.getPath("userData"), {
 			discoverKnownRoots: process.env.CODEPIDDY_DISABLE_PROJECT_DISCOVERY !== "1",
 		});

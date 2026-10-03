@@ -53,7 +53,10 @@ export function toolIconForTool(toolName: string): ToolIconName {
 	if (name === "mcp") return "plug";
 	if (name === "todo") return "checklist";
 	if (name === "question") return "message-question";
-	if (name === "web_search" || name === "tavily" || name === "tavily-search") return "globe";
+	if (name === "web_search" || name === "tavily" || name === "tavily-search" || name.startsWith("mcp__web_search__")) {
+		return "globe";
+	}
+	if (name.startsWith("mcp__")) return "plug";
 	return "sparkles";
 }
 

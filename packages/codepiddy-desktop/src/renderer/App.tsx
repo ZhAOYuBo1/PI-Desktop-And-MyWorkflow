@@ -4015,7 +4015,7 @@ export function App() {
 								/>
 								<PermissionSettingRow
 									label="其他工具"
-									description="未单独列出的工具，如 web_search"
+									description="未单独列出的工具"
 									value={permissionDefaults.otherTools}
 									onChange={(otherTools) => void updatePermissionDefaults({ otherTools })}
 								/>

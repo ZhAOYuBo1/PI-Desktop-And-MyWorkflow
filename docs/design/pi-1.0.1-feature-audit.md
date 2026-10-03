@@ -12,6 +12,8 @@
   `packages/coding-agent-runtime/dist/bundle` + `packages/coding-agent-runtime/package.json`。
 - `packages/coding-agent` 等上游源码仍保留在仓库中，但客户端内置运行时不再由它们构建，也不再在 build 时联网升级。
 - Pi 1.0.1 已原生依赖 `@earendil-works/pi-mcp`，MCP 不再依赖外部插件。
+- `web_search` 已迁移到 Pi 原生 `mcp.json`；客户端只保留 Tavily 设置入口和加密 Key，
+  启动 Agent 时注入 `TAVILY_API_KEY`，不再维护独立 MCP 注入通道。
 - 客户端当前使用的 RPC 接口在 1.0.1 下已验证：
   `get_state`、`get_messages`、`get_session_tree`、`get_available_models`、`get_commands`。
 - Pi 1.0.1 的 `/login`、`/logout` 是交互式 TUI 命令；RPC 没有直接暴露认证命令。SDK 公开了
@@ -23,17 +25,19 @@
 ### 当前状态
 
 - 用户自定义 MCP 服务已经读写 Pi 原生 `~/.pi/agent/mcp.json`。
-- `web_search` 目前走 `packages/codepiddy-tavily-tool-extension`：
-  - 通过 `CODEPIDDY_TAVILY_MCP_ENTRY` 注入本地 Tavily MCP 脚本；
-  - 扩展内部创建 MCP client，并注册裸工具名 `web_search`。
-- 这条 Tavily 通道和 Pi 原生 MCP 是两套生命周期、两套配置来源。
+- `web_search` 现在由客户端维护为原生 `mcp.json` 条目：
+  - `command` / `args` 指向随应用构建的 Tavily MCP 脚本；
+  - `env.TAVILY_API_KEY` 只保存 `${TAVILY_API_KEY}` 引用；
+  - `exposure: "direct"`，`toolExposure.web_search: "direct"`；
+  - 未配置 Tavily Key 时条目保留但 `enabled: false`。
+- 旧的 `CODEPIDDY_TAVILY_MCP_ENTRY` 和 `packages/codepiddy-tavily-tool-extension` 已删除。
 
 ### 目标状态
 
-- 不再维护 `CODEPIDDY_TAVILY_MCP_ENTRY` 这类独立注入通道。
-- 客户端继续保留独立的 `web_search` / Tavily 设置入口和 Key 输入。
-- Tavily Key 继续由客户端加密保存，启动 Agent 时只注入 `TAVILY_API_KEY` 环境变量。
-- `web_search` 服务写入 Pi 原生 MCP 配置，建议形态：
+- 已完成：不再维护 `CODEPIDDY_TAVILY_MCP_ENTRY` 这类独立注入通道。
+- 已完成：客户端继续保留独立的 `web_search` / Tavily 设置入口和 Key 输入。
+- 已完成：Tavily Key 由客户端加密保存，启动 Agent 时只注入 `TAVILY_API_KEY` 环境变量。
+- 已完成：`web_search` 服务写入 Pi 原生 MCP 配置：
 
 ```json
 {
@@ -54,10 +58,9 @@
 }
 ```
 
-- 配置统一后，`web_search` 会由 Pi 原生 MCP 连接、重连、权限、曝光和日志系统管理。
-- 需要确认的命名问题：Pi 原生 MCP 工具名固定为 `mcp__<server>__<tool>`，因此实际工具名会变成
-  `mcp__web_search__web_search`。当前 Pi 1.0.1 没有发现原生别名机制。若模型侧必须保持裸名
-  `web_search`，需要单独决定名称适配策略；否则应接受原生 MCP 命名。
+- 配置统一后，`web_search` 由 Pi 原生 MCP 连接、重连、权限、曝光和日志系统管理。
+- 命名策略已决定：接受原生工具名 `mcp__web_search__web_search`，不增加别名适配层。
+  客户端工具卡和设置页仍显示友好名称 `web_search`，实际调用名保持 Pi 原生格式。
 
 ### Pi 1.0.1 原生 MCP 能力
 
@@ -149,7 +152,7 @@
 | MCP permissions annotations | 部分覆盖 | 有统一 MCP 权限开关，但没有按 annotation 展示 |
 | `/mcp` | 缺失 | 命令菜单没有入口 |
 | `pi mcp add/remove/list/login/logout` | 缺失 | 没有 CLI 包装入口 |
-| Tavily `web_search` | 需要迁移 | 当前是独立扩展通道，目标是原生 MCP |
+| Tavily `web_search` | 已覆盖 | 已写入 Pi 原生 `mcp.json`，Key 使用 `${TAVILY_API_KEY}`，工具名 `mcp__web_search__web_search` |
 
 ### 导出、分享与诊断
 
@@ -213,12 +216,10 @@
 
 ### 阶段 1：MCP 统一
 
-5. 保留客户端 Tavily / `web_search` 独立设置卡和加密 Key。
-6. 删除 `CODEPIDDY_TAVILY_MCP_ENTRY` 独立注入通道。
-7. 将 `web_search` 写入 Pi 原生 `mcp.json`，env 使用 `${TAVILY_API_KEY}`。
-8. 决定原生 MCP 工具名策略：
-   - 接受 `mcp__web_search__web_search`
-   - 或评估是否保留极薄的名称适配层
+5. [x] 保留客户端 Tavily / `web_search` 独立设置卡和加密 Key。
+6. [x] 删除 `CODEPIDDY_TAVILY_MCP_ENTRY` 独立注入通道。
+7. [x] 将 `web_search` 写入 Pi 原生 `mcp.json`，env 使用 `${TAVILY_API_KEY}`。
+8. [x] 决定原生 MCP 工具名策略：接受 `mcp__web_search__web_search`，仅在客户端显示层使用短名。
 9. 升级 MCP 设置 UI：项目级 override、enabled、exposure、toolExposure、description、timeout、OAuth。
 10. 增加 `/mcp` 命令入口和 `pi mcp` 包装。
 
@@ -284,3 +285,14 @@
   `packages/codepiddy-desktop/src/renderer/styles.css`
 
 `packages/coding-agent-runtime` 是仓库内固定版本，不由 build 更新；升级时必须手动替换该目录并跑 RPC smoke test。
+
+批次 39 已完成阶段 1 的第 5-8 项：
+
+- 删除 `packages/codepiddy-tavily-tool-extension` 及构建入口。
+- `AppSettingsStore` 维护原生 `web_search` MCP 条目，保存/清除 Tavily Key 时同步 `enabled`。
+- Agent 启动继续注入 `TAVILY_API_KEY`，但不再传独立 MCP 脚本路径。
+- 权限扩展识别 `mcp__<server>__<tool>`，工具卡显示短名和 MCP 图标。
+- 清理 Pi 用户级残留插件：`npm:pi-mcp-adapter` 已从 `settings.json`、用户 npm 依赖、
+  lockfile、node_modules 和 bin 链接中移除；`pi list` 只保留 permission-system。
+- 隔离 Electron + `pi mcp list` 验证：保存 Key 后为 `connected, 1 tool (direct)`，
+  清除 Key 后为 `disabled`，`mcp.json` 中无明文 Key。
