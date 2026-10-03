@@ -139,15 +139,15 @@
 | Pi 1.0.1 功能 | 客户端状态 | 备注 |
 | --- | --- | --- |
 | 原生 `mcp.json` | 部分覆盖 | 基础 stdio/http 服务可配置 |
-| 项目级 `.pi/mcp.json` | 缺失 | 没有项目 override UI |
-| `enabled` | 部分覆盖 | 当前用 `disabled` 字段，不是 1.0.1 的 `enabled` |
-| `exposure` | 缺失 | 无 UI |
-| `toolExposure` | 缺失 | 无 UI |
-| `description` | 缺失 | 无 UI |
-| `timeout` | 缺失 | 无 UI |
-| MCP OAuth | 缺失 | 无登录、退出、重连 UI |
-| CIMD / clientName / authServerMetadataUrl | 缺失 | 无高级字段 |
-| `auth.provider` | 缺失 | 无 UI |
+| 项目级 `.pi/mcp.json` | 已覆盖 | 客户端可读写项目级 `enabled` / `exposure` / `toolExposure` override |
+| `enabled` | 已覆盖 | 设置页使用原生 `enabled` 语义 |
+| `exposure` | 已覆盖 | 支持 codemode / deferred / direct / hidden |
+| `toolExposure` | 已覆盖 | 支持精确工具名与 `*` 通配 |
+| `description` | 已覆盖 | 设置页可编辑 |
+| `timeout` | 已覆盖 | 设置页可编辑，单位秒 |
+| MCP OAuth | 部分覆盖 | 字段、登录、退出和 Agent 重连入口已完成；仍需真实 OAuth 服务端到端验收 |
+| CIMD / clientName / authServerMetadataUrl | 已覆盖 | 设置页可编辑 |
+| `auth.provider` | 已覆盖 | 设置页可编辑 |
 | MCP resources | 缺失 | 无资源浏览入口 |
 | MCP permissions annotations | 部分覆盖 | 有统一 MCP 权限开关，但没有按 annotation 展示 |
 | `/mcp` | 缺失 | 命令菜单没有入口 |
@@ -220,7 +220,7 @@
 6. [x] 删除 `CODEPIDDY_TAVILY_MCP_ENTRY` 独立注入通道。
 7. [x] 将 `web_search` 写入 Pi 原生 `mcp.json`，env 使用 `${TAVILY_API_KEY}`。
 8. [x] 决定原生 MCP 工具名策略：接受 `mcp__web_search__web_search`，仅在客户端显示层使用短名。
-9. 升级 MCP 设置 UI：项目级 override、enabled、exposure、toolExposure、description、timeout、OAuth。
+9. [x] 升级 MCP 设置 UI：项目级 override、enabled、exposure、toolExposure、description、timeout、OAuth。
 10. 增加 `/mcp` 命令入口和 `pi mcp` 包装。
 
 ### 阶段 2：认证与 Provider

@@ -4,6 +4,13 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type {
 	AgentRole,
+	McpClientRegistration,
+	McpExposure,
+	McpOAuthInput,
+	McpOAuthSummary,
+	McpProjectOverride,
+	McpProjectOverrideInput,
+	McpProjectOverrideLocator,
 	McpServerInput,
 	McpServerSummary,
 	PermissionDefaults,
@@ -26,6 +33,7 @@ import { DEFAULT_ROLE_SKILL_ASSIGNMENTS } from "./skill-catalog.ts";
 interface StoredSecrets {
 	tavilyApiKey?: string;
 	providerApiKeys?: Record<string, string>;
+	mcpOAuthClientSecrets?: Record<string, string>;
 }
 
 interface TavilyMcpRuntime {
@@ -62,6 +70,54 @@ function stringRecord(value: unknown): Record<string, string> {
 	);
 }
 
+function isMcpExposure(value: unknown): value is McpExposure {
+	return value === "codemode" || value === "deferred" || value === "direct" || value === "hidden";
+}
+
+function isMcpClientRegistration(value: unknown): value is McpClientRegistration {
+	return value === "dcr" || value === "cimd";
+}
+
+function normalizeToolExposure(value: unknown): Record<string, McpExposure> {
+	if (!isRecord(value)) return {};
+	return Object.fromEntries(
+		Object.entries(value).filter((entry): entry is [string, McpExposure] => isMcpExposure(entry[1])),
+	);
+}
+
+function normalizeProjectOverride(value: unknown): McpProjectOverride | null {
+	if (!isRecord(value)) return null;
+	const override: McpProjectOverride = {};
+	if (typeof value.enabled === "boolean") override.enabled = value.enabled;
+	if (isMcpExposure(value.exposure)) override.exposure = value.exposure;
+	const toolExposure = normalizeToolExposure(value.toolExposure);
+	if (Object.keys(toolExposure).length > 0) override.toolExposure = toolExposure;
+	return Object.keys(override).length > 0 ? override : null;
+}
+
+function normalizeMcpOAuth(value: unknown): McpOAuthSummary | null {
+	if (!isRecord(value)) return null;
+	const summary: McpOAuthSummary = {
+		clientId: typeof value.clientId === "string" && value.clientId.trim() ? value.clientId.trim() : null,
+		clientSecretConfigured: typeof value.clientSecret === "string" && value.clientSecret.trim().length > 0,
+		callbackPort:
+			typeof value.callbackPort === "number" && Number.isInteger(value.callbackPort) ? value.callbackPort : null,
+		callbackUrl: typeof value.callbackUrl === "string" && value.callbackUrl.trim() ? value.callbackUrl.trim() : null,
+		scope: typeof value.scope === "string" && value.scope.trim() ? value.scope.trim() : null,
+		clientName: typeof value.clientName === "string" && value.clientName.trim() ? value.clientName.trim() : null,
+		clientRegistration: isMcpClientRegistration(value.clientRegistration) ? value.clientRegistration : null,
+		authServerMetadataUrl:
+			typeof value.authServerMetadataUrl === "string" && value.authServerMetadataUrl.trim()
+				? value.authServerMetadataUrl.trim()
+				: null,
+	};
+	return Object.values(summary).some((entry) => entry !== null && entry !== false) ? summary : null;
+}
+
+function mcpOAuthClientSecretEnvName(name: string): string {
+	return `CODEPIDDY_MCP_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_CLIENT_SECRET`;
+}
+
 /** Provider Key 通过环境变量注入 Pi；models.json 只写 `$ENV_NAME` 引用。 */
 function providerEnvName(id: string): string {
 	return `CODEPIDDY_PROVIDER_${id.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
@@ -76,8 +132,13 @@ function isProviderApi(value: unknown): value is ProviderApi {
 	);
 }
 
-function normalizeMcpServer(name: string, value: Record<string, unknown>): McpServerSummary {
+function normalizeMcpServer(
+	name: string,
+	value: Record<string, unknown>,
+	projectOverride: McpProjectOverride | null = null,
+): McpServerSummary {
 	const url = typeof value.url === "string" && value.url.trim() ? value.url.trim() : null;
+	const timeout = typeof value.timeout === "number" && value.timeout > 0 ? value.timeout : null;
 	return {
 		name,
 		transport: url ? "http" : "stdio",
@@ -86,7 +147,17 @@ function normalizeMcpServer(name: string, value: Record<string, unknown>): McpSe
 		url,
 		env: stringRecord(value.env),
 		headers: stringRecord(value.headers),
-		disabled: value.enabled === false || value.disabled === true,
+		enabled: value.enabled !== false,
+		exposure: isMcpExposure(value.exposure) ? value.exposure : "codemode",
+		toolExposure: normalizeToolExposure(value.toolExposure),
+		description: typeof value.description === "string" && value.description.trim() ? value.description.trim() : null,
+		timeout,
+		oauth: normalizeMcpOAuth(value.oauth),
+		authProvider:
+			isRecord(value.auth) && typeof value.auth.provider === "string" && value.auth.provider.trim()
+				? value.auth.provider.trim()
+				: null,
+		projectOverride,
 		source: name === "web_search" ? "builtin" : "global",
 	};
 }
@@ -298,12 +369,24 @@ export class AppSettingsStore {
 			if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
 			const record = parsed as Record<string, unknown>;
 			const providerApiKeys = record.providerApiKeys;
+			const mcpOAuthClientSecrets = record.mcpOAuthClientSecrets;
 			return {
 				...(typeof record.tavilyApiKey === "string" ? { tavilyApiKey: record.tavilyApiKey } : {}),
 				...(typeof providerApiKeys === "object" && providerApiKeys !== null && !Array.isArray(providerApiKeys)
 					? {
 							providerApiKeys: Object.fromEntries(
 								Object.entries(providerApiKeys).filter(
+									(entry): entry is [string, string] => typeof entry[1] === "string",
+								),
+							),
+						}
+					: {}),
+				...(typeof mcpOAuthClientSecrets === "object" &&
+				mcpOAuthClientSecrets !== null &&
+				!Array.isArray(mcpOAuthClientSecrets)
+					? {
+							mcpOAuthClientSecrets: Object.fromEntries(
+								Object.entries(mcpOAuthClientSecrets).filter(
 									(entry): entry is [string, string] => typeof entry[1] === "string",
 								),
 							),
@@ -318,7 +401,8 @@ export class AppSettingsStore {
 
 	private async writeSecrets(secrets: StoredSecrets): Promise<void> {
 		const hasProviderKeys = secrets.providerApiKeys && Object.keys(secrets.providerApiKeys).length > 0;
-		if (!secrets.tavilyApiKey && !hasProviderKeys) {
+		const hasMcpOAuthSecrets = secrets.mcpOAuthClientSecrets && Object.keys(secrets.mcpOAuthClientSecrets).length > 0;
+		if (!secrets.tavilyApiKey && !hasProviderKeys && !hasMcpOAuthSecrets) {
 			try {
 				await unlink(this.secretsPath);
 			} catch (error) {
@@ -392,12 +476,29 @@ export class AppSettingsStore {
 		await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 	}
 
-	async listMcpServers(): Promise<McpServerSummary[]> {
+	private projectMcpConfigPath(projectRoot: string): string {
+		return path.join(projectRoot, ".pi", "mcp.json");
+	}
+
+	private async readProjectMcpOverrides(projectRoot?: string): Promise<Record<string, McpProjectOverride>> {
+		if (!projectRoot) return {};
+		const config = await this.readJsonRecord(this.projectMcpConfigPath(projectRoot));
+		const servers = isRecord(config.mcpServers) ? config.mcpServers : {};
+		return Object.fromEntries(
+			Object.entries(servers).flatMap(([name, value]) => {
+				const override = normalizeProjectOverride(value);
+				return override ? [[name, override] as const] : [];
+			}),
+		);
+	}
+
+	async listMcpServers(projectRoot?: string): Promise<McpServerSummary[]> {
 		const config = await this.readJsonRecord(this.mcpConfigPath);
 		const servers = isRecord(config.mcpServers) ? config.mcpServers : {};
+		const projectOverrides = await this.readProjectMcpOverrides(projectRoot);
 		return Object.entries(servers)
 			.filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]))
-			.map(([name, value]) => normalizeMcpServer(name, value))
+			.map(([name, value]) => normalizeMcpServer(name, value, projectOverrides[name] ?? null))
 			.sort((left, right) => left.name.localeCompare(right.name));
 	}
 
@@ -469,8 +570,37 @@ export class AppSettingsStore {
 			if (Object.keys(env).length > 0) entry.env = env;
 			else delete entry.env;
 		}
-		if (input.disabled) entry.enabled = false;
-		else delete entry.enabled;
+		if (input.enabled === false) entry.enabled = false;
+		else if (input.enabled === true) delete entry.enabled;
+		if (input.exposure !== undefined) {
+			if (input.exposure === "codemode") delete entry.exposure;
+			else entry.exposure = input.exposure;
+		}
+		if (input.toolExposure !== undefined) {
+			const toolExposure = normalizeToolExposure(input.toolExposure);
+			if (Object.keys(toolExposure).length > 0) entry.toolExposure = toolExposure;
+			else delete entry.toolExposure;
+		}
+		if (input.description !== undefined) {
+			const description = input.description.trim();
+			if (description) entry.description = description;
+			else delete entry.description;
+		}
+		if (input.timeout !== undefined) {
+			if (input.timeout > 0) entry.timeout = input.timeout;
+			else delete entry.timeout;
+		}
+		if (input.authProvider !== undefined) {
+			const provider = input.authProvider.trim();
+			if (provider && input.transport === "http") entry.auth = { provider };
+			else delete entry.auth;
+		}
+		if (input.oauth !== undefined) {
+			await this.updateMcpOAuthConfig(name, entry, input.oauth);
+		} else if (input.transport === "stdio") {
+			delete entry.oauth;
+			await this.removeMcpOAuthClientSecret(name);
+		}
 		servers[name] = entry;
 		await this.writeJsonRecord(this.mcpConfigPath, { ...config, mcpServers: servers });
 		return this.listMcpServers();
@@ -482,7 +612,107 @@ export class AppSettingsStore {
 		const servers = isRecord(config.mcpServers) ? { ...config.mcpServers } : {};
 		delete servers[name];
 		await this.writeJsonRecord(this.mcpConfigPath, { ...config, mcpServers: servers });
+		await this.removeMcpOAuthClientSecret(name);
 		return this.listMcpServers();
+	}
+
+	async saveMcpProjectOverride(input: McpProjectOverrideInput): Promise<McpServerSummary[]> {
+		const name = input.name.trim();
+		if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new Error("MCP 服务名只能包含字母、数字、点、下划线和连字符");
+		const filePath = this.projectMcpConfigPath(input.projectRoot);
+		const config = await this.readJsonRecord(filePath);
+		const servers = isRecord(config.mcpServers) ? { ...config.mcpServers } : {};
+		const existing = isRecord(servers[name]) ? { ...servers[name] } : {};
+		const override: Record<string, unknown> = {
+			...(typeof existing.enabled === "boolean" ? { enabled: existing.enabled } : {}),
+			...(isMcpExposure(existing.exposure) ? { exposure: existing.exposure } : {}),
+			...(Object.keys(normalizeToolExposure(existing.toolExposure)).length > 0
+				? { toolExposure: normalizeToolExposure(existing.toolExposure) }
+				: {}),
+		};
+		if (input.enabled !== undefined) {
+			if (input.enabled === null) delete override.enabled;
+			else override.enabled = input.enabled;
+		}
+		if (input.exposure !== undefined) {
+			if (input.exposure === null) delete override.exposure;
+			else override.exposure = input.exposure;
+		}
+		if (input.toolExposure !== undefined) {
+			const toolExposure = input.toolExposure === null ? {} : normalizeToolExposure(input.toolExposure);
+			if (Object.keys(toolExposure).length > 0) override.toolExposure = toolExposure;
+			else delete override.toolExposure;
+		}
+		if (Object.keys(override).length > 0) servers[name] = override;
+		else delete servers[name];
+		await this.writeJsonRecord(filePath, { ...config, mcpServers: servers });
+		return this.listMcpServers(input.projectRoot);
+	}
+
+	async deleteMcpProjectOverride(input: McpProjectOverrideLocator): Promise<McpServerSummary[]> {
+		const filePath = this.projectMcpConfigPath(input.projectRoot);
+		const config = await this.readJsonRecord(filePath);
+		const servers = isRecord(config.mcpServers) ? { ...config.mcpServers } : {};
+		delete servers[input.name];
+		await this.writeJsonRecord(filePath, { ...config, mcpServers: servers });
+		return this.listMcpServers(input.projectRoot);
+	}
+
+	private async removeMcpOAuthClientSecret(name: string): Promise<void> {
+		const secrets = await this.readSecrets();
+		if (!secrets.mcpOAuthClientSecrets?.[name]) return;
+		const next = { ...secrets.mcpOAuthClientSecrets };
+		delete next[name];
+		secrets.mcpOAuthClientSecrets = next;
+		await this.writeSecrets(secrets);
+	}
+
+	private async updateMcpOAuthConfig(
+		name: string,
+		entry: Record<string, unknown>,
+		input: McpOAuthInput | null,
+	): Promise<void> {
+		if (input === null) {
+			delete entry.oauth;
+			await this.removeMcpOAuthClientSecret(name);
+			return;
+		}
+		const oauth = isRecord(entry.oauth) ? { ...entry.oauth } : {};
+		const setString = (key: string, value: string | undefined): void => {
+			if (value === undefined) return;
+			const normalized = value.trim();
+			if (normalized) oauth[key] = normalized;
+			else delete oauth[key];
+		};
+		setString("clientId", input.clientId);
+		setString("callbackUrl", input.callbackUrl);
+		setString("scope", input.scope);
+		setString("clientName", input.clientName);
+		setString("authServerMetadataUrl", input.authServerMetadataUrl);
+		if (input.callbackPort !== undefined) {
+			if (input.callbackPort === null) delete oauth.callbackPort;
+			else oauth.callbackPort = input.callbackPort;
+		}
+		if (input.clientRegistration !== undefined) {
+			if (input.clientRegistration === null) delete oauth.clientRegistration;
+			else oauth.clientRegistration = input.clientRegistration;
+		}
+		if (input.clientSecret !== undefined) {
+			const secrets = await this.readSecrets();
+			const clientSecrets = { ...(secrets.mcpOAuthClientSecrets ?? {}) };
+			const clientSecret = input.clientSecret.trim();
+			if (clientSecret) {
+				clientSecrets[name] = this.encrypt(clientSecret);
+				oauth.clientSecret = `\${${mcpOAuthClientSecretEnvName(name)}}`;
+			} else {
+				delete clientSecrets[name];
+				delete oauth.clientSecret;
+			}
+			secrets.mcpOAuthClientSecrets = clientSecrets;
+			await this.writeSecrets(secrets);
+		}
+		if (Object.keys(oauth).length > 0) entry.oauth = oauth;
+		else delete entry.oauth;
 	}
 
 	async listProviders(): Promise<ProviderSummary[]> {
@@ -564,6 +794,16 @@ export class AppSettingsStore {
 		for (const [id, encrypted] of Object.entries(secrets.providerApiKeys ?? {})) {
 			const value = this.decrypt(encrypted);
 			if (value) env[providerEnvName(id)] = value;
+		}
+		return env;
+	}
+
+	async getMcpEnv(): Promise<Record<string, string>> {
+		const secrets = await this.readSecrets();
+		const env: Record<string, string> = {};
+		for (const [name, encrypted] of Object.entries(secrets.mcpOAuthClientSecrets ?? {})) {
+			const value = this.decrypt(encrypted);
+			if (value) env[mcpOAuthClientSecretEnvName(name)] = value;
 		}
 		return env;
 	}

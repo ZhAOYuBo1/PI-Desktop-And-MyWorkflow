@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { copyFile, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -38,6 +38,8 @@ import type {
 	ForkAgentSessionInput,
 	ForkAgentSessionResult,
 	InvokeAgentBuiltinCommandInput,
+	McpActionInput,
+	McpActionResult,
 	PendingPermissionRequest,
 	ProjectSummary,
 	ResetAgentInput,
@@ -61,6 +63,9 @@ import {
 	parseExtensionUiResponseInput,
 	parseForkAgentSessionInput,
 	parseInvokeAgentBuiltinCommandInput,
+	parseMcpActionInput,
+	parseMcpProjectOverrideInput,
+	parseMcpProjectOverrideLocator,
 	parseMcpServerInput,
 	parsePermissionDefaults,
 	parseProjectId,
@@ -150,6 +155,9 @@ const channels = {
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
+	settingsSaveMcpOverride: "codepiddy:settings:mcp:override:save",
+	settingsDeleteMcpOverride: "codepiddy:settings:mcp:override:delete",
+	settingsMcpAction: "codepiddy:settings:mcp:action",
 	settingsListProviders: "codepiddy:settings:providers:list",
 	settingsSaveProvider: "codepiddy:settings:providers:save",
 	settingsDeleteProvider: "codepiddy:settings:providers:delete",
@@ -713,6 +721,68 @@ class AgentManager {
 		return builtins;
 	}
 
+	async runMcpAction(input: McpActionInput): Promise<McpActionResult> {
+		const packaged = app.isPackaged;
+		const updatedRuntime = this.piRuntimeUpdater.getLaunchRuntime();
+		const externalCli = Boolean(process.env.CODEPIDDY_PI_CLI);
+		const compiledRuntime = packaged || updatedRuntime !== null || !externalCli;
+		const cliPath =
+			process.env.CODEPIDDY_PI_CLI ??
+			updatedRuntime?.cliPath ??
+			(packaged
+				? path.join(this.repositoryRoot, "coding-agent-package", "dist", "bundle", "cli.js")
+				: path.join(this.repositoryRoot, "packages", "coding-agent-runtime", "dist", "bundle", "cli.js"));
+		const nodeExecutable = process.env.CODEPIDDY_NODE_EXECUTABLE ?? (packaged ? process.execPath : "node");
+		const args = [
+			...(compiledRuntime
+				? [cliPath]
+				: [
+						"--import",
+						pathToFileURL(path.join(this.repositoryRoot, "node_modules", "tsx", "dist", "loader.mjs")).href,
+						cliPath,
+					]),
+			"mcp",
+			input.action,
+			input.name,
+			...(input.action === "login" ? ["--timeout", "300"] : []),
+		];
+		const env: NodeJS.ProcessEnv = {
+			...process.env,
+			...(packaged ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+			...(await this.settingsStore.getProviderEnv()),
+			...(await this.settingsStore.getMcpEnv()),
+			...(compiledRuntime
+				? {
+						PI_PACKAGE_DIR:
+							updatedRuntime?.packageDir ??
+							(packaged
+								? path.join(this.repositoryRoot, "coding-agent-package")
+								: path.join(this.repositoryRoot, "packages", "coding-agent-runtime")),
+					}
+				: {}),
+		};
+		return new Promise<McpActionResult>((resolve, reject) => {
+			const child = spawn(nodeExecutable, args, {
+				cwd: this.repositoryRoot,
+				env,
+				stdio: ["ignore", "pipe", "pipe"],
+				windowsHide: true,
+			});
+			let output = "";
+			const append = (chunk: Buffer): void => {
+				output = `${output}${chunk.toString("utf8")}`.slice(-64 * 1024);
+			};
+			child.stdout.on("data", append);
+			child.stderr.on("data", append);
+			child.once("error", reject);
+			child.once("exit", (code) => {
+				const text = output.trim();
+				if (code === 0) resolve({ output: text });
+				else reject(new Error(text || `Pi MCP ${input.action} exited with code ${code ?? "unknown"}`));
+			});
+		});
+	}
+
 	async getModelSelection(input: AgentInstanceLocator): Promise<AgentModelSelection> {
 		const process = await this.ensureProcess(await this.resolve(input));
 		const [stateResponse, modelsRaw, levels] = await Promise.all([
@@ -1221,6 +1291,7 @@ class AgentManager {
 			env: {
 				...(packaged ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
 				...(await this.settingsStore.getProviderEnv()),
+				...(await this.settingsStore.getMcpEnv()),
 				TSX_TSCONFIG_PATH: path.join(this.repositoryRoot, "tsconfig.json"),
 				...(compiledRuntime
 					? {
@@ -1848,12 +1919,29 @@ function registerIpcHandlers(
 	ipcMain.handle(channels.settingsSaveShell, (_event, rawShellPath: unknown) =>
 		settingsStore.setShellPath(parseBoundedText(rawShellPath, "Shell 路径", 1024)),
 	);
-	ipcMain.handle(channels.settingsListMcp, () => settingsStore.listMcpServers());
+	ipcMain.handle(channels.settingsListMcp, (_event, rawProjectRoot?: unknown) =>
+		rawProjectRoot === undefined
+			? settingsStore.listMcpServers()
+			: settingsStore.listMcpServers(requireOpenProjectRoot(rawProjectRoot)),
+	);
 	ipcMain.handle(channels.settingsSaveMcp, (_event, raw: unknown) =>
 		settingsStore.saveMcpServer(parseMcpServerInput(raw)),
 	);
 	ipcMain.handle(channels.settingsDeleteMcp, (_event, rawName: unknown) =>
 		settingsStore.deleteMcpServer(parseBoundedText(rawName, "MCP 服务名", 100)),
+	);
+	ipcMain.handle(channels.settingsSaveMcpOverride, (_event, raw: unknown) => {
+		const input = parseMcpProjectOverrideInput(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		return settingsStore.saveMcpProjectOverride(input);
+	});
+	ipcMain.handle(channels.settingsDeleteMcpOverride, (_event, raw: unknown) => {
+		const input = parseMcpProjectOverrideLocator(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		return settingsStore.deleteMcpProjectOverride(input);
+	});
+	ipcMain.handle(channels.settingsMcpAction, (_event, raw: unknown) =>
+		agentManager.runMcpAction(parseMcpActionInput(raw)),
 	);
 	ipcMain.handle(channels.settingsListProviders, () => settingsStore.listProviders());
 	ipcMain.handle(channels.settingsSaveProvider, (_event, raw: unknown) =>

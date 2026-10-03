@@ -22,8 +22,8 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-38 已推送到 origin/main，批次 39 已提交到本地 `main`，当前 HEAD 是 `5f9a0e67e`。
-批次 39 已提交：web_search 已统一到 Pi 原生 mcp.json，旧 Tavily 扩展注入通道和用户级 pi-mcp-adapter 已删除，工具名采用 `mcp__web_search__web_search`。下一步从阶段 1 的第 9 项 MCP 设置 UI 继续。
+再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-38 已推送到 origin/main，批次 39 已提交到本地 `main`。
+批次 40 已实现并验证，尚未提交：MCP 设置 UI 已支持项目级 override、enabled、exposure、toolExposure、description、timeout、OAuth 字段以及登录/退出/重连入口。下一步从阶段 1 的第 10 项 `/mcp` 等价入口和 `pi mcp` 包装继续。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条都已验收，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
@@ -57,7 +57,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-04 批次 39：web_search 原生 MCP 统一，已提交）
+## 当前状态（2026-10-04 批次 40：MCP 设置完整能力，待验收）
 
 - `styles.css` 4253 行，顶部是完整的 `--cp-*` 令牌层；旧玻璃层的死规则已删除，`rgb(255 255 255 / N%)` 只剩侧栏 sheen 两处。
 - 间距令牌已建立：`--cp-space-micro` 到 `--cp-space-5xl`（2/4/6/8/12/16/24/32/40/48/64px）；组件间距声明已全部改用令牌。
@@ -83,6 +83,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - README 已重写并补回截图（`docs/images/`）；截图由 `packages/codepiddy-desktop/scripts/capture-screenshots.mts` 生成，脚本自己造临时项目，不依赖本机真实项目。
 - Pi 版本现状：当前机器实际运行 `1.0.1`，仓库内置运行时也已固定为 `1.0.1` bundle（`packages/coding-agent-runtime`）；build 只复制该固定目录，不联网、不自动升级。
 - Pi 1.0.1 原生 MCP：`@earendil-works/pi-mcp` 已内置；客户端基础 MCP 已读写原生 `mcp.json`。`web_search` 已迁移为客户端维护的原生 MCP 条目，保留独立 Tavily 设置和加密 Key；旧的 `CODEPIDDY_TAVILY_MCP_ENTRY` 注入通道和 `codepiddy-tavily-tool-extension` 已删除。
+- MCP 设置页已补齐原生行为字段：项目级 `.pi/mcp.json` override、`enabled`、`exposure`、`toolExposure`、`description`、`timeout`、OAuth 字段和 `auth.provider`；登录/退出走 Pi 原生 `mcp` 子命令，重连复用当前 Agent 进程重启。
 - 完整功能审计、MCP 方案、缺失功能矩阵和分阶段任务清单见 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
 - 客户端设置页 Provider 登录/退出已完成实现和隔离验证；不接入 `/login`、`/logout` 命令。
 - 设置页和登录弹窗的所有下拉列表已统一为自定义 `SelectMenu`，列表最大高度受控，不再使用系统原生超长弹层。
@@ -115,7 +116,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ### 下一步
 
-批次 39 已提交。下一步从 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 1 的第 9 项继续：升级 MCP 设置 UI，补项目级 override、`enabled`、`exposure`、`toolExposure`、`description`、`timeout` 和 OAuth。
+批次 40 待验收。下一步从 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 1 的第 10 项继续：增加 `/mcp` 的客户端等价入口和 `pi mcp` 包装。
 
 ### 改版前的基线（历史记录，仅作对照）
 
@@ -870,6 +871,24 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
   `web_search: connected, 1 tool (direct, global)`；清除后为 `web_search: disabled (direct, global)`。
 - `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿；真实客户端已重启。
 
+### 2026-10-04 批次 40：MCP 设置完整能力（待验收）
+
+- 设置页现在读写全局 `~/.pi/agent/mcp.json` 和项目级 `.pi/mcp.json`；项目级只写
+  `enabled` / `exposure` / `toolExposure`，不越权覆盖 command / url / OAuth。
+- 全局编辑器支持 `enabled`、`exposure`、`toolExposure`、`description`、`timeout`。
+- HTTP MCP 支持 OAuth 字段：clientId、clientSecret、callbackPort、callbackUrl、scope、
+  clientName、clientRegistration、authServerMetadataUrl、auth.provider。
+- OAuth client secret 继续走 Electron safeStorage；`mcp.json` 只写
+  `${CODEPIDDY_MCP_<NAME>_CLIENT_SECRET}` 引用。
+- 登录 / 退出调用 Pi 原生 `pi mcp login|logout`；重连按钮重启当前 Agent 进程并重新加载 MCP。
+- 设置页按“连接 / 行为 / 工具级 exposure / OAuth”分组，保留内置 `web_search` 状态和项目覆盖标记。
+
+验证：
+
+- 隔离 Electron：全局字段、项目 override 和 OAuth 引用均正确写盘；`mcp.json` 与 secrets 中无明文 client secret。
+- Playwright：1440px 与 900px 视口无横向溢出；编辑器、OAuth 和项目覆盖状态均可渲染。
+- `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿；真实客户端已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -889,10 +908,11 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 15. [ ] **用户消息级快捷 Fork**：批次 37 已实现并完成截图验证，等待用户验收。
 16. [x] **Pi 1.0.1 功能审计与版本收口**：批次 38 已完成文档审计、固定内置 1.0.1 bundle、客户端 Provider 登录和统一 SelectMenu，已提交。详细清单见 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
 17. [x] **web_search 原生 MCP 统一**：批次 39 已验收并提交。下一步是 MCP 设置 UI 的项目级 override、enabled、exposure、toolExposure、description、timeout 和 OAuth。
+18. [ ] **MCP 设置完整能力**：批次 40 已实现并完成隔离与视觉验证，等待验收。下一步是 `/mcp` 的客户端等价入口和 `pi mcp` 包装。
 
 ## 未提交状态
 
-批次 39 已提交到本地 `main`，提交号 `5f9a0e67e`；尚未推送。最近提交：
+批次 39 已提交到本地 `main`；批次 40 工作树改动尚未提交。最近提交：
 
 - `888ed5b27 docs(desktop): record Pi 1.0.1 audit and handoff`
 - `55e6d4bf3 feat(desktop): finalize UI, pin Pi runtime and add provider login`

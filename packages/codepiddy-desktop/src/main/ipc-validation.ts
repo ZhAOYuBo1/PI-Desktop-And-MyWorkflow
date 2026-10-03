@@ -11,6 +11,12 @@ import type {
 	ForkAgentSessionInput,
 	InvokeAgentBuiltinCommandInput,
 	LaneKind,
+	McpActionInput,
+	McpClientRegistration,
+	McpExposure,
+	McpOAuthInput,
+	McpProjectOverrideInput,
+	McpProjectOverrideLocator,
 	McpServerInput,
 	PermissionDefaults,
 	PermissionState,
@@ -316,6 +322,65 @@ function stringRecordInput(value: unknown, label: string): Record<string, string
 	);
 }
 
+function mcpExposure(value: unknown, label: string): McpExposure {
+	if (value === "codemode" || value === "deferred" || value === "direct" || value === "hidden") return value;
+	throw new Error(`${label}无效`);
+}
+
+function mcpToolExposure(value: unknown, label: string): Record<string, McpExposure> {
+	const input = record(value, label);
+	return Object.fromEntries(
+		Object.entries(input).map(([key, entry]) => [
+			text(key, `${label}工具名`, 300),
+			mcpExposure(entry, `${label} ${key}`),
+		]),
+	);
+}
+
+function optionalPositiveNumber(value: unknown, label: string, maximum: number): number | null {
+	if (value === null) return null;
+	if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > maximum) {
+		throw new Error(`${label}必须是 1-${maximum} 的整数`);
+	}
+	return value;
+}
+
+function parseMcpOAuthInput(value: unknown): McpOAuthInput | null {
+	if (value === null) return null;
+	const input = record(value, "MCP OAuth");
+	const clientRegistration = input.clientRegistration;
+	if (
+		clientRegistration !== undefined &&
+		clientRegistration !== null &&
+		clientRegistration !== "dcr" &&
+		clientRegistration !== "cimd"
+	) {
+		throw new Error("MCP OAuth clientRegistration 无效");
+	}
+	return {
+		...(input.clientId === undefined ? {} : { clientId: text(input.clientId, "OAuth clientId", 2000, true) }),
+		...(input.clientSecret === undefined
+			? {}
+			: { clientSecret: text(input.clientSecret, "OAuth clientSecret", 4000, true) }),
+		...(input.callbackPort === undefined
+			? {}
+			: { callbackPort: optionalPositiveNumber(input.callbackPort, "OAuth callbackPort", 65535) }),
+		...(input.callbackUrl === undefined
+			? {}
+			: { callbackUrl: text(input.callbackUrl, "OAuth callbackUrl", 2000, true) }),
+		...(input.scope === undefined ? {} : { scope: text(input.scope, "OAuth scope", 2000, true) }),
+		...(input.clientName === undefined ? {} : { clientName: text(input.clientName, "OAuth clientName", 200, true) }),
+		...(clientRegistration === undefined
+			? {}
+			: { clientRegistration: clientRegistration as McpClientRegistration | null }),
+		...(input.authServerMetadataUrl === undefined
+			? {}
+			: {
+					authServerMetadataUrl: text(input.authServerMetadataUrl, "OAuth authServerMetadataUrl", 2000, true),
+				}),
+	};
+}
+
 export function parseMcpServerInput(value: unknown): McpServerInput {
 	const input = record(value, "MCP Server");
 	if (input.transport !== "stdio" && input.transport !== "http") throw new Error("MCP transport 无效");
@@ -324,6 +389,9 @@ export function parseMcpServerInput(value: unknown): McpServerInput {
 		if (!Array.isArray(input.args)) throw new Error("MCP args 必须是数组");
 		args = input.args.slice(0, 100).map((item) => text(item, "MCP arg", 2000, true));
 	}
+	if (input.enabled !== undefined && typeof input.enabled !== "boolean") throw new Error("MCP enabled 必须是布尔值");
+	const toolExposure =
+		input.toolExposure === undefined ? undefined : mcpToolExposure(input.toolExposure, "MCP toolExposure");
 	return {
 		name: text(input.name, "MCP 服务名", 100),
 		transport: input.transport,
@@ -332,7 +400,63 @@ export function parseMcpServerInput(value: unknown): McpServerInput {
 		...(input.url === undefined ? {} : { url: text(input.url, "MCP url", 2000, true) }),
 		...(input.env === undefined ? {} : { env: stringRecordInput(input.env, "MCP env ") }),
 		...(input.headers === undefined ? {} : { headers: stringRecordInput(input.headers, "MCP headers ") }),
-		disabled: input.disabled === true,
+		...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+		...(input.exposure === undefined ? {} : { exposure: mcpExposure(input.exposure, "MCP exposure") }),
+		...(toolExposure === undefined ? {} : { toolExposure }),
+		...(input.description === undefined
+			? {}
+			: { description: text(input.description, "MCP description", 2000, true) }),
+		...(input.timeout === undefined
+			? {}
+			: {
+					timeout:
+						input.timeout === null || input.timeout === 0
+							? 0
+							: (optionalPositiveNumber(input.timeout, "MCP timeout", 3600) ?? 0),
+				}),
+		...(input.oauth === undefined ? {} : { oauth: parseMcpOAuthInput(input.oauth) }),
+		...(input.authProvider === undefined
+			? {}
+			: { authProvider: text(input.authProvider, "MCP auth provider", 300, true) }),
+	};
+}
+
+export function parseMcpProjectOverrideInput(value: unknown): McpProjectOverrideInput {
+	const input = record(value, "MCP Project Override");
+	const toolExposure =
+		input.toolExposure === undefined
+			? undefined
+			: input.toolExposure === null
+				? null
+				: mcpToolExposure(input.toolExposure, "MCP project toolExposure");
+	if (input.enabled !== undefined && input.enabled !== null && typeof input.enabled !== "boolean") {
+		throw new Error("MCP project enabled 必须是布尔值或 null");
+	}
+	return {
+		projectRoot: projectRoot(input.projectRoot),
+		name: text(input.name, "MCP 服务名", 100),
+		...(input.enabled === undefined ? {} : { enabled: input.enabled as boolean | null }),
+		...(input.exposure === undefined
+			? {}
+			: { exposure: input.exposure === null ? null : mcpExposure(input.exposure, "MCP project exposure") }),
+		...(toolExposure === undefined ? {} : { toolExposure }),
+	};
+}
+
+export function parseMcpProjectOverrideLocator(value: unknown): McpProjectOverrideLocator {
+	const input = record(value, "MCP Project Override");
+	return {
+		projectRoot: projectRoot(input.projectRoot),
+		name: text(input.name, "MCP 服务名", 100),
+	};
+}
+
+export function parseMcpActionInput(value: unknown): McpActionInput {
+	const input = record(value, "MCP Action");
+	if (input.action !== "login" && input.action !== "logout") throw new Error("MCP 操作无效");
+	return {
+		action: input.action,
+		name: text(input.name, "MCP 服务名", 100),
 	};
 }
 

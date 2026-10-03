@@ -1,11 +1,44 @@
-import type { McpServerInput, McpServerSummary, McpTransport } from "@codepiddy/shared";
-import { Globe, Pencil, Plug, Plus, Trash2 } from "lucide-react";
+import type {
+	AgentInstanceLocator,
+	McpClientRegistration,
+	McpExposure,
+	McpProjectOverrideInput,
+	McpServerInput,
+	McpServerSummary,
+	McpTransport,
+} from "@codepiddy/shared";
+import { Globe, LogIn, LogOut, Pencil, Plug, Plus, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { SelectMenu } from "./select-menu.tsx";
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
+const EXPOSURE_OPTIONS: Array<{ value: McpExposure; label: string; description: string }> = [
+	{ value: "codemode", label: "codemode", description: "通过 codemode 脚本调用，默认值" },
+	{ value: "deferred", label: "deferred", description: "由 tool_search 按需加载" },
+	{ value: "direct", label: "direct", description: "像内置工具一样直接声明给模型" },
+	{ value: "hidden", label: "hidden", description: "注册但不可调用" },
+];
+
 const DEMO_SERVERS: McpServerSummary[] = [
+	{
+		name: "web_search",
+		transport: "stdio",
+		command: "node",
+		args: ["tavily-search.js"],
+		url: null,
+		env: { TAVILY_API_KEY: `\${TAVILY_API_KEY}` },
+		headers: {},
+		enabled: false,
+		exposure: "direct",
+		toolExposure: { web_search: "direct" },
+		description: "Tavily web search",
+		timeout: null,
+		oauth: null,
+		authProvider: null,
+		projectOverride: null,
+		source: "builtin",
+	},
 	{
 		name: "chrome-devtools",
 		transport: "stdio",
@@ -14,12 +47,19 @@ const DEMO_SERVERS: McpServerSummary[] = [
 		url: null,
 		env: {},
 		headers: {},
-		disabled: false,
+		enabled: true,
+		exposure: "codemode",
+		toolExposure: {},
+		description: "Browser inspection and automation tools",
+		timeout: 30,
+		oauth: null,
+		authProvider: null,
+		projectOverride: null,
 		source: "global",
 	},
 ];
 
-interface Draft {
+interface ServerDraft {
 	name: string;
 	transport: McpTransport;
 	command: string;
@@ -27,10 +67,34 @@ interface Draft {
 	url: string;
 	envText: string;
 	headersText: string;
-	disabled: boolean;
+	enabled: boolean;
+	exposure: McpExposure;
+	toolExposureText: string;
+	description: string;
+	timeoutText: string;
+	oauthClientId: string;
+	oauthClientSecret: string;
+	oauthClientSecretConfigured: boolean;
+	oauthClientSecretTouched: boolean;
+	oauthCallbackPort: string;
+	oauthCallbackUrl: string;
+	oauthScope: string;
+	oauthClientName: string;
+	oauthClientRegistration: "" | McpClientRegistration;
+	oauthAuthServerMetadataUrl: string;
+	authProvider: string;
 }
 
-function emptyDraft(): Draft {
+type OverrideMode = "inherit" | "enabled" | "disabled";
+
+interface OverrideDraft {
+	name: string;
+	enabled: OverrideMode;
+	exposure: "inherit" | McpExposure;
+	toolExposureText: string;
+}
+
+function emptyDraft(): ServerDraft {
 	return {
 		name: "",
 		transport: "stdio",
@@ -39,24 +103,75 @@ function emptyDraft(): Draft {
 		url: "",
 		envText: "",
 		headersText: "",
-		disabled: false,
+		enabled: true,
+		exposure: "codemode",
+		toolExposureText: "",
+		description: "",
+		timeoutText: "",
+		oauthClientId: "",
+		oauthClientSecret: "",
+		oauthClientSecretConfigured: false,
+		oauthClientSecretTouched: false,
+		oauthCallbackPort: "",
+		oauthCallbackUrl: "",
+		oauthScope: "",
+		oauthClientName: "",
+		oauthClientRegistration: "",
+		oauthAuthServerMetadataUrl: "",
+		authProvider: "",
 	};
 }
 
-function draftFrom(server: McpServerSummary): Draft {
+function formatKeyValueLines(value: Record<string, string>): string {
+	return Object.entries(value)
+		.map(([key, entry]) => `${key}=${entry}`)
+		.join("\n");
+}
+
+function formatToolExposureLines(value: Record<string, McpExposure>): string {
+	return Object.entries(value)
+		.map(([tool, exposure]) => `${tool}=${exposure}`)
+		.join("\n");
+}
+
+function draftFrom(server: McpServerSummary): ServerDraft {
 	return {
 		name: server.name,
 		transport: server.transport,
 		command: server.command ?? "",
 		argsText: server.args.join("\n"),
 		url: server.url ?? "",
-		envText: Object.entries(server.env)
-			.map(([key, value]) => `${key}=${value}`)
-			.join("\n"),
-		headersText: Object.entries(server.headers)
-			.map(([key, value]) => `${key}=${value}`)
-			.join("\n"),
-		disabled: server.disabled,
+		envText: formatKeyValueLines(server.env),
+		headersText: formatKeyValueLines(server.headers),
+		enabled: server.enabled,
+		exposure: server.exposure,
+		toolExposureText: formatToolExposureLines(server.toolExposure),
+		description: server.description ?? "",
+		timeoutText: server.timeout === null ? "" : String(server.timeout),
+		oauthClientId: server.oauth?.clientId ?? "",
+		oauthClientSecret: "",
+		oauthClientSecretConfigured: server.oauth?.clientSecretConfigured ?? false,
+		oauthClientSecretTouched: false,
+		oauthCallbackPort:
+			server.oauth?.callbackPort === null || server.oauth?.callbackPort === undefined
+				? ""
+				: String(server.oauth.callbackPort),
+		oauthCallbackUrl: server.oauth?.callbackUrl ?? "",
+		oauthScope: server.oauth?.scope ?? "",
+		oauthClientName: server.oauth?.clientName ?? "",
+		oauthClientRegistration: server.oauth?.clientRegistration ?? "",
+		oauthAuthServerMetadataUrl: server.oauth?.authServerMetadataUrl ?? "",
+		authProvider: server.authProvider ?? "",
+	};
+}
+
+function overrideDraftFrom(server: McpServerSummary): OverrideDraft {
+	const override = server.projectOverride;
+	return {
+		name: server.name,
+		enabled: override?.enabled === undefined ? "inherit" : override.enabled === false ? "disabled" : "enabled",
+		exposure: override?.exposure ?? "inherit",
+		toolExposureText: override?.toolExposure ? formatToolExposureLines(override.toolExposure) : "",
 	};
 }
 
@@ -66,17 +181,52 @@ function parseKeyValueLines(value: string): Record<string, string> {
 		const trimmed = line.trim();
 		if (!trimmed) continue;
 		const separator = trimmed.indexOf("=");
-		if (separator <= 0) continue;
+		if (separator <= 0) throw new Error(`环境变量或 Header 格式无效：${trimmed}`);
 		result[trimmed.slice(0, separator).trim()] = trimmed.slice(separator + 1).trim();
 	}
 	return result;
 }
 
-export function McpSettings() {
+function parseToolExposureLines(value: string): Record<string, McpExposure> {
+	const result: Record<string, McpExposure> = {};
+	for (const line of value.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		const separator = trimmed.indexOf("=");
+		if (separator <= 0) throw new Error(`工具曝光格式无效：${trimmed}`);
+		const tool = trimmed.slice(0, separator).trim();
+		const exposure = trimmed.slice(separator + 1).trim();
+		if (exposure !== "codemode" && exposure !== "deferred" && exposure !== "direct" && exposure !== "hidden") {
+			throw new Error(`工具 ${tool} 的 exposure 无效：${exposure}`);
+		}
+		result[tool] = exposure;
+	}
+	return result;
+}
+
+function parseOptionalInteger(value: string, label: string, maximum: number): number | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+	const number = Number(trimmed);
+	if (!Number.isInteger(number) || number < 1 || number > maximum) {
+		throw new Error(`${label}必须是 1-${maximum} 的整数`);
+	}
+	return number;
+}
+
+export function McpSettings({
+	projectRoot,
+	activeAgent,
+}: {
+	projectRoot: string | null;
+	activeAgent: AgentInstanceLocator | null;
+}) {
 	const [servers, setServers] = useState<McpServerSummary[] | null>(demoMode ? DEMO_SERVERS : null);
-	const [draft, setDraft] = useState<Draft | null>(null);
+	const [draft, setDraft] = useState<ServerDraft | null>(null);
+	const [overrideDraft, setOverrideDraft] = useState<OverrideDraft | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [busy, setBusy] = useState(false);
+	const [notice, setNotice] = useState<string | null>(null);
+	const [busy, setBusy] = useState<string | null>(null);
 
 	const refresh = useCallback(async (): Promise<void> => {
 		if (demoMode) return;
@@ -85,19 +235,21 @@ export function McpSettings() {
 			return;
 		}
 		try {
-			setServers(await window.codepiddy.listMcpServers());
+			setServers(await window.codepiddy.listMcpServers(projectRoot ?? undefined));
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "读取 MCP 配置失败");
 		}
-	}, []);
+	}, [projectRoot]);
 
 	useEffect(() => {
 		void refresh();
 	}, [refresh]);
 
-	async function save(): Promise<void> {
+	async function saveServer(): Promise<void> {
 		if (!draft) return;
+		const timeout = parseOptionalInteger(draft.timeoutText, "超时", 3600);
+		const oauthCallbackPort = parseOptionalInteger(draft.oauthCallbackPort, "OAuth 回调端口", 65535);
 		const input: McpServerInput = {
 			name: draft.name,
 			transport: draft.transport,
@@ -111,12 +263,31 @@ export function McpSettings() {
 						env: parseKeyValueLines(draft.envText),
 					}
 				: { url: draft.url, headers: parseKeyValueLines(draft.headersText) }),
-			disabled: draft.disabled,
+			enabled: draft.enabled,
+			exposure: draft.exposure,
+			toolExposure: parseToolExposureLines(draft.toolExposureText),
+			description: draft.description,
+			timeout: timeout ?? 0,
+			authProvider: draft.authProvider,
+			oauth:
+				draft.transport === "http"
+					? {
+							clientId: draft.oauthClientId,
+							...(draft.oauthClientSecretTouched ? { clientSecret: draft.oauthClientSecret } : {}),
+							callbackPort: oauthCallbackPort,
+							callbackUrl: draft.oauthCallbackUrl,
+							scope: draft.oauthScope,
+							clientName: draft.oauthClientName,
+							clientRegistration: draft.oauthClientRegistration || null,
+							authServerMetadataUrl: draft.oauthAuthServerMetadataUrl,
+						}
+					: null,
 		};
 		if (demoMode) {
-			setServers((current) => [
-				...(current ?? []).filter((server) => server.name !== input.name),
-				{
+			setServers((current) => {
+				const previous = (current ?? []).find((server) => server.name === input.name);
+				const next = (current ?? []).filter((server) => server.name !== input.name);
+				const created: McpServerSummary = {
 					name: input.name,
 					transport: input.transport,
 					command: input.command ?? null,
@@ -124,45 +295,167 @@ export function McpSettings() {
 					url: input.url ?? null,
 					env: input.env ?? {},
 					headers: input.headers ?? {},
-					disabled: input.disabled === true,
-					source: "global",
-				},
-			]);
+					enabled: input.enabled !== false,
+					exposure: input.exposure ?? "codemode",
+					toolExposure: input.toolExposure ?? {},
+					description: input.description?.trim() || null,
+					timeout: input.timeout && input.timeout > 0 ? input.timeout : null,
+					oauth:
+						input.oauth && input.transport === "http"
+							? {
+									clientId: input.oauth.clientId?.trim() || null,
+									clientSecretConfigured:
+										(input.oauth.clientSecret?.trim().length ?? 0) > 0 ||
+										(previous?.oauth?.clientSecretConfigured ?? false),
+									callbackPort: input.oauth.callbackPort ?? null,
+									callbackUrl: input.oauth.callbackUrl?.trim() || null,
+									scope: input.oauth.scope?.trim() || null,
+									clientName: input.oauth.clientName?.trim() || null,
+									clientRegistration: input.oauth.clientRegistration ?? null,
+									authServerMetadataUrl: input.oauth.authServerMetadataUrl?.trim() || null,
+								}
+							: null,
+					authProvider: input.authProvider?.trim() || null,
+					projectOverride: previous?.projectOverride ?? null,
+					source: previous?.source === "builtin" ? "builtin" : "global",
+				};
+				return [...next, created].sort((left, right) => left.name.localeCompare(right.name));
+			});
 			setDraft(null);
+			setNotice("MCP 服务已保存。");
 			return;
 		}
 		if (!("codepiddy" in window)) return;
-		setBusy(true);
+		setBusy("save-server");
 		try {
 			setServers(await window.codepiddy.saveMcpServer(input));
 			setDraft(null);
+			setNotice("MCP 服务已保存。");
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存 MCP 配置失败");
 		} finally {
-			setBusy(false);
+			setBusy(null);
 		}
 	}
 
-	async function remove(name: string): Promise<void> {
+	async function saveOverride(): Promise<void> {
+		if (!overrideDraft || !projectRoot) return;
+		const parsedToolExposure = parseToolExposureLines(overrideDraft.toolExposureText);
+		const input: McpProjectOverrideInput = {
+			projectRoot,
+			name: overrideDraft.name,
+			enabled: overrideDraft.enabled === "inherit" ? null : overrideDraft.enabled === "enabled",
+			exposure: overrideDraft.exposure === "inherit" ? null : overrideDraft.exposure,
+			toolExposure: Object.keys(parsedToolExposure).length > 0 ? parsedToolExposure : null,
+		};
+		if (demoMode) {
+			setServers((current) =>
+				(current ?? []).map((server) =>
+					server.name === input.name
+						? {
+								...server,
+								projectOverride: {
+									...(input.enabled === null ? {} : { enabled: input.enabled }),
+									...(input.exposure === null ? {} : { exposure: input.exposure }),
+									...(input.toolExposure === null ? {} : { toolExposure: input.toolExposure }),
+								},
+							}
+						: server,
+				),
+			);
+			setOverrideDraft(null);
+			setNotice("项目覆盖已保存。");
+			return;
+		}
+		if (!("codepiddy" in window)) return;
+		setBusy("save-override");
+		try {
+			setServers(await window.codepiddy.saveMcpProjectOverride(input));
+			setOverrideDraft(null);
+			setNotice("项目覆盖已保存。");
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "保存项目覆盖失败");
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	async function removeServer(name: string): Promise<void> {
+		if (!window.confirm(`删除 MCP 服务「${name}」？`)) return;
 		if (demoMode) {
 			setServers((current) => (current ?? []).filter((server) => server.name !== name));
 			return;
 		}
 		if (!("codepiddy" in window)) return;
-		setBusy(true);
+		setBusy(`delete:${name}`);
 		try {
 			setServers(await window.codepiddy.deleteMcpServer(name));
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "删除 MCP 配置失败");
 		} finally {
-			setBusy(false);
+			setBusy(null);
 		}
 	}
 
-	const builtinServer = (servers ?? []).find((server) => server.source === "builtin") ?? null;
-	const customServers = (servers ?? []).filter((server) => server.source !== "builtin");
+	async function removeOverride(name: string): Promise<void> {
+		if (!projectRoot) return;
+		if (demoMode) {
+			setServers((current) =>
+				(current ?? []).map((server) => (server.name === name ? { ...server, projectOverride: null } : server)),
+			);
+			setOverrideDraft(null);
+			return;
+		}
+		if (!("codepiddy" in window)) return;
+		setBusy(`delete-override:${name}`);
+		try {
+			setServers(await window.codepiddy.deleteMcpProjectOverride({ projectRoot, name }));
+			setOverrideDraft(null);
+			setNotice("项目覆盖已移除。");
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "移除项目覆盖失败");
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	async function runAction(name: string, action: "login" | "logout"): Promise<void> {
+		if (demoMode) {
+			setNotice(action === "login" ? `${name} 已登录。` : `${name} 已退出。`);
+			return;
+		}
+		if (!("codepiddy" in window)) return;
+		setBusy(`${action}:${name}`);
+		try {
+			const result = await window.codepiddy.runMcpAction({ action, name });
+			setNotice(result.output || (action === "login" ? "登录完成。" : "已退出。"));
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : `MCP ${action} 失败`);
+		} finally {
+			setBusy(null);
+		}
+	}
+
+	const draftServerExists = Boolean(draft && (servers ?? []).some((server) => server.name === draft.name));
+
+	async function reconnectActiveAgent(): Promise<void> {
+		if (!activeAgent || !("codepiddy" in window)) return;
+		setBusy("reconnect-agent");
+		try {
+			await window.codepiddy.reconnectAgent(activeAgent);
+			setNotice("当前 Agent 已重连，MCP 配置已重新加载。");
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "重连 Agent 失败");
+		} finally {
+			setBusy(null);
+		}
+	}
 
 	return (
 		<section className="settings-card mcp-settings-card">
@@ -170,8 +463,8 @@ export function McpSettings() {
 				<div>
 					<h2>MCP 服务</h2>
 					<p>
-						读写 Pi 原生 <code>~/.pi/agent/mcp.json</code>。修改后新启动或重置的 Agent
-						生效；工具调用仍受「默认权限 · MCP 工具」约束。
+						读写 Pi 原生 <code>mcp.json</code> 和项目级 <code>.pi/mcp.json</code>。修改后新启动或重连的 Agent
+						生效。
 					</p>
 				</div>
 				<button className="primary-button" type="button" onClick={() => setDraft(emptyDraft())}>
@@ -179,151 +472,371 @@ export function McpSettings() {
 				</button>
 			</div>
 
-			<div className="mcp-server-list">
-				<div className="mcp-server-row is-builtin">
-					<span className="mcp-server-icon">
-						<Plug size={14} strokeWidth={2} />
-					</span>
-					<span className="mcp-server-copy">
-						<strong>web_search</strong>
-						<small>
-							内置 Tavily MCP，由 Pi 原生 mcp.json 管理
-							{builtinServer?.disabled ? "；Key 未配置，当前已禁用" : ""}
-						</small>
-					</span>
-					<span className="mcp-server-badge">{builtinServer?.disabled ? "待配置" : "内置"}</span>
+			<div className="mcp-settings-toolbar">
+				<div>
+					<strong>连接控制</strong>
+					<small>{activeAgent ? "重连当前 Agent 会重新连接全部 MCP 服务。" : "打开一个 Agent 后可重连。"}</small>
 				</div>
-				{customServers.map((server) => (
-					<div className={`mcp-server-row${server.disabled ? " is-disabled" : ""}`} key={server.name}>
-						<span className="mcp-server-icon">
-							{server.transport === "http" ? (
-								<Globe size={14} strokeWidth={2} />
-							) : (
-								<Plug size={14} strokeWidth={2} />
-							)}
-						</span>
-						<span className="mcp-server-copy">
-							<strong>{server.name}</strong>
-							<small
-								title={
-									server.transport === "http" ? (server.url ?? "") : [server.command, ...server.args].join(" ")
-								}
-							>
-								{server.transport === "http"
-									? (server.url ?? "")
-									: [server.command, ...server.args].filter(Boolean).join(" ")}
-							</small>
-						</span>
-						<span className="mcp-server-badge">{server.transport === "http" ? "HTTP" : "stdio"}</span>
-						{server.disabled ? <span className="mcp-server-badge is-muted">已禁用</span> : null}
-						<span className="mcp-server-actions">
-							<button
-								type="button"
-								className="work-panel-icon-button"
-								aria-label="编辑 MCP 服务"
-								title="编辑"
-								onClick={() => setDraft(draftFrom(server))}
-							>
-								<Pencil size={14} strokeWidth={2} />
-							</button>
-							<button
-								type="button"
-								className="work-panel-icon-button"
-								aria-label="删除 MCP 服务"
-								title="删除"
-								disabled={busy}
-								onClick={() => void remove(server.name)}
-							>
-								<Trash2 size={14} strokeWidth={2} />
-							</button>
-						</span>
-					</div>
-				))}
-				{servers !== null && customServers.length === 0 ? (
-					<p className="work-change-note">还没有自定义 MCP 服务。web_search 是内置的 Tavily MCP。</p>
+				<button
+					className="secondary-button"
+					type="button"
+					disabled={!activeAgent || busy !== null}
+					onClick={() => void reconnectActiveAgent()}
+				>
+					<RefreshCw size={14} strokeWidth={2} /> 重连当前 Agent
+				</button>
+			</div>
+
+			<div className="mcp-server-list">
+				{(servers ?? []).map((server) => {
+					const override = server.projectOverride;
+					const effectiveEnabled = override?.enabled ?? server.enabled;
+					const effectiveExposure = override?.exposure ?? server.exposure;
+					return (
+						<div className={`mcp-server-row${effectiveEnabled ? "" : " is-disabled"}`} key={server.name}>
+							<span className="mcp-server-icon">
+								{server.transport === "http" ? (
+									<Globe size={14} strokeWidth={2} />
+								) : (
+									<Plug size={14} strokeWidth={2} />
+								)}
+							</span>
+							<span className="mcp-server-copy">
+								<strong>{server.name}</strong>
+								<small title={server.description ?? undefined}>
+									{server.description ||
+										(server.transport === "http"
+											? (server.url ?? "")
+											: [server.command, ...server.args].filter(Boolean).join(" "))}
+								</small>
+							</span>
+							<span className="mcp-server-badges">
+								<span className="mcp-server-badge">
+									{server.source === "builtin" ? "内置" : server.transport === "http" ? "HTTP" : "stdio"}
+								</span>
+								<span className="mcp-server-badge">{effectiveExposure}</span>
+								{!effectiveEnabled ? <span className="mcp-server-badge is-muted">禁用</span> : null}
+								{override ? <span className="mcp-server-badge is-project">项目覆盖</span> : null}
+								{server.oauth ? <span className="mcp-server-badge">OAuth</span> : null}
+							</span>
+							<span className="mcp-server-actions">
+								<button
+									type="button"
+									className="work-panel-icon-button"
+									aria-label="配置项目覆盖"
+									title={projectRoot ? "项目覆盖" : "打开项目后可配置"}
+									disabled={!projectRoot || busy !== null}
+									onClick={() => setOverrideDraft(overrideDraftFrom(server))}
+								>
+									<SlidersHorizontal size={14} strokeWidth={2} />
+								</button>
+								{server.source === "builtin" ? null : (
+									<>
+										<button
+											type="button"
+											className="work-panel-icon-button"
+											aria-label="编辑 MCP 服务"
+											title="编辑"
+											onClick={() => setDraft(draftFrom(server))}
+										>
+											<Pencil size={14} strokeWidth={2} />
+										</button>
+										<button
+											type="button"
+											className="work-panel-icon-button"
+											aria-label="删除 MCP 服务"
+											title="删除"
+											disabled={busy !== null}
+											onClick={() => void removeServer(server.name)}
+										>
+											<Trash2 size={14} strokeWidth={2} />
+										</button>
+									</>
+								)}
+							</span>
+						</div>
+					);
+				})}
+				{servers !== null && servers.length === 0 ? (
+					<p className="work-change-note">还没有配置 MCP 服务。</p>
 				) : null}
 			</div>
 
 			{draft ? (
 				<div className="mcp-editor">
-					<label className="settings-field">
-						<span>名称</span>
-						<input
-							value={draft.name}
-							placeholder="chrome-devtools"
-							onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-						/>
-					</label>
-					<div className="settings-field">
-						<span>类型</span>
-						<SelectMenu
-							label="MCP 服务类型"
-							value={draft.transport}
-							options={[
-								{ value: "stdio", label: "stdio（本地命令）" },
-								{ value: "http", label: "HTTP（远程地址）" },
-							]}
-							onChange={(value) => setDraft({ ...draft, transport: value as McpTransport })}
-						/>
+					<div className="mcp-editor-heading">
+						<div>
+							<strong>{draft.name || "新 MCP 服务"}</strong>
+							<small>全局服务定义</small>
+						</div>
 					</div>
-					{draft.transport === "stdio" ? (
-						<>
+
+					<section className="mcp-editor-section">
+						<div className="mcp-editor-section-heading">
+							<h3>连接</h3>
+							<p>定义服务如何启动或连接。</p>
+						</div>
+						<div className="provider-editor-grid">
 							<label className="settings-field">
-								<span>命令</span>
+								<span>名称</span>
 								<input
-									value={draft.command}
-									placeholder="npx"
-									onChange={(event) => setDraft({ ...draft, command: event.target.value })}
+									value={draft.name}
+									placeholder="chrome-devtools"
+									onChange={(event) => setDraft({ ...draft, name: event.target.value })}
 								/>
 							</label>
-							<label className="settings-field">
-								<span>参数（每行一个）</span>
-								<textarea
-									value={draft.argsText}
-									rows={3}
-									placeholder={"-y\nchrome-devtools-mcp@1.6.0"}
-									onChange={(event) => setDraft({ ...draft, argsText: event.target.value })}
+							<div className="settings-field">
+								<span>类型</span>
+								<SelectMenu
+									label="MCP 服务类型"
+									value={draft.transport}
+									options={[
+										{ value: "stdio", label: "stdio", description: "本地命令" },
+										{ value: "http", label: "HTTP", description: "远程 streamable HTTP" },
+									]}
+									onChange={(value) => setDraft({ ...draft, transport: value as McpTransport })}
 								/>
-							</label>
-							<label className="settings-field">
-								<span>环境变量（每行 KEY=VALUE）</span>
-								<textarea
-									value={draft.envText}
-									rows={3}
-									onChange={(event) => setDraft({ ...draft, envText: event.target.value })}
-								/>
-							</label>
-						</>
-					) : (
-						<>
-							<label className="settings-field">
-								<span>URL</span>
+							</div>
+						</div>
+						{draft.transport === "stdio" ? (
+							<>
+								<label className="settings-field">
+									<span>命令</span>
+									<input
+										value={draft.command}
+										placeholder="npx"
+										onChange={(event) => setDraft({ ...draft, command: event.target.value })}
+									/>
+								</label>
+								<label className="settings-field">
+									<span>参数（每行一个）</span>
+									<textarea
+										value={draft.argsText}
+										rows={3}
+										placeholder={"-y\nchrome-devtools-mcp@1.6.0"}
+										onChange={(event) => setDraft({ ...draft, argsText: event.target.value })}
+									/>
+								</label>
+								<label className="settings-field">
+									<span>环境变量（每行 KEY=VALUE）</span>
+									<textarea
+										value={draft.envText}
+										rows={3}
+										onChange={(event) => setDraft({ ...draft, envText: event.target.value })}
+									/>
+								</label>
+							</>
+						) : (
+							<>
+								<label className="settings-field">
+									<span>URL</span>
+									<input
+										value={draft.url}
+										placeholder="https://example.com/mcp"
+										onChange={(event) => setDraft({ ...draft, url: event.target.value })}
+									/>
+								</label>
+								<label className="settings-field">
+									<span>Headers（每行 KEY=VALUE）</span>
+									<textarea
+										value={draft.headersText}
+										rows={3}
+										onChange={(event) => setDraft({ ...draft, headersText: event.target.value })}
+									/>
+								</label>
+							</>
+						)}
+					</section>
+
+					<section className="mcp-editor-section">
+						<div className="mcp-editor-section-heading">
+							<h3>行为</h3>
+							<p>控制启用状态、上下文暴露和连接超时。</p>
+						</div>
+						<div className="provider-editor-grid">
+							<label className="settings-checkbox mcp-checkbox-field">
 								<input
-									value={draft.url}
-									placeholder="https://example.com/mcp"
-									onChange={(event) => setDraft({ ...draft, url: event.target.value })}
+									type="checkbox"
+									checked={draft.enabled}
+									onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
 								/>
+								<span>启用这个 MCP 服务</span>
 							</label>
 							<label className="settings-field">
-								<span>Headers（每行 KEY=VALUE）</span>
-								<textarea
-									value={draft.headersText}
-									rows={3}
-									onChange={(event) => setDraft({ ...draft, headersText: event.target.value })}
+								<span>超时（秒）</span>
+								<input
+									value={draft.timeoutText}
+									inputMode="numeric"
+									placeholder="30"
+									onChange={(event) => setDraft({ ...draft, timeoutText: event.target.value })}
 								/>
 							</label>
-						</>
-					)}
-					<label className="settings-checkbox">
-						<input
-							type="checkbox"
-							checked={draft.disabled}
-							onChange={(event) => setDraft({ ...draft, disabled: event.target.checked })}
-						/>
-						<span>暂时禁用这个服务</span>
-					</label>
+						</div>
+						<div className="settings-field">
+							<span>默认 exposure</span>
+							<SelectMenu
+								label="MCP exposure"
+								value={draft.exposure}
+								options={EXPOSURE_OPTIONS.map((option) => ({
+									value: option.value,
+									label: option.label,
+									description: option.description,
+								}))}
+								onChange={(value) => setDraft({ ...draft, exposure: value as McpExposure })}
+							/>
+						</div>
+						<label className="settings-field">
+							<span>服务说明</span>
+							<input
+								value={draft.description}
+								placeholder="浏览器检查与自动化工具"
+								onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+							/>
+						</label>
+					</section>
+
+					<section className="mcp-editor-section">
+						<div className="mcp-editor-section-heading">
+							<h3>工具级 exposure</h3>
+							<p>
+								每行一个工具，格式为 <code>tool=direct</code>；支持 <code>*</code> 通配。
+							</p>
+						</div>
+						<label className="settings-field">
+							<span>工具覆盖（每行 TOOL=EXPOSURE）</span>
+							<textarea
+								value={draft.toolExposureText}
+								rows={4}
+								placeholder={"web_search=direct\n*=deferred"}
+								onChange={(event) => setDraft({ ...draft, toolExposureText: event.target.value })}
+							/>
+						</label>
+					</section>
+
+					{draft.transport === "http" ? (
+						<section className="mcp-editor-section">
+							<div className="mcp-editor-section-heading">
+								<h3>OAuth</h3>
+								<p>远程 MCP 需要浏览器授权时填写；stdio 服务通常不需要。</p>
+							</div>
+							<div className="provider-editor-grid">
+								<label className="settings-field">
+									<span>Client ID</span>
+									<input
+										value={draft.oauthClientId}
+										onChange={(event) => setDraft({ ...draft, oauthClientId: event.target.value })}
+									/>
+								</label>
+								<label className="settings-field">
+									<span>Client Secret</span>
+									<input
+										type="password"
+										value={draft.oauthClientSecret}
+										placeholder={draft.oauthClientSecretConfigured ? "已配置，留空保持不变" : "可选"}
+										onChange={(event) =>
+											setDraft({
+												...draft,
+												oauthClientSecret: event.target.value,
+												oauthClientSecretTouched: true,
+											})
+										}
+									/>
+								</label>
+								<label className="settings-field">
+									<span>回调端口</span>
+									<input
+										value={draft.oauthCallbackPort}
+										inputMode="numeric"
+										onChange={(event) => setDraft({ ...draft, oauthCallbackPort: event.target.value })}
+									/>
+								</label>
+								<label className="settings-field">
+									<span>回调地址</span>
+									<input
+										value={draft.oauthCallbackUrl}
+										placeholder="http://localhost:3334/callback"
+										onChange={(event) => setDraft({ ...draft, oauthCallbackUrl: event.target.value })}
+									/>
+								</label>
+								<label className="settings-field">
+									<span>Scope</span>
+									<input
+										value={draft.oauthScope}
+										onChange={(event) => setDraft({ ...draft, oauthScope: event.target.value })}
+									/>
+								</label>
+								<label className="settings-field">
+									<span>Client Name</span>
+									<input
+										value={draft.oauthClientName}
+										onChange={(event) => setDraft({ ...draft, oauthClientName: event.target.value })}
+									/>
+								</label>
+							</div>
+							<div className="provider-editor-grid">
+								<div className="settings-field">
+									<span>客户端注册</span>
+									<SelectMenu
+										label="OAuth 客户端注册"
+										value={draft.oauthClientRegistration}
+										options={[
+											{ value: "", label: "未设置", description: "让 Pi 按服务端能力选择" },
+											{ value: "dcr", label: "dcr", description: "动态客户端注册" },
+											{ value: "cimd", label: "cimd", description: "Client ID Metadata Document" },
+										]}
+										onChange={(value) =>
+											setDraft({
+												...draft,
+												oauthClientRegistration: value as "" | McpClientRegistration,
+											})
+										}
+									/>
+								</div>
+								<label className="settings-field">
+									<span>Auth Provider</span>
+									<input
+										value={draft.authProvider}
+										placeholder="例如 openai"
+										onChange={(event) => setDraft({ ...draft, authProvider: event.target.value })}
+									/>
+								</label>
+							</div>
+							<label className="settings-field">
+								<span>Auth Server Metadata URL</span>
+								<input
+									value={draft.oauthAuthServerMetadataUrl}
+									onChange={(event) => setDraft({ ...draft, oauthAuthServerMetadataUrl: event.target.value })}
+								/>
+							</label>
+							<div className="mcp-oauth-actions">
+								<small>登录和退出使用已保存配置；修改字段后先保存。</small>
+								<button
+									className="secondary-button"
+									type="button"
+									disabled={!draftServerExists || busy !== null}
+									onClick={() => void runAction(draft.name, "login")}
+								>
+									<LogIn size={14} strokeWidth={2} /> 登录
+								</button>
+								<button
+									className="secondary-button"
+									type="button"
+									disabled={!draftServerExists || busy !== null}
+									onClick={() => void runAction(draft.name, "logout")}
+								>
+									<LogOut size={14} strokeWidth={2} /> 退出
+								</button>
+							</div>
+						</section>
+					) : null}
+
 					<div className="settings-actions">
-						<button className="primary-button" type="button" disabled={busy} onClick={() => void save()}>
+						<button
+							className="primary-button"
+							type="button"
+							disabled={busy !== null}
+							onClick={() => void saveServer()}
+						>
 							保存
 						</button>
 						<button className="secondary-button" type="button" onClick={() => setDraft(null)}>
@@ -333,6 +846,82 @@ export function McpSettings() {
 				</div>
 			) : null}
 
+			{overrideDraft ? (
+				<div className="mcp-editor mcp-override-editor">
+					<div className="mcp-editor-heading">
+						<div>
+							<strong>{overrideDraft.name}</strong>
+							<small>项目级覆盖 · .pi/mcp.json</small>
+						</div>
+						<SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />
+					</div>
+					<div className="provider-editor-grid">
+						<div className="settings-field">
+							<span>启用状态</span>
+							<SelectMenu
+								label="项目启用状态"
+								value={overrideDraft.enabled}
+								options={[
+									{ value: "inherit", label: "继承全局" },
+									{ value: "enabled", label: "启用" },
+									{ value: "disabled", label: "禁用" },
+								]}
+								onChange={(value) => setOverrideDraft({ ...overrideDraft, enabled: value as OverrideMode })}
+							/>
+						</div>
+						<div className="settings-field">
+							<span>Exposure</span>
+							<SelectMenu
+								label="项目 exposure"
+								value={overrideDraft.exposure}
+								options={[
+									{ value: "inherit", label: "继承全局" },
+									...EXPOSURE_OPTIONS.map((option) => ({
+										value: option.value,
+										label: option.label,
+										description: option.description,
+									})),
+								]}
+								onChange={(value) =>
+									setOverrideDraft({ ...overrideDraft, exposure: value as "inherit" | McpExposure })
+								}
+							/>
+						</div>
+					</div>
+					<label className="settings-field">
+						<span>工具级 exposure（留空继承全局）</span>
+						<textarea
+							value={overrideDraft.toolExposureText}
+							rows={3}
+							placeholder={"web_search=direct\n*=deferred"}
+							onChange={(event) => setOverrideDraft({ ...overrideDraft, toolExposureText: event.target.value })}
+						/>
+					</label>
+					<div className="settings-actions">
+						<button
+							className="primary-button"
+							type="button"
+							disabled={busy !== null}
+							onClick={() => void saveOverride()}
+						>
+							保存覆盖
+						</button>
+						<button
+							className="secondary-button"
+							type="button"
+							disabled={busy !== null}
+							onClick={() => void removeOverride(overrideDraft.name)}
+						>
+							移除覆盖
+						</button>
+						<button className="secondary-button" type="button" onClick={() => setOverrideDraft(null)}>
+							取消
+						</button>
+					</div>
+				</div>
+			) : null}
+
+			{notice ? <output className="mcp-settings-notice">{notice}</output> : null}
 			{error ? (
 				<p className="permission-settings-error" role="alert">
 					{error}

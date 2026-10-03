@@ -1521,6 +1521,16 @@ export function App() {
 		return selectedWorkItem.agentSlots.find((slot) => slot.role === selection.role)?.currentInstanceId ?? null;
 	}, [selectedWorkItem, selection]);
 
+	const activeAgentLocator = useMemo<AgentInstanceLocator | null>(() => {
+		if (!project || !selectedWorkItem || selection.type !== "agent" || !activeAgentId) return null;
+		return {
+			agentInstanceId: activeAgentId,
+			projectId: project.id,
+			workItemId: selectedWorkItem.id,
+			role: selection.role,
+		};
+	}, [activeAgentId, project, selectedWorkItem, selection]);
+
 	/*
 	 * 输入框跟随内容增高。
 	 * 不能只靠 CSS：textarea 的滚动高度要先把 height 归零才量得准，否则会一路只增不减。
@@ -4188,7 +4198,7 @@ export function App() {
 							<ProviderSettings onOpenAuth={(mode) => void openAuthDialog(mode)} />
 						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "mcp"}>
-							<McpSettings />
+							<McpSettings projectRoot={project?.rootPath ?? null} activeAgent={activeAgentLocator} />
 						</div>
 					</div>
 				</div>

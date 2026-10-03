@@ -311,9 +311,12 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	saveTavilyApiKey(apiKey: string): Promise<SettingsStatus>;
 	clearTavilyApiKey(): Promise<SettingsStatus>;
 	saveShellPath(shellPath: string): Promise<SettingsStatus>;
-	listMcpServers(): Promise<McpServerSummary[]>;
+	listMcpServers(projectRoot?: string): Promise<McpServerSummary[]>;
 	saveMcpServer(input: McpServerInput): Promise<McpServerSummary[]>;
 	deleteMcpServer(name: string): Promise<McpServerSummary[]>;
+	saveMcpProjectOverride(input: McpProjectOverrideInput): Promise<McpServerSummary[]>;
+	deleteMcpProjectOverride(input: McpProjectOverrideLocator): Promise<McpServerSummary[]>;
+	runMcpAction(input: McpActionInput): Promise<McpActionResult>;
 	listProviders(): Promise<ProviderSummary[]>;
 	saveProvider(input: ProviderInput): Promise<ProviderSummary[]>;
 	deleteProvider(id: string): Promise<ProviderSummary[]>;
@@ -427,6 +430,49 @@ export interface SettingsStatus {
 }
 
 export type McpTransport = "stdio" | "http";
+export const MCP_EXPOSURES = ["codemode", "deferred", "direct", "hidden"] as const;
+export type McpExposure = (typeof MCP_EXPOSURES)[number];
+export const MCP_CLIENT_REGISTRATIONS = ["dcr", "cimd"] as const;
+export type McpClientRegistration = (typeof MCP_CLIENT_REGISTRATIONS)[number];
+
+export interface McpOAuthSummary {
+	clientId: string | null;
+	clientSecretConfigured: boolean;
+	callbackPort: number | null;
+	callbackUrl: string | null;
+	scope: string | null;
+	clientName: string | null;
+	clientRegistration: McpClientRegistration | null;
+	authServerMetadataUrl: string | null;
+}
+
+export interface McpOAuthInput {
+	clientId?: string;
+	/** 省略表示保持已有 secret；空字符串表示清除。 */
+	clientSecret?: string;
+	callbackPort?: number | null;
+	callbackUrl?: string;
+	scope?: string;
+	clientName?: string;
+	clientRegistration?: McpClientRegistration | null;
+	authServerMetadataUrl?: string;
+}
+
+export interface McpProjectOverride {
+	enabled?: boolean | null;
+	exposure?: McpExposure | null;
+	toolExposure?: Record<string, McpExposure> | null;
+}
+
+export interface McpProjectOverrideInput extends McpProjectOverride {
+	projectRoot: string;
+	name: string;
+}
+
+export interface McpProjectOverrideLocator {
+	projectRoot: string;
+	name: string;
+}
 
 export interface McpServerSummary {
 	name: string;
@@ -436,7 +482,14 @@ export interface McpServerSummary {
 	url: string | null;
 	env: Record<string, string>;
 	headers: Record<string, string>;
-	disabled: boolean;
+	enabled: boolean;
+	exposure: McpExposure;
+	toolExposure: Record<string, McpExposure>;
+	description: string | null;
+	timeout: number | null;
+	oauth: McpOAuthSummary | null;
+	authProvider: string | null;
+	projectOverride: McpProjectOverride | null;
 	source: "global" | "builtin";
 }
 
@@ -448,7 +501,22 @@ export interface McpServerInput {
 	url?: string;
 	env?: Record<string, string>;
 	headers?: Record<string, string>;
-	disabled?: boolean;
+	enabled?: boolean;
+	exposure?: McpExposure;
+	toolExposure?: Record<string, McpExposure>;
+	description?: string;
+	timeout?: number;
+	oauth?: McpOAuthInput | null;
+	authProvider?: string;
+}
+
+export interface McpActionInput {
+	action: "login" | "logout";
+	name: string;
+}
+
+export interface McpActionResult {
+	output: string;
 }
 
 export const PROVIDER_APIS = [

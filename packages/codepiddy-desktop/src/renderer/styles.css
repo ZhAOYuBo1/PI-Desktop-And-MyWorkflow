@@ -4712,18 +4712,138 @@ body {
   color: var(--cp-ink-muted);
 }
 
+.mcp-server-badge.is-project {
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+}
+
+.mcp-server-badges {
+  display: flex;
+  max-width: 280px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--cp-space-xxs);
+}
+
 .mcp-server-actions {
   display: flex;
   flex: none;
   gap: var(--cp-space-micro);
 }
 
+.mcp-settings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-lg);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-lg);
+  background: var(--cp-surface-secondary);
+}
+
+.mcp-settings-toolbar > div {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.mcp-settings-toolbar strong {
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.mcp-settings-toolbar small {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
 .mcp-editor {
   display: grid;
   gap: var(--cp-space-md);
-  padding: var(--cp-space-lg);
-  border-radius: var(--cp-radius-lg);
-  background: var(--cp-surface);
+  padding-top: var(--cp-space-lg);
+  border-top: 0.5px solid var(--cp-line-subtle);
+}
+
+.mcp-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+}
+
+.mcp-editor-heading > div {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.mcp-editor-heading strong {
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.mcp-editor-heading small {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
+.mcp-editor-section {
+  display: grid;
+  gap: var(--cp-space-md);
+  padding-top: var(--cp-space-lg);
+  border-top: 0.5px solid var(--cp-line-subtle);
+}
+
+.mcp-editor-section-heading {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.mcp-editor-section-heading h3 {
+  margin: 0;
+  color: var(--cp-ink);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.mcp-editor-section-heading p {
+  margin: 0;
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.mcp-editor-section-heading code {
+  color: var(--cp-ink-secondary);
+  font-size: 11px;
+}
+
+.mcp-checkbox-field {
+  align-self: end;
+  min-height: 30px;
+}
+
+.mcp-oauth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cp-space-sm);
+}
+
+.mcp-oauth-actions small {
+  flex-basis: 100%;
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
+.mcp-override-editor {
+  background: transparent;
+}
+
+.mcp-settings-notice {
+  margin: 0;
+  padding: var(--cp-space-sm) var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  font-size: 12px;
 }
 
 .provider-editor-grid {
