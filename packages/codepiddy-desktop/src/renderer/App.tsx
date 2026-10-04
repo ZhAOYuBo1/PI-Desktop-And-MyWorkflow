@@ -1262,6 +1262,7 @@ export function App() {
 	const [authMessage, setAuthMessage] = useState<string | null>(null);
 	const [authError, setAuthError] = useState<string | null>(null);
 	const [authBusy, setAuthBusy] = useState(false);
+	const [providerSettingsRefreshToken, setProviderSettingsRefreshToken] = useState(0);
 	const [writeLeaseDialog, setWriteLeaseDialog] = useState<ProjectWriteLeaseStatus | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [searchOpen, setSearchOpen] = useState(false);
@@ -2330,6 +2331,7 @@ export function App() {
 				setAuthRequestId(null);
 				setAuthPrompt(null);
 				setSessionNotice("Provider 登录成功");
+				setProviderSettingsRefreshToken((current) => current + 1);
 				void window.codepiddy
 					.listAuthProviders()
 					.then(setAuthProviders)
@@ -3153,7 +3155,10 @@ export function App() {
 		setAuthRequestId(null);
 		try {
 			const providers = await window.codepiddy.listAuthProviders();
-			const candidates = mode === "logout" ? providers.filter((provider) => provider.configured) : providers;
+			const candidates =
+				mode === "logout"
+					? providers.filter((provider) => provider.configured && provider.source === "stored")
+					: providers;
 			setAuthProviders(candidates);
 			const selected =
 				candidates.find((provider) => provider.id === providerArg) ??
@@ -3213,11 +3218,8 @@ export function App() {
 		try {
 			await window.codepiddy.logoutAuthProvider(authProviderId);
 			setAuthMessage("已退出该 Provider。");
-			setAuthProviders((current) =>
-				current.map((provider) =>
-					provider.id === authProviderId ? { ...provider, configured: false, statusLabel: undefined } : provider,
-				),
-			);
+			setProviderSettingsRefreshToken((current) => current + 1);
+			setAuthProviders(await window.codepiddy.listAuthProviders());
 		} catch (caught) {
 			setAuthError(caught instanceof Error ? caught.message : "退出登录失败");
 		} finally {
@@ -4258,7 +4260,10 @@ export function App() {
 						</section>
 
 						<div className="settings-section-slot" hidden={settingsSection !== "providers"}>
-							<ProviderSettings onOpenAuth={(mode) => void openAuthDialog(mode)} />
+							<ProviderSettings
+								refreshToken={providerSettingsRefreshToken}
+								onOpenAuth={(mode, providerId) => void openAuthDialog(mode, providerId)}
+							/>
 						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "mcp"}>
 							<McpSettings projectRoot={project?.rootPath ?? null} activeAgent={activeAgentLocator} />

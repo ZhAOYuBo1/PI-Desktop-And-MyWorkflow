@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type {
 	AgentRole,
+	CredentialSource,
 	McpClientRegistration,
 	McpExposure,
 	McpOAuthInput,
@@ -130,6 +131,20 @@ function isProviderApi(value: unknown): value is ProviderApi {
 		value === "anthropic-messages" ||
 		value === "google-generative-ai"
 	);
+}
+
+function providerCredentialSource(
+	value: unknown,
+	clientKeyConfigured: boolean,
+): { source: CredentialSource; label: string | null } {
+	if (clientKeyConfigured) return { source: "codepiddy_secret", label: null };
+	if (typeof value !== "string" || value.length === 0) return { source: "none", label: null };
+	if (value.startsWith("!")) return { source: "models_json_command", label: null };
+	if (value.startsWith("$")) {
+		const match = value.match(/^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/);
+		return { source: "environment", label: match?.[1] ?? null };
+	}
+	return { source: "models_json_key", label: null };
 }
 
 function normalizeMcpServer(
@@ -722,19 +737,21 @@ export class AppSettingsStore {
 		const keys = secrets.providerApiKeys ?? {};
 		return Object.entries(providers)
 			.filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]))
-			.map(([id, value]) => ({
-				id,
-				baseUrl: typeof value.baseUrl === "string" ? value.baseUrl : "",
-				api: isProviderApi(value.api) ? value.api : "openai-completions",
-				apiKeyConfigured:
-					Boolean(keys[id]) ||
-					(typeof value.apiKey === "string" && value.apiKey.length > 0 && !value.apiKey.startsWith("$")),
-				models: Array.isArray(value.models)
-					? value.models
-							.map(normalizeProviderModel)
-							.filter((model): model is ProviderModelSummary => model !== null)
-					: [],
-			}))
+			.map(([id, value]) => {
+				const credential = providerCredentialSource(value.apiKey, Boolean(keys[id]));
+				return {
+					id,
+					baseUrl: typeof value.baseUrl === "string" ? value.baseUrl : "",
+					api: isProviderApi(value.api) ? value.api : "openai-completions",
+					credentialSource: credential.source,
+					credentialLabel: credential.label,
+					models: Array.isArray(value.models)
+						? value.models
+								.map(normalizeProviderModel)
+								.filter((model): model is ProviderModelSummary => model !== null)
+						: [],
+				};
+			})
 			.sort((left, right) => left.id.localeCompare(right.id));
 	}
 

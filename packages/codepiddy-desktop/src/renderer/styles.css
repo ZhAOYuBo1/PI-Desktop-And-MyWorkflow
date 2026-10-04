@@ -340,6 +340,7 @@ button { color: inherit; }
 
 .settings-card {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--cp-space-lg);
   padding: var(--cp-space-xl);
   border: 1px solid var(--cp-surface-inset);
@@ -4222,8 +4223,13 @@ body {
 
 .settings-card {
   gap: var(--cp-space-md);
+  min-width: 0;
   padding: var(--cp-space-lg);
   border-radius: var(--cp-radius-lg);
+}
+
+.settings-card-heading > div {
+  min-width: 0;
 }
 
 .settings-card h2 {
@@ -4638,6 +4644,7 @@ body {
 
 .settings-section-slot {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--cp-space-lg);
 }
 
@@ -4779,11 +4786,15 @@ body {
   align-items: center;
   gap: 3px;
   flex: none;
+  max-width: 180px;
   padding: 2px var(--cp-space-sm);
   border-radius: var(--cp-radius-full);
   background: var(--cp-surface-inset);
   color: var(--cp-ink-secondary);
   font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mcp-server-badge.is-muted {
@@ -4807,6 +4818,147 @@ body {
   display: flex;
   flex: none;
   gap: var(--cp-space-micro);
+}
+
+.provider-auth-section {
+  display: grid;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-lg);
+  background: var(--cp-surface-secondary);
+}
+
+.provider-auth-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+  min-width: 0;
+}
+
+.provider-auth-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--cp-space-sm);
+}
+
+.provider-auth-title > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.provider-auth-title strong {
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.provider-auth-title small {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
+.provider-auth-title-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+}
+
+.provider-auth-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cp-space-xs);
+}
+
+.provider-auth-actions .secondary-button {
+  min-height: 28px;
+  padding: 0 var(--cp-space-sm);
+  font-size: 11px;
+}
+
+.provider-auth-list {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.provider-auth-row {
+  display: flex;
+  align-items: center;
+  gap: var(--cp-space-md);
+  min-height: 40px;
+  padding: var(--cp-space-sm) var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface);
+}
+
+.provider-auth-state {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  place-items: center;
+  border-radius: var(--cp-radius-full);
+  background: color-mix(in oklab, var(--cp-success) 10%, transparent);
+  color: var(--cp-success);
+}
+
+.provider-auth-row.is-unconfigured .provider-auth-state {
+  background: var(--cp-surface-inset);
+  color: var(--cp-ink-muted);
+}
+
+.provider-auth-empty {
+  margin: 0;
+  padding: var(--cp-space-md);
+  color: var(--cp-ink-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.provider-auth-toggle {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cp-accent);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.provider-auth-toggle:hover {
+  text-decoration: underline;
+}
+
+.provider-config-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+  min-width: 0;
+  padding-top: var(--cp-space-xs);
+}
+
+.provider-config-heading > div {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.provider-config-heading strong {
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.provider-config-heading small {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
 }
 
 .mcp-settings-toolbar {
@@ -5117,11 +5269,90 @@ body {
     grid-template-columns: 176px minmax(0, 1fr);
   }
 
+  .settings-card-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .skill-settings-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
   .provider-editor-grid {
     grid-template-columns: 1fr;
   }
 
   .provider-model-row {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .provider-config-row {
+    display: grid;
+    grid-template-areas:
+      "icon copy actions"
+      ". badges badges";
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    row-gap: var(--cp-space-xs);
+  }
+
+  .provider-config-row .mcp-server-icon {
+    grid-area: icon;
+  }
+
+  .provider-config-row .mcp-server-copy {
+    grid-area: copy;
+  }
+
+  .provider-config-row .mcp-server-badges {
+    grid-area: badges;
+    max-width: none;
+    justify-content: flex-start;
+  }
+
+  .provider-config-row .mcp-server-actions {
+    grid-area: actions;
+    align-self: start;
+    margin-left: 0;
+  }
+
+  .provider-auth-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .provider-auth-row {
+    display: grid;
+    grid-template-areas:
+      "state copy action"
+      ". badges badges";
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    row-gap: var(--cp-space-xs);
+  }
+
+  .provider-auth-state {
+    grid-area: state;
+  }
+
+  .provider-auth-row .mcp-server-copy {
+    grid-area: copy;
+  }
+
+  .provider-auth-row .mcp-server-badges {
+    grid-area: badges;
+    max-width: none;
+    justify-content: flex-start;
+  }
+
+  .provider-auth-row .mcp-server-actions {
+    grid-area: action;
+    align-self: start;
+  }
+
+  .provider-auth-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }

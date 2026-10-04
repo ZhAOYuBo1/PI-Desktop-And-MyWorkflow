@@ -71,7 +71,9 @@ function providerSummary(provider) {
 		id: provider.id,
 		name: provider.name,
 		configured: status.configured,
-		...(status.label ? { statusLabel: status.label } : {}),
+		authType: status.configured ? (runtime.isUsingOAuth(provider.id) ? "oauth" : "api_key") : null,
+		source: status.source ?? null,
+		sourceLabel: status.label ?? null,
 		methods,
 	};
 }

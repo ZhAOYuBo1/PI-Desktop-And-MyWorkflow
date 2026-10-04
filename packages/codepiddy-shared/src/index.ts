@@ -218,6 +218,16 @@ export interface ForkAgentSessionResult {
 
 export type AuthMethodType = "api_key" | "oauth";
 
+export type CredentialSource =
+	| "stored"
+	| "runtime"
+	| "environment"
+	| "fallback"
+	| "models_json_key"
+	| "models_json_command"
+	| "codepiddy_secret"
+	| "none";
+
 export interface AuthMethodSummary {
 	type: AuthMethodType;
 	name: string;
@@ -228,7 +238,9 @@ export interface AuthProviderSummary {
 	id: string;
 	name: string;
 	configured: boolean;
-	statusLabel?: string;
+	authType: AuthMethodType | null;
+	source: CredentialSource | null;
+	sourceLabel: string | null;
 	methods: AuthMethodSummary[];
 }
 
@@ -573,7 +585,8 @@ export interface ProviderSummary {
 	id: string;
 	baseUrl: string;
 	api: ProviderApi;
-	apiKeyConfigured: boolean;
+	credentialSource: CredentialSource;
+	credentialLabel: string | null;
 	models: ProviderModelSummary[];
 }
 

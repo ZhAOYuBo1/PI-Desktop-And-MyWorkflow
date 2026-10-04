@@ -1,6 +1,25 @@
-import type { ProviderApi, ProviderInput, ProviderModelSummary, ProviderSummary } from "@codepiddy/shared";
-import { KeyRound, Pencil, Plus, Server, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import type {
+	AuthProviderSummary,
+	CredentialSource,
+	ProviderApi,
+	ProviderInput,
+	ProviderModelSummary,
+	ProviderSummary,
+} from "@codepiddy/shared";
+import {
+	CircleCheck,
+	CircleOff,
+	KeyRound,
+	LogIn,
+	LogOut,
+	Pencil,
+	Plus,
+	RefreshCw,
+	Server,
+	ShieldCheck,
+	Trash2,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { SelectMenu } from "./select-menu.tsx";
 import { showSettingsToast } from "./settings-toast-store.ts";
 
@@ -11,7 +30,8 @@ const DEMO_PROVIDERS: ProviderSummary[] = [
 		id: "deepseek",
 		baseUrl: "https://api.deepseek.com",
 		api: "openai-completions",
-		apiKeyConfigured: true,
+		credentialSource: "codepiddy_secret",
+		credentialLabel: null,
 		models: [
 			{
 				id: "deepseek-v4-pro",
@@ -25,12 +45,72 @@ const DEMO_PROVIDERS: ProviderSummary[] = [
 	},
 ];
 
+const DEMO_AUTH_PROVIDERS: AuthProviderSummary[] = [
+	{
+		id: "deepseek",
+		name: "DeepSeek",
+		configured: true,
+		authType: "api_key",
+		source: "models_json_key",
+		sourceLabel: null,
+		methods: [{ type: "api_key", name: "DeepSeek API key" }],
+	},
+	{
+		id: "openrouter",
+		name: "OpenRouter",
+		configured: true,
+		authType: "oauth",
+		source: "stored",
+		sourceLabel: null,
+		methods: [{ type: "oauth", name: "OpenRouter OAuth" }],
+	},
+	{
+		id: "openai",
+		name: "OpenAI",
+		configured: false,
+		authType: null,
+		source: null,
+		sourceLabel: null,
+		methods: [{ type: "api_key", name: "OpenAI API key" }],
+	},
+	{
+		id: "openai-codex",
+		name: "OpenAI Codex",
+		configured: false,
+		authType: null,
+		source: null,
+		sourceLabel: null,
+		methods: [{ type: "oauth", name: "OpenAI (ChatGPT Plus/Pro)", isSubscription: true }],
+	},
+];
+
 const API_LABELS: Record<ProviderApi, string> = {
 	"openai-completions": "OpenAI Completions",
 	"openai-responses": "OpenAI Responses",
 	"anthropic-messages": "Anthropic Messages",
 	"google-generative-ai": "Google Generative AI",
 };
+
+function credentialSourceLabel(source: CredentialSource | null, label: string | null): string {
+	switch (source) {
+		case "codepiddy_secret":
+			return "CodePIddy 加密 Key";
+		case "models_json_key":
+			return "models.json Key";
+		case "models_json_command":
+			return "命令输出 Key";
+		case "environment":
+			return label ? `环境变量 ${label}` : "环境变量";
+		case "stored":
+			return "auth.json";
+		case "runtime":
+			return "运行时 Key";
+		case "fallback":
+			return "内置默认 Key";
+		default:
+			return "无凭据";
+	}
+}
 
 interface Draft {
 	id: string;
@@ -67,12 +147,23 @@ function draftFrom(provider: ProviderSummary): Draft {
 	};
 }
 
-export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" | "logout") => void }) {
+export function ProviderSettings({
+	onOpenAuth,
+	refreshToken = 0,
+}: {
+	onOpenAuth?: (mode: "login" | "logout", providerId?: string) => void;
+	refreshToken?: number;
+}) {
 	const [providers, setProviders] = useState<ProviderSummary[] | null>(demoMode ? DEMO_PROVIDERS : null);
+	const [authProviders, setAuthProviders] = useState<AuthProviderSummary[] | null>(
+		demoMode ? DEMO_AUTH_PROVIDERS : null,
+	);
 	const [draft, setDraft] = useState<Draft | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
+	const [authLoading, setAuthLoading] = useState(false);
+	const [showAllAuthProviders, setShowAllAuthProviders] = useState(false);
 
 	const refresh = useCallback(async (): Promise<void> => {
 		if (demoMode) return;
@@ -80,17 +171,43 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 			setError("Provider 配置只在桌面客户端中可用。");
 			return;
 		}
+		setAuthLoading(true);
 		try {
-			setProviders(await window.codepiddy.listProviders());
-			setError(null);
+			const [providerResult, authResult] = await Promise.allSettled([
+				window.codepiddy.listProviders(),
+				window.codepiddy.listAuthProviders(),
+			]);
+			if (providerResult.status === "fulfilled") setProviders(providerResult.value);
+			if (authResult.status === "fulfilled") setAuthProviders(authResult.value);
+			const failure = [providerResult, authResult].find((result) => result.status === "rejected");
+			if (failure?.status === "rejected") {
+				setError(failure.reason instanceof Error ? failure.reason.message : "读取 Provider 配置失败");
+			} else {
+				setError(null);
+			}
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "读取 Provider 配置失败");
+		} finally {
+			setAuthLoading(false);
 		}
 	}, []);
 
 	useEffect(() => {
+		if (refreshToken < 0) return;
 		void refresh();
-	}, [refresh]);
+	}, [refresh, refreshToken]);
+
+	const configuredAuthProviders = useMemo(
+		() => (authProviders ?? []).filter((provider) => provider.configured),
+		[authProviders],
+	);
+	const customProviderIds = useMemo(() => new Set((providers ?? []).map((provider) => provider.id)), [providers]);
+	const visibleAuthProviders = useMemo(() => {
+		const sorted = [...(authProviders ?? [])].sort(
+			(left, right) => Number(right.configured) - Number(left.configured) || left.name.localeCompare(right.name),
+		);
+		return showAllAuthProviders ? sorted : sorted.filter((provider) => provider.configured);
+	}, [authProviders, showAllAuthProviders]);
 
 	useEffect(() => {
 		if (!notice) return;
@@ -122,13 +239,20 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 			models: draft.models,
 		};
 		if (demoMode) {
+			const existing = providers?.find((provider) => provider.id === input.id);
+			const credentialSource: CredentialSource = draft.clearApiKey
+				? "none"
+				: draft.apiKey.trim()
+					? "codepiddy_secret"
+					: (existing?.credentialSource ?? "none");
 			setProviders((current) => [
 				...(current ?? []).filter((provider) => provider.id !== input.id),
 				{
 					id: input.id,
 					baseUrl: input.baseUrl,
 					api: input.api,
-					apiKeyConfigured: !draft.clearApiKey,
+					credentialSource,
+					credentialLabel: credentialSource === "environment" ? (existing?.credentialLabel ?? null) : null,
 					models: input.models,
 				},
 			]);
@@ -175,17 +299,11 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 				<div>
 					<h2>Provider 与模型</h2>
 					<p>
-						读写 Pi 原生 <code>~/.pi/agent/models.json</code>。API Key 用系统加密保存在本机，写进 models.json 的是{" "}
-						<code>$ENV</code> 引用，不落明文。修改后新启动或重置的 Agent 生效。
+						官方 Provider 用账户登录写入 <code>auth.json</code>；自定义接口和模型列表写入 <code>models.json</code>
+						。API Key 由系统加密保存，不落明文。
 					</p>
 				</div>
 				<div className="skill-settings-actions">
-					<button className="secondary-button" type="button" onClick={() => onOpenAuth?.("login")}>
-						登录 Provider
-					</button>
-					<button className="secondary-button" type="button" onClick={() => onOpenAuth?.("logout")}>
-						退出登录
-					</button>
 					<button
 						className="secondary-button"
 						type="button"
@@ -196,11 +314,123 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 						打开配置目录
 					</button>
 					<button className="primary-button" type="button" onClick={() => setDraft(emptyDraft())}>
-						<Plus size={14} strokeWidth={2} /> 添加 Provider
+						<Plus size={14} strokeWidth={2} /> 添加自定义 Provider
 					</button>
 				</div>
 			</div>
 
+			<div className="provider-auth-section">
+				<div className="provider-auth-toolbar">
+					<div className="provider-auth-title">
+						<span className="provider-auth-title-icon">
+							<ShieldCheck size={14} strokeWidth={2} />
+						</span>
+						<div>
+							<strong>Provider 凭据状态</strong>
+							<small>
+								{configuredAuthProviders.length} / {authProviders?.length ?? 0} 已配置 · auth.json / models.json
+								/ 环境变量
+							</small>
+						</div>
+					</div>
+					<div className="provider-auth-actions">
+						<button
+							className="work-panel-icon-button"
+							type="button"
+							aria-label="刷新认证状态"
+							title="刷新认证状态"
+							disabled={authLoading}
+							onClick={() => void refresh()}
+						>
+							<RefreshCw size={14} strokeWidth={2} />
+						</button>
+						<button className="secondary-button" type="button" onClick={() => onOpenAuth?.("login")}>
+							<LogIn size={13} strokeWidth={2} /> 登录
+						</button>
+						<button className="secondary-button" type="button" onClick={() => onOpenAuth?.("logout")}>
+							<LogOut size={13} strokeWidth={2} /> 退出
+						</button>
+					</div>
+				</div>
+
+				<div className="provider-auth-list">
+					{visibleAuthProviders.map((provider) => (
+						<div
+							className={`provider-auth-row${provider.configured ? " is-configured" : " is-unconfigured"}`}
+							key={provider.id}
+						>
+							<span className="provider-auth-state">
+								{provider.configured ? (
+									<CircleCheck size={14} strokeWidth={2} />
+								) : (
+									<CircleOff size={14} strokeWidth={2} />
+								)}
+							</span>
+							<span className="mcp-server-copy">
+								<strong>{provider.name}</strong>
+								<small title={provider.id}>{provider.id}</small>
+							</span>
+							<span className="mcp-server-badges">
+								{customProviderIds.has(provider.id) ? (
+									<span className="mcp-server-badge is-project">models.json 覆盖</span>
+								) : null}
+								{provider.authType ? (
+									<span className="mcp-server-badge">
+										{provider.authType === "oauth" ? "OAuth" : "API Key"}
+									</span>
+								) : null}
+								<span className={`mcp-server-badge${provider.configured ? "" : " is-muted"}`}>
+									{provider.configured
+										? credentialSourceLabel(provider.source, provider.sourceLabel)
+										: "未配置"}
+								</span>
+							</span>
+							<span className="mcp-server-actions">
+								{provider.configured && provider.source === "stored" ? (
+									<button
+										type="button"
+										className="work-panel-icon-button"
+										aria-label={`退出 ${provider.name}`}
+										title="退出登录"
+										onClick={() => onOpenAuth?.("logout", provider.id)}
+									>
+										<LogOut size={14} strokeWidth={2} />
+									</button>
+								) : provider.configured ? null : (
+									<button
+										type="button"
+										className="work-panel-icon-button"
+										aria-label={`登录 ${provider.name}`}
+										title="登录"
+										onClick={() => onOpenAuth?.("login", provider.id)}
+									>
+										<LogIn size={14} strokeWidth={2} />
+									</button>
+								)}
+							</span>
+						</div>
+					))}
+					{visibleAuthProviders.length === 0 ? (
+						<p className="provider-auth-empty">还没有通过 Pi 配置的 Provider。</p>
+					) : null}
+				</div>
+				{(authProviders?.length ?? 0) > configuredAuthProviders.length ? (
+					<button
+						className="provider-auth-toggle"
+						type="button"
+						onClick={() => setShowAllAuthProviders((current) => !current)}
+					>
+						{showAllAuthProviders ? "只看已配置" : `显示全部 ${authProviders?.length ?? 0} 个 Provider`}
+					</button>
+				) : null}
+			</div>
+
+			<div className="provider-config-heading">
+				<div>
+					<strong>自定义模型接入</strong>
+					<small>写入 models.json，用于自定义接口、Base URL 和模型列表。</small>
+				</div>
+			</div>
 			<div className="provider-config-list">
 				{(providers ?? []).map((provider) => (
 					<div className="provider-config-row" key={provider.id}>
@@ -213,9 +443,18 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 								{provider.baseUrl} · {provider.models.length} 个模型
 							</small>
 						</span>
-						<span className="mcp-server-badge">{API_LABELS[provider.api]}</span>
-						<span className={`mcp-server-badge${provider.apiKeyConfigured ? "" : " is-muted"}`}>
-							<KeyRound size={11} strokeWidth={2} /> {provider.apiKeyConfigured ? "已配置" : "无 Key"}
+						<span className="mcp-server-badges">
+							{authProviders?.some((auth) => auth.id === provider.id) ? (
+								<span className="mcp-server-badge is-project">内置 Provider 覆盖</span>
+							) : null}
+							<span className="mcp-server-badge">{API_LABELS[provider.api]}</span>
+							<span
+								className={`mcp-server-badge${provider.credentialSource === "none" ? " is-muted" : ""}`}
+								title={credentialSourceLabel(provider.credentialSource, provider.credentialLabel)}
+							>
+								<KeyRound size={11} strokeWidth={2} />{" "}
+								{credentialSourceLabel(provider.credentialSource, provider.credentialLabel)}
+							</span>
 						</span>
 						<span className="mcp-server-actions">
 							<button
@@ -285,7 +524,7 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 							/>
 						</label>
 					</div>
-					{providers?.some((provider) => provider.id === draft.id && provider.apiKeyConfigured) ? (
+					{providers?.some((provider) => provider.id === draft.id && provider.credentialSource !== "none") ? (
 						<label className="settings-checkbox">
 							<input
 								type="checkbox"
