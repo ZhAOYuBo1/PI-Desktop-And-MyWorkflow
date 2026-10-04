@@ -27,7 +27,9 @@ import type {
 	ResetAgentInput,
 	SendAgentPromptInput,
 	SetAgentModelInput,
+	SetAgentModelScopeInput,
 	SetAgentThinkingInput,
+	SetProjectTrustInput,
 	SetRoleSkillAssignmentsInput,
 	SwitchAgentSessionInput,
 	TerminalResizeInput,
@@ -205,9 +207,36 @@ export function parseSetAgentModelInput(value: unknown): SetAgentModelInput {
 	};
 }
 
+export function parseSetAgentModelScopeInput(value: unknown): SetAgentModelScopeInput {
+	const input = record(value, "Set Agent Model Scope");
+	if (input.enabledModelIds === null) {
+		return { ...parseAgentLocator(input), enabledModelIds: null };
+	}
+	if (!Array.isArray(input.enabledModelIds)) throw new Error("模型范围必须是数组或 null");
+	return {
+		...parseAgentLocator(input),
+		enabledModelIds: [
+			...new Set(input.enabledModelIds.slice(0, 1000).map((modelId) => text(modelId, "模型 ID", 300))),
+		],
+	};
+}
+
 export function parseSetAgentThinkingInput(value: unknown): SetAgentThinkingInput {
 	const input = record(value, "Set Thinking");
 	return { ...parseAgentLocator(input), level: text(input.level, "Thinking Level", 32) };
+}
+
+export function parseSetProjectTrustInput(value: unknown): SetProjectTrustInput {
+	const input = record(value, "Project Trust");
+	if (typeof input.decision !== "boolean") throw new Error("项目信任决定必须是布尔值");
+	if (input.includeParent !== undefined && typeof input.includeParent !== "boolean") {
+		throw new Error("信任父目录标记必须是布尔值");
+	}
+	return {
+		projectRoot: projectRoot(input.projectRoot),
+		decision: input.decision,
+		...(input.includeParent === undefined ? {} : { includeParent: input.includeParent }),
+	};
 }
 
 export function parseForkAgentSessionInput(value: unknown): ForkAgentSessionInput {

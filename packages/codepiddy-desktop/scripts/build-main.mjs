@@ -62,7 +62,13 @@ await Promise.all([
   }),
 ]);
 
-await cp(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "pi-auth-helper.mjs"),
-  path.join("dist", "runtime-extensions", "pi-auth-helper.mjs"),
-);
+await Promise.all([
+  cp(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "pi-auth-helper.mjs"),
+    path.join("dist", "runtime-extensions", "pi-auth-helper.mjs"),
+  ),
+  cp(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "pi-trust-helper.mjs"),
+    path.join("dist", "runtime-extensions", "pi-trust-helper.mjs"),
+  ),
+]);

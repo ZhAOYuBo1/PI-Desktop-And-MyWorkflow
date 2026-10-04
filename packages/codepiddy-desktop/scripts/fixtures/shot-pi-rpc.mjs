@@ -102,6 +102,12 @@ input.on("line", (line) => {
 			break;
 		case "get_session_stats":
 			reply("get_session_stats", id, {
+				sessionId: "shot-session",
+				sessionFile: "shot-session.jsonl",
+				userMessages: 1,
+				assistantMessages: 2,
+				toolCalls: 1,
+				toolResults: 1,
 				totalMessages: messages.length,
 				tokens: { input: 12480, output: 612, cacheRead: 0, cacheWrite: 0, total: 13092 },
 				cost: 0.041,
@@ -113,6 +119,11 @@ input.on("line", (line) => {
 			break;
 		case "get_fork_messages":
 			reply("get_fork_messages", id, { messages: [] });
+			break;
+		case "switch_session":
+		case "new_session":
+		case "clone":
+			reply(command.type, id, { cancelled: false });
 			break;
 		default:
 			reply(command.type, id, {});

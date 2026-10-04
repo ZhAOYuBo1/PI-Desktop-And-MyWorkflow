@@ -206,6 +206,25 @@ export interface AgentSessionSwitchResult {
 	sessions: AgentSessionSummary[];
 }
 
+export interface AgentSessionStats {
+	sessionFile?: string;
+	sessionId: string;
+	userMessages: number;
+	assistantMessages: number;
+	toolCalls: number;
+	toolResults: number;
+	totalMessages: number;
+	tokens: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+		total: number;
+	};
+	cost: number;
+	contextUsage?: AgentContextUsage;
+}
+
 export interface ForkAgentSessionInput extends AgentInstanceLocator {
 	entryId: string;
 }
@@ -297,6 +316,8 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	newAgentSession(input: AgentInstanceLocator): Promise<AgentSessionSwitchResult>;
 	switchAgentSession(input: SwitchAgentSessionInput): Promise<AgentSessionSwitchResult>;
 	deleteAgentSession(input: SwitchAgentSessionInput): Promise<AgentSessionSummary[]>;
+	importAgentSession(input: AgentInstanceLocator): Promise<AgentSessionSwitchResult | null>;
+	getAgentSessionStats(input: AgentInstanceLocator): Promise<AgentSessionStats>;
 	forkAgentSession(input: ForkAgentSessionInput): Promise<ForkAgentSessionResult>;
 	listAuthProviders(): Promise<AuthProviderSummary[]>;
 	startAuthLogin(input: { providerId: string; authType: AuthMethodType }): Promise<string>;
@@ -341,9 +362,13 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	openProjectSkillsFolder(projectRoot: string): Promise<void>;
 	openBuiltinSkillsFolder(): Promise<void>;
 	getAgentModelSelection(input: AgentInstanceLocator): Promise<AgentModelSelection>;
+	getAgentModelScope(input: AgentInstanceLocator): Promise<AgentModelScope>;
 	getAgentCommands(input: AgentInstanceLocator): Promise<AgentCommandOption[]>;
 	setAgentModel(input: SetAgentModelInput): Promise<AgentModelSelection>;
+	setAgentModelScope(input: SetAgentModelScopeInput): Promise<AgentModelScope>;
 	setAgentThinking(input: SetAgentThinkingInput): Promise<AgentModelSelection>;
+	getProjectTrustStatus(projectRoot: string): Promise<ProjectTrustStatus>;
+	setProjectTrust(input: SetProjectTrustInput): Promise<ProjectTrustStatus>;
 	listRecentProjects(): Promise<RecentProject[]>;
 	openRecentProject(projectRoot: string): Promise<ProjectSummary>;
 	forgetRecentProject(projectRoot: string): Promise<RecentProject[]>;
@@ -738,6 +763,13 @@ export interface AgentModelSelection {
 	thinkingLevel: string;
 	availableThinkingLevels: string[];
 	availableModels: AgentModelOption[];
+	enabledModelIds: string[] | null;
+}
+
+export interface AgentModelScope {
+	enabledModelIds: string[] | null;
+	availableModels: AgentModelOption[];
+	applyPending: boolean;
 }
 
 export interface SetAgentModelInput extends AgentInstanceLocator {
@@ -745,6 +777,25 @@ export interface SetAgentModelInput extends AgentInstanceLocator {
 	modelId: string;
 }
 
+export interface SetAgentModelScopeInput extends AgentInstanceLocator {
+	enabledModelIds: string[] | null;
+}
+
 export interface SetAgentThinkingInput extends AgentInstanceLocator {
 	level: string;
+}
+
+export type ProjectTrustDecision = boolean | null;
+
+export interface ProjectTrustStatus {
+	projectRoot: string;
+	decision: ProjectTrustDecision;
+	inheritedFrom: string | null;
+	requiresTrust: boolean;
+}
+
+export interface SetProjectTrustInput {
+	projectRoot: string;
+	decision: boolean;
+	includeParent?: boolean;
 }

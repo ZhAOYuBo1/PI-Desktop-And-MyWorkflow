@@ -346,6 +346,22 @@ export class AppSettingsStore {
 		await this.syncPiRetrySettings();
 	}
 
+	async getEnabledModels(): Promise<string[] | null> {
+		const settings = await this.readJsonRecord(this.piSettingsPath);
+		return Array.isArray(settings.enabledModels) &&
+			settings.enabledModels.every((modelId): modelId is string => typeof modelId === "string")
+			? [...settings.enabledModels]
+			: null;
+	}
+
+	async setEnabledModels(enabledModelIds: string[] | null): Promise<void> {
+		const settings = await this.readJsonRecord(this.piSettingsPath);
+		const next = { ...settings };
+		if (enabledModelIds === null) delete next.enabledModels;
+		else next.enabledModels = [...new Set(enabledModelIds)];
+		await this.writeJsonRecord(this.piSettingsPath, next);
+	}
+
 	async setShellPath(value: string): Promise<SettingsStatus> {
 		const shellPath = normalizeShellExecutable(value.trim()) ?? "";
 		if (shellPath && !existsSync(shellPath)) throw new Error(`Shell 路径不存在：${shellPath}`);

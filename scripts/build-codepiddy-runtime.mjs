@@ -61,6 +61,10 @@ await Promise.all([
 		path.join(outputRoot, "extensions", "pi-auth-helper.mjs"),
 	),
 	cp(
+		path.join(repositoryRoot, "packages", "codepiddy-desktop", "scripts", "pi-trust-helper.mjs"),
+		path.join(outputRoot, "extensions", "pi-trust-helper.mjs"),
+	),
+	cp(
 		path.join(repositoryRoot, "packages", "coding-agent-runtime", "dist"),
 		path.join(outputRoot, "coding-agent-package", "dist"),
 		{ recursive: true },

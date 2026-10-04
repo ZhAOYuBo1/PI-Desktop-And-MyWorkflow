@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { constants } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -25,10 +26,12 @@ import type {
 	AgentContextUsage,
 	AgentInstanceLocator,
 	AgentModelOption,
+	AgentModelScope,
 	AgentModelSelection,
 	AgentRole,
 	AgentSessionNode,
 	AgentSessionSnapshot,
+	AgentSessionStats,
 	AgentSessionSummary,
 	AgentSessionSwitchResult,
 	ArchiveWorkItemInput,
@@ -46,6 +49,7 @@ import type {
 	ResetAgentInput,
 	SendAgentPromptInput,
 	SetAgentModelInput,
+	SetAgentModelScopeInput,
 	SetAgentThinkingInput,
 	SwitchAgentSessionInput,
 	TerminalClientEvent,
@@ -78,7 +82,9 @@ import {
 	parseRoleSkillAssignmentsInput,
 	parseSendAgentPromptInput,
 	parseSetAgentModelInput,
+	parseSetAgentModelScopeInput,
 	parseSetAgentThinkingInput,
+	parseSetProjectTrustInput,
 	parseSwitchAgentSessionInput,
 	parseTerminalId,
 	parseTerminalResizeInput,
@@ -88,6 +94,7 @@ import {
 import { PiAuthManager } from "./pi-auth.ts";
 import { loadPiBuiltinCommands, mergePiCommands } from "./pi-builtin-commands.ts";
 import { type InstalledPiRuntime, PiRuntimeUpdater } from "./pi-runtime-updater.ts";
+import { PiTrustManager } from "./pi-trust.ts";
 import { RecentProjectStore } from "./recent-project-store.ts";
 import { AppSettingsStore, resolvePiAgentDir } from "./settings-store.ts";
 import { SingleFlightMap } from "./single-flight.ts";
@@ -106,6 +113,8 @@ const channels = {
 	newAgentSession: "codepiddy:agent:session:new",
 	switchAgentSession: "codepiddy:agent:session:switch",
 	deleteAgentSession: "codepiddy:agent:session:delete",
+	importAgentSession: "codepiddy:agent:session:import",
+	getAgentSessionStats: "codepiddy:agent:session:stats",
 	listAuthProviders: "codepiddy:auth:providers",
 	startAuthLogin: "codepiddy:auth:login:start",
 	respondAuthPrompt: "codepiddy:auth:login:respond",
@@ -121,11 +130,15 @@ const channels = {
 	renameWorkItem: "codepiddy:work-item:rename",
 	deleteWorkItem: "codepiddy:work-item:delete",
 	getAgentModelSelection: "codepiddy:agent:model:get",
+	getAgentModelScope: "codepiddy:agent:model:scope:get",
 	getAgentCommands: "codepiddy:agent:commands:get",
 	getProjectWriteLeaseStatus: "codepiddy:write-lease:get",
 	clearStaleProjectWriteLease: "codepiddy:write-lease:clear-stale",
 	setAgentModel: "codepiddy:agent:model:set",
+	setAgentModelScope: "codepiddy:agent:model:scope:set",
 	setAgentThinking: "codepiddy:agent:thinking:set",
+	getProjectTrustStatus: "codepiddy:project:trust:get",
+	setProjectTrust: "codepiddy:project:trust:set",
 	listRecentProjects: "codepiddy:project:recent:list",
 	getStartupProject: "codepiddy:project:startup",
 	closeProject: "codepiddy:project:close",
@@ -385,6 +398,32 @@ function parseContextUsage(value: unknown): AgentContextUsage | undefined {
 	};
 }
 
+function parseAgentSessionStats(value: unknown): AgentSessionStats {
+	if (!isRecord(value) || typeof value.sessionId !== "string") throw new Error("Pi Session 统计信息无效");
+	const tokens = isRecord(value.tokens) ? value.tokens : {};
+	const number = (candidate: unknown): number =>
+		typeof candidate === "number" && Number.isFinite(candidate) ? candidate : 0;
+	const contextUsage = parseContextUsage(value.contextUsage);
+	return {
+		...(typeof value.sessionFile === "string" ? { sessionFile: value.sessionFile } : {}),
+		sessionId: value.sessionId,
+		userMessages: number(value.userMessages),
+		assistantMessages: number(value.assistantMessages),
+		toolCalls: number(value.toolCalls),
+		toolResults: number(value.toolResults),
+		totalMessages: number(value.totalMessages),
+		tokens: {
+			input: number(tokens.input),
+			output: number(tokens.output),
+			cacheRead: number(tokens.cacheRead),
+			cacheWrite: number(tokens.cacheWrite),
+			total: number(tokens.total),
+		},
+		cost: number(value.cost),
+		...(contextUsage ? { contextUsage } : {}),
+	};
+}
+
 function sessionEntryText(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (Array.isArray(value)) return value.map(sessionEntryText).filter(Boolean).join("\n");
@@ -486,6 +525,77 @@ async function readSessionFileSummary(filePath: string, currentSessionId: string
 		updatedAt: info ? new Date(info.mtimeMs).toISOString() : null,
 		isCurrent: sessionId === currentSessionId,
 	};
+}
+
+async function readSessionHeader(filePath: string): Promise<{ sessionId: string; cwd: string | null }> {
+	let raw: string;
+	try {
+		raw = await readFile(filePath, "utf8");
+	} catch {
+		throw new Error("找不到要导入的 JSONL 会话文件");
+	}
+	const firstLine = raw.split(/\r?\n/, 1)[0]?.trim();
+	if (!firstLine) throw new Error("JSONL 会话文件为空");
+	let entry: unknown;
+	try {
+		entry = JSON.parse(firstLine);
+	} catch {
+		throw new Error("JSONL 会话文件头不是有效 JSON");
+	}
+	if (!isRecord(entry) || entry.type !== "session" || typeof entry.id !== "string" || !entry.id.trim()) {
+		throw new Error("JSONL 文件不是 Pi Session");
+	}
+	return {
+		sessionId: entry.id.trim(),
+		cwd: typeof entry.cwd === "string" && entry.cwd.trim() ? entry.cwd.trim() : null,
+	};
+}
+
+async function findSessionFileById(sessionDirectory: string, sessionId: string): Promise<string | null> {
+	let fileNames: string[] = [];
+	try {
+		fileNames = (await readdir(sessionDirectory)).filter((name) => name.endsWith(SESSION_FILE_SUFFIX));
+	} catch {
+		return null;
+	}
+	for (const name of fileNames) {
+		const filePath = path.join(sessionDirectory, name);
+		const header = await readSessionHeader(filePath).catch(() => null);
+		if (header?.sessionId === sessionId) return filePath;
+	}
+	return null;
+}
+
+async function importSessionFile(
+	sourcePath: string,
+	sessionDirectory: string,
+): Promise<{ destinationPath: string; sessionId: string; copied: boolean }> {
+	const source = path.resolve(sourcePath);
+	const header = await readSessionHeader(source);
+	const existing = await findSessionFileById(sessionDirectory, header.sessionId);
+	if (existing) return { destinationPath: existing, sessionId: header.sessionId, copied: false };
+	await mkdir(sessionDirectory, { recursive: true });
+	const parsed = path.parse(source);
+	let suffix = 0;
+	let destinationPath = path.join(sessionDirectory, parsed.base);
+	while (true) {
+		try {
+			await copyFile(source, destinationPath, constants.COPYFILE_EXCL);
+			break;
+		} catch (error) {
+			if (
+				typeof error !== "object" ||
+				error === null ||
+				!("code" in error) ||
+				(error as { code?: unknown }).code !== "EEXIST"
+			) {
+				throw error;
+			}
+			suffix += 1;
+			destinationPath = path.join(sessionDirectory, `${parsed.name}-${suffix}${parsed.ext}`);
+		}
+	}
+	return { destinationPath, sessionId: header.sessionId, copied: true };
 }
 
 function selectedSessionFilePath(sessionDirectory: string): string {
@@ -897,6 +1007,7 @@ class AgentManager {
 			thinkingLevel: typeof data.thinkingLevel === "string" ? data.thinkingLevel : "off",
 			availableThinkingLevels: levels,
 			availableModels: modelsRaw.map(parseModel).filter((item): item is AgentModelOption => item !== null),
+			enabledModelIds: await this.settingsStore.getEnabledModels(),
 		};
 	}
 
@@ -904,6 +1015,37 @@ class AgentManager {
 		const process = await this.ensureProcess(await this.resolve(input));
 		await process.setModel(input.provider, input.modelId);
 		return this.getModelSelection(input);
+	}
+
+	async getModelScope(input: AgentInstanceLocator): Promise<AgentModelScope> {
+		const selection = await this.getModelSelection(input);
+		return {
+			enabledModelIds: await this.settingsStore.getEnabledModels(),
+			availableModels: selection.availableModels,
+			applyPending: false,
+		};
+	}
+
+	async setModelScope(input: SetAgentModelScopeInput): Promise<AgentModelScope> {
+		const agent = await this.resolve(input);
+		const selection = await this.getModelSelection(input);
+		await this.settingsStore.setEnabledModels(input.enabledModelIds);
+		const process = this.processes.get(agent.id);
+		let applyPending = false;
+		if (process?.isRunning) {
+			const stateResponse = await process.getState();
+			const state = isRecord(stateResponse.data) ? stateResponse.data : {};
+			if (state.isStreaming === true || state.isCompacting === true) {
+				applyPending = true;
+			} else {
+				await this.reconnect(input);
+			}
+		}
+		return {
+			enabledModelIds: input.enabledModelIds,
+			availableModels: selection.availableModels,
+			applyPending,
+		};
 	}
 
 	async setThinking(input: SetAgentThinkingInput): Promise<AgentModelSelection> {
@@ -1008,22 +1150,8 @@ class AgentManager {
 	}
 
 	private async resolveSessionFile(agent: StoredAgentInstance, sessionId: string): Promise<string> {
-		let fileNames: string[] = [];
-		try {
-			fileNames = (await readdir(agent.sessionDirectory)).filter((name) => name.endsWith(SESSION_FILE_SUFFIX));
-		} catch {
-			fileNames = [];
-		}
-		for (const name of fileNames) {
-			const filePath = path.join(agent.sessionDirectory, name);
-			const firstLine = (await readFile(filePath, "utf8").catch(() => "")).split("\n", 1)[0];
-			try {
-				const entry: unknown = JSON.parse(firstLine);
-				if (isRecord(entry) && entry.type === "session" && entry.id === sessionId) return filePath;
-			} catch {
-				// 忽略损坏的会话文件，继续找下一个。
-			}
-		}
+		const filePath = await findSessionFileById(agent.sessionDirectory, sessionId);
+		if (filePath) return filePath;
 		throw new Error("找不到指定的会话");
 	}
 
@@ -1088,6 +1216,38 @@ class AgentManager {
 		const selectedSessionId = await readSelectedSessionId(agent.sessionDirectory);
 		if (selectedSessionId === input.sessionId) await writeSelectedSessionId(agent.sessionDirectory, null);
 		return this.listSessions(process, agent);
+	}
+
+	async importSession(
+		input: AgentInstanceLocator & { sessionPath: string },
+	): Promise<AgentSessionSwitchResult | null> {
+		const agent = await this.resolve(input);
+		const process = await this.ensureProcess(agent);
+		const imported = await importSessionFile(input.sessionPath, agent.sessionDirectory);
+		try {
+			const result = await process.switchSession(imported.destinationPath);
+			if (result.cancelled) {
+				if (imported.copied) await rm(imported.destinationPath, { force: true });
+				return null;
+			}
+			await writeSelectedSessionId(agent.sessionDirectory, imported.sessionId);
+			this.broadcast({
+				agentInstanceId: agent.id,
+				projectId: agent.projectId,
+				workItemId: agent.workItemId,
+				role: agent.role,
+				event: { type: "agent_history", messages: await process.getMessages() },
+			});
+			return this.sessionSwitchResult(process, agent);
+		} catch (error) {
+			if (imported.copied) await rm(imported.destinationPath, { force: true });
+			throw error;
+		}
+	}
+
+	async getSessionStats(input: AgentInstanceLocator): Promise<AgentSessionStats> {
+		const process = await this.ensureProcess(await this.resolve(input));
+		return parseAgentSessionStats(await process.getSessionStats());
 	}
 
 	async forkSession(input: ForkAgentSessionInput): Promise<ForkAgentSessionResult> {
@@ -1281,7 +1441,7 @@ class AgentManager {
 			return { message: `Session 已导出：${exportedPath}` };
 		}
 		if (input.name === "trust") {
-			return { message: "CodePIddy 以 --approve 模式启动当前 Pi 项目；项目资源已在本次运行中允许加载。" };
+			return { message: "项目信任由 CodePIddy 客户端设置页维护；修改后需要重启当前 Agent 才会重新加载项目资源。" };
 		}
 		if (input.name === "changelog") {
 			const [desktopManifestText, piManifestText, changelogText] = await Promise.all([
@@ -1437,7 +1597,6 @@ class AgentManager {
 				`${agent.workItemId} ${roleLabel(agent.role)}`,
 				"--append-system-prompt",
 				await rolePrompt(agent, Boolean(tavilyApiKey)),
-				"--approve",
 			],
 		});
 		rpc.onEvent((event) => {
@@ -1725,6 +1884,7 @@ function registerIpcHandlers(
 	recentProjects: RecentProjectStore,
 	piRuntimeUpdater: PiRuntimeUpdater,
 	piAuthManager: PiAuthManager,
+	piTrustManager: PiTrustManager,
 ): void {
 	const openedProjects = new Map<string, string>();
 	const rootKey = (projectRoot: string): string =>
@@ -1787,6 +1947,14 @@ function registerIpcHandlers(
 	ipcMain.handle(channels.refreshProject, (_event, rawProjectRoot: unknown) =>
 		decorateRoot(requireOpenProjectRoot(rawProjectRoot)),
 	);
+	ipcMain.handle(channels.getProjectTrustStatus, (_event, rawProjectRoot: unknown) =>
+		piTrustManager.getStatus(requireOpenProjectRoot(rawProjectRoot)),
+	);
+	ipcMain.handle(channels.setProjectTrust, (_event, raw: unknown) => {
+		const input = parseSetProjectTrustInput(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		return piTrustManager.set(input);
+	});
 	ipcMain.handle(channels.createWorkItem, async (_event, raw: unknown) => {
 		const input = parseCreateWorkItemInput(raw);
 		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
@@ -1818,6 +1986,9 @@ function registerIpcHandlers(
 	ipcMain.handle(channels.getAgentModelSelection, (_event, raw: unknown) =>
 		agentManager.getModelSelection(parseAgentLocator(raw)),
 	);
+	ipcMain.handle(channels.getAgentModelScope, (_event, raw: unknown) =>
+		agentManager.getModelScope(parseAgentLocator(raw)),
+	);
 	ipcMain.handle(channels.getAgentCommands, (_event, raw: unknown) =>
 		agentManager.getCommands(parseAgentLocator(raw)),
 	);
@@ -1829,6 +2000,9 @@ function registerIpcHandlers(
 	);
 	ipcMain.handle(channels.setAgentModel, (_event, raw: unknown) =>
 		agentManager.setModel(parseSetAgentModelInput(raw)),
+	);
+	ipcMain.handle(channels.setAgentModelScope, (_event, raw: unknown) =>
+		agentManager.setModelScope(parseSetAgentModelScopeInput(raw)),
 	);
 	ipcMain.handle(channels.setAgentThinking, (_event, raw: unknown) =>
 		agentManager.setThinking(parseSetAgentThinkingInput(raw)),
@@ -1865,6 +2039,20 @@ function registerIpcHandlers(
 	);
 	ipcMain.handle(channels.deleteAgentSession, (_event, raw: unknown) =>
 		agentManager.deleteAgentSession(parseSwitchAgentSessionInput(raw)),
+	);
+	ipcMain.handle(channels.importAgentSession, async (_event, raw: unknown) => {
+		const locator = parseAgentLocator(raw);
+		const selected = await dialog.showOpenDialog({
+			title: "导入 Pi Session",
+			properties: ["openFile"],
+			filters: [{ name: "Pi Session", extensions: ["jsonl"] }],
+		});
+		const sessionPath = selected.filePaths[0];
+		if (selected.canceled || !sessionPath) return null;
+		return agentManager.importSession({ ...locator, sessionPath });
+	});
+	ipcMain.handle(channels.getAgentSessionStats, (_event, raw: unknown) =>
+		agentManager.getSessionStats(parseAgentLocator(raw)),
 	);
 	ipcMain.handle(channels.forkAgentSession, (_event, raw: unknown) =>
 		agentManager.forkSession(parseForkAgentSessionInput(raw)),
@@ -2190,7 +2378,20 @@ if (!hasSingleInstanceLock) {
 				mainWindow?.webContents.send(channels.authEvent, event);
 			},
 		});
-		registerIpcHandlers(agentManager, settingsStore, recentProjects, piRuntimeUpdater, piAuthManager);
+		const piTrustManager = new PiTrustManager({
+			helperPath: app.isPackaged
+				? path.join(repositoryRoot, "extensions", "pi-trust-helper.mjs")
+				: path.join(app.getAppPath(), "dist", "runtime-extensions", "pi-trust-helper.mjs"),
+			nodeExecutable: process.env.CODEPIDDY_NODE_EXECUTABLE ?? (app.isPackaged ? process.execPath : "node"),
+			agentDir: resolvePiAgentDir(),
+			resolvePackageDir: async () =>
+				piRuntimeUpdater.getLaunchRuntime()?.packageDir ??
+				path.join(
+					repositoryRoot,
+					app.isPackaged ? "coding-agent-package" : path.join("packages", "coding-agent-runtime"),
+				),
+		});
+		registerIpcHandlers(agentManager, settingsStore, recentProjects, piRuntimeUpdater, piAuthManager, piTrustManager);
 		mainWindow = createWindow(recentProjects);
 		mainWindow.on("closed", () => {
 			mainWindow = null;

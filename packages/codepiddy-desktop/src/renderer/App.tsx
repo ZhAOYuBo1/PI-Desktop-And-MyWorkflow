@@ -6,6 +6,7 @@ import type {
 	AgentModelSelection,
 	AgentRole,
 	AgentSessionSnapshot,
+	AgentSessionStats,
 	AgentSessionSummary,
 	AgentSkillSummary,
 	AgentSlotSummary,
@@ -20,6 +21,7 @@ import type {
 	PermissionState,
 	PiRuntimeStatus,
 	ProjectSummary,
+	ProjectTrustStatus,
 	ProjectUiState,
 	ProjectWriteLeaseStatus,
 	RecentProject,
@@ -32,9 +34,12 @@ import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useM
 import { AppIcon, type AppIconName } from "./components/app-icon.tsx";
 import { FileMentionMenu } from "./components/FileMentionMenu.tsx";
 import { McpSettings } from "./components/McpSettings.tsx";
+import { ModelScopeSettings } from "./components/ModelScopeSettings.tsx";
 import { MessageContent } from "./components/message-content.tsx";
+import { ProjectTrustSettings } from "./components/ProjectTrustSettings.tsx";
 import { ProviderSettings } from "./components/ProviderSettings.tsx";
 import { ProviderIcon } from "./components/provider-icon.tsx";
+import { SessionStatsDialog } from "./components/SessionStatsDialog.tsx";
 import { SlashCommandMenu } from "./components/SlashCommandMenu.tsx";
 import { StreamStats } from "./components/StreamStats.tsx";
 import { SelectMenu } from "./components/select-menu.tsx";
@@ -122,6 +127,11 @@ interface SessionPanelState {
 	displayName: string;
 	snapshot: AgentSessionSnapshot;
 	sessions: AgentSessionSummary[];
+}
+
+interface SessionStatsDialogState {
+	locator: AgentInstanceLocator;
+	displayName: string;
 }
 
 interface ExtensionDialogState {
@@ -1186,6 +1196,25 @@ const demoSessionSnapshot: AgentSessionSnapshot = {
 	],
 };
 
+const demoSessionStats: AgentSessionStats = {
+	sessionId: "demo-session",
+	sessionFile: "C:\\Users\\demo\\.pi\\agent\\sessions\\demo-session.jsonl",
+	userMessages: 3,
+	assistantMessages: 4,
+	toolCalls: 6,
+	toolResults: 6,
+	totalMessages: 7,
+	tokens: {
+		input: 42_500,
+		output: 8_200,
+		cacheRead: 18_400,
+		cacheWrite: 3_100,
+		total: 72_200,
+	},
+	cost: 0.184,
+	contextUsage: { tokens: 42_500, contextWindow: 128_000, percent: 33.2 },
+};
+
 const demoAgentCommands: AgentCommandOption[] = [
 	{ name: "settings", command: "/settings", description: "Open settings menu", source: "builtin" },
 	{
@@ -1240,6 +1269,7 @@ const demoModelSelection: AgentModelSelection = {
 	model: { provider: "openai", id: "gpt-5.5", name: "GPT-5.5", reasoning: true },
 	thinkingLevel: "medium",
 	availableThinkingLevels: ["off", "low", "medium", "high", "xhigh"],
+	enabledModelIds: ["openai/gpt-5.5", "anthropic/claude-sonnet-4-6"],
 	availableModels: [
 		{ provider: "openai", id: "gpt-5.5", name: "GPT-5.5", reasoning: true },
 		{ provider: "openai", id: "gpt-5.4-mini", name: "GPT-5.4 Mini", reasoning: true },
@@ -1265,6 +1295,9 @@ export function App() {
 	const [agentActionsOpen, setAgentActionsOpen] = useState<string | null>(null);
 	const [sessionPanel, setSessionPanel] = useState<SessionPanelState | null>(null);
 	const [sessionPanelLoading, setSessionPanelLoading] = useState(false);
+	const [sessionStatsDialog, setSessionStatsDialog] = useState<SessionStatsDialogState | null>(null);
+	const [sessionStats, setSessionStats] = useState<AgentSessionStats | null>(null);
+	const [sessionStatsLoading, setSessionStatsLoading] = useState(false);
 	const [forkingEntryId, setForkingEntryId] = useState<string | null>(null);
 	const [authDialogMode, setAuthDialogMode] = useState<"login" | "logout" | null>(null);
 	const [authProviders, setAuthProviders] = useState<AuthProviderSummary[]>([]);
@@ -1284,6 +1317,9 @@ export function App() {
 	const [error, setError] = useState<string | null>(null);
 	const [extensionDialog, setExtensionDialog] = useState<ExtensionDialogState | null>(null);
 	const [settingsStatus, setSettingsStatus] = useState<SettingsStatus | null>(null);
+	const [projectTrustStatus, setProjectTrustStatus] = useState<ProjectTrustStatus | null>(null);
+	const [projectTrustBusy, setProjectTrustBusy] = useState(false);
+	const [projectTrustPromptOpen, setProjectTrustPromptOpen] = useState(false);
 	const [piRuntimeStatus, setPiRuntimeStatus] = useState<PiRuntimeStatus | null>(null);
 	const [piRuntimeBusy, setPiRuntimeBusy] = useState<"check" | "install" | "rollback" | null>(null);
 	const [settingsSection, setSettingsSection] = useState<SettingsSectionId>("runtime");
@@ -1661,15 +1697,47 @@ export function App() {
 		activeAgentId && (drafts[activeAgentId] ?? "").trimStart().startsWith("/"),
 	);
 
-	const modelPickerOptions = useMemo(() => {
+	const modelPickerSections = useMemo(() => {
 		if (!modelPickerAgentId) return [];
 		const modelSelection = modelSelections[modelPickerAgentId];
 		if (!modelSelection) return [];
 		const normalizedSearch = modelSearch.trim().toLowerCase();
-		return modelSelection.availableModels.filter((model) =>
+		const filtered = modelSelection.availableModels.filter((model) =>
 			`${model.provider} ${model.name} ${model.id}`.toLowerCase().includes(normalizedSearch),
 		);
+		const enabledIds = modelSelection.enabledModelIds;
+		const groups: Array<{ label: string; models: AgentModelSelection["availableModels"] }> = [];
+		if (enabledIds === null) {
+			groups.push({ label: "常用模型", models: filtered });
+		} else if (enabledIds.length > 0) {
+			const enabled = enabledIds.flatMap((id) => {
+				const model = filtered.find((candidate) => `${candidate.provider}/${candidate.id}` === id);
+				return model ? [model] : [];
+			});
+			const enabledSet = new Set(enabledIds);
+			const remaining = filtered.filter((model) => !enabledSet.has(`${model.provider}/${model.id}`));
+			if (enabled.length > 0) groups.push({ label: "常用模型", models: enabled });
+			if (remaining.length > 0) groups.push({ label: "其他模型", models: remaining });
+		} else {
+			groups.push({ label: "全部模型", models: filtered });
+		}
+		return groups.flatMap((group) => {
+			const providers = [...new Set(group.models.map((model) => model.provider))];
+			return providers.map((provider) => ({
+				key: `${group.label}:${provider}`,
+				label: `${group.label} · ${provider}`,
+				models: group.models.filter((model) => model.provider === provider),
+			}));
+		});
 	}, [modelPickerAgentId, modelSearch, modelSelections]);
+	const modelPickerOptions = useMemo(
+		() => modelPickerSections.flatMap((section) => section.models),
+		[modelPickerSections],
+	);
+	const modelPickerIndexById = useMemo(
+		() => new Map(modelPickerOptions.map((model, index) => [`${model.provider}/${model.id}`, index] as const)),
+		[modelPickerOptions],
+	);
 
 	const updateAgentStatus = useCallback((clientEvent: AgentClientEvent, status: AgentStatus): void => {
 		setProject((current) =>
@@ -2216,6 +2284,38 @@ export function App() {
 	}, []);
 
 	useEffect(() => {
+		if (!project) {
+			setProjectTrustStatus(null);
+			setProjectTrustPromptOpen(false);
+			return;
+		}
+		if (demoMode || !("codepiddy" in window)) {
+			setProjectTrustStatus({
+				projectRoot: project.rootPath,
+				decision: null,
+				inheritedFrom: null,
+				requiresTrust: true,
+			});
+			setProjectTrustPromptOpen(true);
+			return;
+		}
+		let cancelled = false;
+		void window.codepiddy
+			.getProjectTrustStatus(project.rootPath)
+			.then((status) => {
+				if (cancelled) return;
+				setProjectTrustStatus(status);
+				if (status.requiresTrust && status.decision === null) setProjectTrustPromptOpen(true);
+			})
+			.catch((caught: unknown) => {
+				if (!cancelled) setError(caught instanceof Error ? caught.message : "读取项目信任状态失败");
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [project]);
+
+	useEffect(() => {
 		if (!("codepiddy" in window) || !project || !selectedWorkItem || selection.type !== "agent") {
 			activatedAgentKey.current = null;
 			return;
@@ -2550,6 +2650,81 @@ export function App() {
 			setError(caught instanceof Error ? caught.message : "关闭项目失败");
 		} finally {
 			setBusy(false);
+		}
+	}
+
+	async function refreshProjectTrust(showPrompt = false): Promise<ProjectTrustStatus | null> {
+		if (!project) {
+			setProjectTrustStatus(null);
+			setProjectTrustPromptOpen(false);
+			return null;
+		}
+		if (demoMode || !("codepiddy" in window)) {
+			const status: ProjectTrustStatus = {
+				projectRoot: project.rootPath,
+				decision: null,
+				inheritedFrom: null,
+				requiresTrust: true,
+			};
+			setProjectTrustStatus(status);
+			if (showPrompt) setProjectTrustPromptOpen(true);
+			return status;
+		}
+		setProjectTrustBusy(true);
+		try {
+			const status = await window.codepiddy.getProjectTrustStatus(project.rootPath);
+			setProjectTrustStatus(status);
+			if (showPrompt && status.requiresTrust && status.decision === null) setProjectTrustPromptOpen(true);
+			return status;
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "读取项目信任状态失败");
+			return null;
+		} finally {
+			setProjectTrustBusy(false);
+		}
+	}
+
+	async function setProjectTrust(decision: boolean, includeParent = false): Promise<void> {
+		if (!project) return;
+		if (demoMode || !("codepiddy" in window)) {
+			setProjectTrustStatus({
+				projectRoot: project.rootPath,
+				decision,
+				inheritedFrom: project.rootPath,
+				requiresTrust: true,
+			});
+			setProjectTrustPromptOpen(false);
+			setSessionNotice(decision ? "项目信任已保存。" : "已保存为不信任项目。");
+			return;
+		}
+		setProjectTrustBusy(true);
+		setError(null);
+		try {
+			const status = await window.codepiddy.setProjectTrust({
+				projectRoot: project.rootPath,
+				decision,
+				...(includeParent ? { includeParent: true } : {}),
+			});
+			setProjectTrustStatus(status);
+			setProjectTrustPromptOpen(false);
+			const locator = lastActiveAgentLocatorRef.current;
+			const agentStatus = locator ? findAgentStatus(projectRef.current, locator) : null;
+			if (locator && agentStatus && agentStatus !== "running" && agentStatus !== "waiting") {
+				await window.codepiddy.reconnectAgent(locator);
+				const [modelSelection, snapshot] = await Promise.all([
+					window.codepiddy.getAgentModelSelection(locator),
+					window.codepiddy.getAgentSessionSnapshot(locator),
+				]);
+				setModelSelections((current) => ({ ...current, [locator.agentInstanceId]: modelSelection }));
+				setAgentSessionSnapshots((current) => ({ ...current, [locator.agentInstanceId]: snapshot }));
+				setSessionNotice("项目信任已保存，当前 Agent 已重新连接。");
+			} else {
+				setSessionNotice(decision ? "项目信任已保存；重新连接 Agent 后加载项目资源。" : "已保存为不信任项目。");
+			}
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "保存项目信任失败");
+		} finally {
+			setProjectTrustBusy(false);
 		}
 	}
 
@@ -2958,7 +3133,12 @@ export function App() {
 					}
 					return;
 				}
-				if (name === "fork" || name === "tree" || name === "session") {
+				if (name === "session") {
+					setDrafts((current) => ({ ...current, [agentId]: "" }));
+					await openSessionStats(locator, slot.displayName);
+					return;
+				}
+				if (name === "fork" || name === "tree") {
 					setDrafts((current) => ({ ...current, [agentId]: "" }));
 					await openSessionPanel(slot);
 					return;
@@ -3176,6 +3356,76 @@ export function App() {
 			setAgentSessionSnapshots((current) => ({ ...current, [slot.currentInstanceId!]: snapshot }));
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "读取会话树失败");
+		} finally {
+			setSessionPanelLoading(false);
+		}
+	}
+
+	async function openSessionStats(locator: AgentInstanceLocator, displayName: string): Promise<void> {
+		setSessionStatsDialog({ locator, displayName });
+		setSessionStatsLoading(true);
+		setSessionStats(demoMode ? demoSessionStats : null);
+		if (demoMode || !("codepiddy" in window)) {
+			setSessionStatsLoading(false);
+			return;
+		}
+		try {
+			setSessionStats(await window.codepiddy.getAgentSessionStats(locator));
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "读取 Session 统计失败");
+			setSessionStatsDialog(null);
+		} finally {
+			setSessionStatsLoading(false);
+		}
+	}
+
+	async function importAgentSession(): Promise<void> {
+		if (!sessionPanel) return;
+		if (demoMode) {
+			setSessionPanel((current) =>
+				current
+					? {
+							...current,
+							sessions: [
+								{
+									sessionId: `imported-${current.sessions.length + 1}`,
+									name: "导入的会话",
+									preview: "从 JSONL 文件导入",
+									messageCount: 8,
+									createdAt: new Date().toISOString(),
+									updatedAt: new Date().toISOString(),
+									isCurrent: true,
+								},
+								...current.sessions.map((session) => ({ ...session, isCurrent: false })),
+							],
+						}
+					: current,
+			);
+			setSessionNotice("会话已导入。");
+			return;
+		}
+		if (!("codepiddy" in window)) return;
+		setSessionPanelLoading(true);
+		setError(null);
+		try {
+			const result = await window.codepiddy.importAgentSession({
+				agentInstanceId: sessionPanel.agentInstanceId,
+				projectId: sessionPanel.projectId,
+				workItemId: sessionPanel.workItemId,
+				role: sessionPanel.role,
+			});
+			if (!result) return;
+			setSessionPanel((current) =>
+				current ? { ...current, snapshot: result.snapshot, sessions: result.sessions } : current,
+			);
+			setAgentSessionSnapshots((current) => ({
+				...current,
+				[sessionPanel.agentInstanceId]: result.snapshot,
+			}));
+			setDrafts((current) => ({ ...current, [sessionPanel.agentInstanceId]: "" }));
+			setSessionNotice("会话已导入并切换。");
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "导入会话失败");
 		} finally {
 			setSessionPanelLoading(false);
 		}
@@ -3611,7 +3861,11 @@ export function App() {
 		const handleKeyDown = (event: KeyboardEvent): void => {
 			if (event.key !== "Escape" || event.defaultPrevented) return;
 			if (extensionDialog) return;
-			if (modelPickerAgentId) {
+			if (sessionStatsDialog) {
+				setSessionStatsDialog(null);
+			} else if (projectTrustPromptOpen) {
+				setProjectTrustPromptOpen(false);
+			} else if (modelPickerAgentId) {
 				setModelPickerAgentId(null);
 				setModelSearch("");
 			} else if (sessionPanel) setSessionPanel(null);
@@ -3642,11 +3896,13 @@ export function App() {
 		dialog,
 		extensionDialog,
 		modelPickerAgentId,
+		projectTrustPromptOpen,
 		renameDialog,
 		resetAgentDialog,
 		selectedWorkItem,
 		selection,
 		sessionPanel,
+		sessionStatsDialog,
 		shellRestartDialog,
 		writeLeaseDialog,
 		abortAgent,
@@ -4079,6 +4335,16 @@ export function App() {
 									: "安装更新需要本机 Node.js/npm；当前内置版本仍可正常使用。"}
 							</small>
 						</section>
+						{project ? (
+							<div className="settings-section-slot" hidden={settingsSection !== "runtime"}>
+								<ProjectTrustSettings
+									status={projectTrustStatus}
+									busy={projectTrustBusy}
+									onRefresh={() => void refreshProjectTrust()}
+									onSet={(decision, includeParent) => void setProjectTrust(decision, includeParent)}
+								/>
+							</div>
+						) : null}
 						<section
 							className="settings-card permission-settings-card"
 							hidden={settingsSection !== "permissions"}
@@ -4317,6 +4583,10 @@ export function App() {
 							<ProviderSettings
 								refreshToken={providerSettingsRefreshToken}
 								onOpenAuth={(mode, providerId) => void openAuthDialog(mode, providerId)}
+							/>
+							<ModelScopeSettings
+								activeAgent={activeAgentLocator ?? lastActiveAgentLocatorRef.current}
+								refreshToken={providerSettingsRefreshToken}
 							/>
 						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "mcp"}>
@@ -4634,7 +4904,6 @@ export function App() {
 														? (() => {
 																const modelSelection = modelSelections[agentId];
 																const filtered = modelPickerOptions;
-																const providers = [...new Set(filtered.map((model) => model.provider))];
 																return (
 																	<div
 																		ref={modelPickerRef}
@@ -4690,13 +4959,15 @@ export function App() {
 																				modelPickerKeyboardScrollRef.current = false;
 																			}}
 																		>
-																			{providers.map((provider) => (
-																				<section key={provider}>
-																					<h3>{provider}</h3>
-																					{filtered
-																						.map((model, index) => ({ model, index }))
-																						.filter((entry) => entry.model.provider === provider)
-																						.map(({ model, index }) => (
+																			{modelPickerSections.map((section) => (
+																				<section key={section.key}>
+																					<h3>{section.label}</h3>
+																					{section.models.map((model) => {
+																						const index =
+																							modelPickerIndexById.get(
+																								`${model.provider}/${model.id}`,
+																							) ?? -1;
+																						return (
 																							<button
 																								type="button"
 																								className={[
@@ -4717,7 +4988,7 @@ export function App() {
 																									modelPickerSelectedIndexRef.current = index;
 																									setModelPickerSelectedIndex(index);
 																								}}
-																								key={provider + model.id}
+																								key={section.key + model.id}
 																								disabled={modelPickerBusy}
 																								title={model.id}
 																								onClick={() =>
@@ -4730,7 +5001,8 @@ export function App() {
 																							>
 																								<span>{model.name}</span>
 																							</button>
-																						))}
+																						);
+																					})}
 																				</section>
 																			))}
 																		</div>
@@ -4748,7 +5020,17 @@ export function App() {
 												</div>
 												<ContextGauge
 													snapshot={sessionSnapshot}
-													onClick={() => void openSessionPanel(slot)}
+													onClick={() =>
+														void openSessionStats(
+															{
+																agentInstanceId: agentId,
+																projectId: project.id,
+																workItemId: selectedWorkItem.id,
+																role: slot.role,
+															},
+															slot.displayName,
+														)
+													}
 												/>
 											</div>
 											<div className="composer-actions">
@@ -5027,14 +5309,42 @@ export function App() {
 						<div className="session-picker">
 							<div className="session-picker-heading">
 								<strong>会话</strong>
-								<button
-									className="secondary-button"
-									type="button"
-									disabled={sessionPanelLoading}
-									onClick={() => void createAgentSession()}
-								>
-									<AppIcon name="plus" size={13} /> 新建会话
-								</button>
+								<div className="session-picker-actions">
+									<button
+										className="secondary-button"
+										type="button"
+										disabled={sessionPanelLoading}
+										onClick={() =>
+											void openSessionStats(
+												{
+													agentInstanceId: sessionPanel.agentInstanceId,
+													projectId: sessionPanel.projectId,
+													workItemId: sessionPanel.workItemId,
+													role: sessionPanel.role,
+												},
+												sessionPanel.displayName,
+											)
+										}
+									>
+										<AppIcon name="checklist" size={13} /> 会话统计
+									</button>
+									<button
+										className="secondary-button"
+										type="button"
+										disabled={sessionPanelLoading}
+										onClick={() => void importAgentSession()}
+									>
+										<AppIcon name="restore" size={13} /> 导入会话
+									</button>
+									<button
+										className="secondary-button"
+										type="button"
+										disabled={sessionPanelLoading}
+										onClick={() => void createAgentSession()}
+									>
+										<AppIcon name="plus" size={13} /> 新建会话
+									</button>
+								</div>
 							</div>
 							<div className="session-picker-list">
 								{sessionPanel.sessions.map((session) => (
@@ -5149,6 +5459,73 @@ export function App() {
 							<code>{sessionPanel.snapshot.sessionName || sessionPanel.snapshot.sessionId}</code>
 							<button className="secondary-button" type="button" onClick={() => setSessionPanel(null)}>
 								关闭
+							</button>
+						</div>
+					</div>
+				</div>
+			) : null}
+			{sessionStatsDialog ? (
+				<div className="modal-backdrop" role="presentation">
+					<button
+						className="modal-backdrop-dismiss"
+						type="button"
+						aria-label="关闭会话统计"
+						onClick={() => setSessionStatsDialog(null)}
+					/>
+					<SessionStatsDialog
+						displayName={sessionStatsDialog.displayName}
+						stats={sessionStats}
+						loading={sessionStatsLoading}
+						onClose={() => setSessionStatsDialog(null)}
+					/>
+				</div>
+			) : null}
+			{projectTrustPromptOpen && project ? (
+				<div className="modal-backdrop" role="presentation">
+					<button
+						className="modal-backdrop-dismiss"
+						type="button"
+						aria-label="稍后设置项目信任"
+						onClick={() => setProjectTrustPromptOpen(false)}
+					/>
+					<div className="modal project-trust-modal" role="dialog" aria-modal="true" aria-label="项目信任">
+						<div className="session-tree-heading">
+							<div>
+								<h2>信任这个项目？</h2>
+								<p>
+									信任后 Pi 才会加载项目级 settings、extensions、skills 和 packages。决定写入{" "}
+									<code>~/.pi/agent/trust.json</code>，当前 Agent 重新连接后生效。
+								</p>
+							</div>
+						</div>
+						<code className="project-trust-path">{project.rootPath}</code>
+						<div className="modal-actions project-trust-actions">
+							<button
+								className="primary-button"
+								type="button"
+								disabled={projectTrustBusy}
+								onClick={() => void setProjectTrust(true)}
+							>
+								信任当前项目
+							</button>
+							<button
+								className="secondary-button"
+								type="button"
+								disabled={projectTrustBusy}
+								onClick={() => void setProjectTrust(true, true)}
+							>
+								信任父目录
+							</button>
+							<button
+								className="secondary-button"
+								type="button"
+								disabled={projectTrustBusy}
+								onClick={() => void setProjectTrust(false)}
+							>
+								不信任
+							</button>
+							<button type="button" onClick={() => setProjectTrustPromptOpen(false)}>
+								稍后
 							</button>
 						</div>
 					</div>
