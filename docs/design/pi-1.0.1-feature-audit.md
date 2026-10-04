@@ -238,14 +238,16 @@
 
 ### 阶段 3：会话和命令补齐
 
-16. `/scoped-models`
-17. `/import`
-18. `/trust` 持久化
-19. `/session` 完整统计信息
+16. [x] `/scoped-models`：批次 48 已改为客户端“常用模型范围”，模型选择器显示“常用模型 / 其他模型”，底层写 `enabledModels`。
+17. [x] `/import`：批次 48 已改为会话树原生导入入口，文件选择器 + JSONL 校验、复制、切换和持久化。
+18. [x] `/trust` 持久化：批次 48 已接入 Pi `ProjectTrustStore` helper、信任弹窗、设置页状态和 `trust.json` 持久化。
+19. [x] `/session` 完整统计信息：批次 48 已接入 RPC `get_session_stats` 和客户端统计面板。
 20. `/name` 无参查询
 21. `/llama`
 22. `/share`
 23. `/bug`
+
+批次 48 的代码提交为 `d402e6a7e feat(desktop): add stage 3 client workflows`。阶段 3 下一步从第 20 项 `/name` 无参查询开始。
 
 ### 阶段 4：高级运行时能力
 

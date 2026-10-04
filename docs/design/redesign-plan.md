@@ -22,8 +22,9 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-47 已提交到本地 `main`。
-批次 41-47 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作、OpenRouter OAuth 验收、Git Bash 黑窗修复和 Shell 重启弹窗都已收口。下一步进入阶段 3。
+再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-48 已提交到本地 `main`。
+批次 41-48 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作、OpenRouter OAuth 验收、Git Bash 黑窗修复、Shell 重启弹窗、常用模型范围、JSONL 导入、项目信任持久化和 Session 统计都已收口。
+阶段 3 已完成 `/scoped-models`、`/import`、`/trust`、`/session` 四项，下一步从第 20 项 `/name` 无参查询继续。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条都已验收，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
@@ -57,7 +58,15 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-04 批次 42：MCP 管理入口与设置反馈收口，已提交）
+## 当前状态（2026-10-04 批次 48：阶段 3 会话与命令补齐，已提交）
+
+- 阶段 3 前四项已客户端化：`/scoped-models` 变成“常用模型范围”，`/import` 使用原生文件选择器导入 JSONL，`/trust` 使用原生弹窗和 `trust.json`，`/session` 使用完整统计面板；均不新增必须手输的 `/` 命令。
+- 常用模型范围：设置页可启停、按 Provider 批量启停、排序；`enabledModelIds = null` 表示全部都是常用，模型选择器显示“常用模型”，部分选择时显示“常用模型 / 其他模型”，明确清空时才显示“全部模型”。底层继续写 Pi 原生 `settings.json` 的 `enabledModels`。
+- JSONL 导入：会话树提供“导入会话”，校验 session 文件头、复制到当前 Agent 会话目录、处理同名冲突、切换并持久化选中 Session；取消导入不改变当前会话。
+- 项目信任：打开/切换项目时读取 Pi 原生 trust 状态；只有项目存在需要信任的资源且没有已保存/继承决定时弹窗。可选择信任当前项目、信任父目录、不信任或稍后。决定写 `~/.pi/agent/trust.json`；设置页“项目信任”可查看和修改。
+- Agent 启动不再无条件传 `--approve`，项目级 settings / extensions / skills / packages 现在真正由 `trust.json` 决定是否加载；CodePIddy 自己的显式扩展仍由 `--no-extensions` + 显式 `--extension` 加载。
+- Session 统计：会话树和输入区上下文圆环可打开统计面板，显示 Session ID / 文件、消息数、工具调用与结果、Token 输入/输出/缓存、费用和上下文占用；数据来自 Pi RPC `get_session_stats`。
+- Provider 登录搜索框和常用模型搜索框统一输入样式：内层 input 无边框/阴影，焦点环只画在外层容器，文字和占位符保持同一行。
 
 - `styles.css` 4253 行，顶部是完整的 `--cp-*` 令牌层；旧玻璃层的死规则已删除，`rgb(255 255 255 / N%)` 只剩侧栏 sheen 两处。
 - 间距令牌已建立：`--cp-space-micro` 到 `--cp-space-5xl`（2/4/6/8/12/16/24/32/40/48/64px）；组件间距声明已全部改用令牌。
@@ -121,7 +130,14 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ### 下一步
 
-批次 44-45 已提交。下一步继续 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 2：用 OpenRouter 完成真实 OAuth 端到端验收，然后进入阶段 3。
+阶段 3 的 16-19 项已完成并提交。下一步从 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 3 第 20 项开始：
+
+1. `/name` 无参查询当前 Session 名称。
+2. `/llama`。
+3. `/share`。
+4. `/bug`。
+
+继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
 
 ### 改版前的基线（历史记录，仅作对照）
 
@@ -984,6 +1000,27 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿。
 - 实际配置已迁移为 `D:\git\Git\bin\bash.exe`。
 
+### 2026-10-04 批次 48：阶段 3 客户端化（已提交）
+
+代码提交：`d402e6a7e feat(desktop): add stage 3 client workflows`。
+
+完成 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 3 的 16-19 项：
+
+- **`/scoped-models` -> 常用模型范围**：设置页“Provider 与模型”新增常用模型范围，可搜索、启停、按 Provider 批量启停和排序。保存写 Pi 原生 `settings.json` 的 `enabledModels`；空闲 Agent 自动重连，运行中 Agent 延后生效。
+- **常用模型语义**：`enabledModelIds = null` 表示全部可用模型都是常用；模型选择器显示“常用模型 · provider”。部分选择时显示“常用模型”和“其他模型”两组。明确清空常用列表时才显示“全部模型”。
+- **`/import` -> 导入会话**：会话树顶部新增“导入会话”，使用系统文件选择器读取 JSONL，校验 `session` 文件头，复制到当前 Agent 会话目录并处理同名冲突，然后切换并持久化选中 Session。取消导入不改变当前会话。
+- **`/trust` -> 项目信任**：新增 Pi `ProjectTrustStore` helper，不修改 core。打开/切换项目时，如果项目有需要信任的资源且没有已保存或继承决定，就弹窗询问；可信任当前项目、信任父目录、不信任或稍后。决定写 `~/.pi/agent/trust.json`，设置页可查看和修改。
+- **信任行为收口**：Agent 启动移除无条件 `--approve`；项目级 settings / extensions / skills / packages 现在由 trust 决定。CodePIddy 自身权限、review、retry、内置 MCP / codemode / tool-search 仍显式加载。
+- **`/session` -> 会话统计**：会话树和输入区上下文圆环可打开统计面板，显示 Session ID / 文件、消息数、工具调用与结果、Token 输入/输出/缓存、费用和上下文占用，数据来自 RPC `get_session_stats`。
+- **搜索框样式**：常用模型搜索框和 Provider 登录搜索框使用同一套输入规则；内层 input 无边框和阴影，蓝色焦点环只画在外层容器，文字与占位符同一行。
+
+验证：
+
+- `npm run check`、`npm run typecheck --workspace=@codepiddy/desktop`、`npm run build:codepiddy`、`npm run build:codepiddy-runtime` 全绿。
+- 隔离 Electron 实测：`enabledModels` 写入 `settings.json`，项目信任写入 `trust.json`，Session 统计读取和 JSONL 导入切换通过。
+- 浏览器 demo：常用模型分组、信任弹窗、会话统计、导入入口和模型选择器分组通过 Playwright 验证。
+- 测试信任项目：`E:\trust-demo-project`（包含 `.pi/settings.json`；当前无 trust 记录，打开时应弹窗）。该目录不在仓库内，不提交。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1011,24 +1048,17 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 23. [x] **Provider 搜索与厂商图标**：批次 45 已实现、验证并提交；下一步只剩 OpenRouter 真实 OAuth 端到端验收。
 24. [x] **Provider 组合框交互修正**：批次 46 已实现、验证并提交。
 25. [x] **Git Bash 黑窗修复与 Shell 重启提示**：批次 47 已实现、验证并提交。
+26. [x] **阶段 3 前四项**：批次 48 已完成 `/scoped-models` 的常用模型范围、`/import` 客户端导入、`/trust` 持久化和 `/session` 统计，提交 `d402e6a7e`。
+27. [ ] **阶段 3 第 20 项 `/name` 无参查询**：下一批第一项。
+28. [ ] **阶段 3 第 21-23 项**：`/llama`、`/share`、`/bug`，按顺序处理。
 
 ## 未提交状态
 
-批次 41-42 已提交到本地 `main`，提交号 `c25bfe386`；尚未推送。最近提交：
+批次 48 的代码提交为 `d402e6a7e feat(desktop): add stage 3 client workflows`。本文件随后作为批次 48 交接文档提交并推送；下一个窗口从阶段 3 第 20 项 `/name` 无参查询开始。
 
-- `888ed5b27 docs(desktop): record Pi 1.0.1 audit and handoff`
-- `55e6d4bf3 feat(desktop): finalize UI, pin Pi runtime and add provider login`
-- `3f5284a feat(desktop): upgrade transcript minimap with dock magnification`（批次 35）
-- `e17218e docs(desktop): restart the client automatically after UI changes`
-- `0ba23e6 feat(desktop): add session deletion and fix new-session button layout`（批次 34）
-- `4205939 feat(desktop): add per-agent session list, new session and switching`（批次 33）
-- `9ed96e1 feat(desktop): add categorized settings with MCP and provider config`（批次 31）
+`E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
-注意：`package-lock.json` 有改动（批次 23-25 的 xterm / node-pty，以及批次 28 的 review workspace / diff），提交时需要 `PI_ALLOW_LOCKFILE_CHANGE=1`。批次 23 的补全实现已被批次 24 完全取代，不会单独提交。
-
-另外：`npx impeccable install` 把 Impeccable 装进了项目内的 `.github/` 与 `.pi/skills/impeccable/`（engine v0.1.11，122 个文件约 38.5MB，含两个 17MB 的 `impeccable.exe`）。体积太大，不提交；批次 27 已把它们加入 `.gitignore`，本地仍可继续使用，需要回收空间时直接删除目录即可。
-
-根目录不再保留原始 `流星.svg`，唯一下载源文件为 `codepiddy-icons/meteor.svg`，旧 `codepiddy-icons/lightning.svg` 已删除。参考仓库 `E:\mypi-refs\dsh-effort-dial` 已删除。后续如再改锁文件仍需 `PI_ALLOW_LOCKFILE_CHANGE=1`。
+`npx impeccable install` 的本地安装目录仍在 `.gitignore` 中，不提交。后续如改 `package-lock.json`，仍需按仓库规则使用 `PI_ALLOW_LOCKFILE_CHANGE=1`。
 
 ## Pi core 更新边界（2026-10-03 审计）
 
