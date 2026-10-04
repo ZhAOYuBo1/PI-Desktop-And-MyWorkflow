@@ -230,11 +230,11 @@
 
 11. 审核并验收客户端设置页的 Provider 登录 / 退出 UI；不接入 `/login`、`/logout` 命令。
 12. 支持 Provider OAuth、API Key、device code、manual code 和浏览器回调。
-13. 登录成功后刷新 Provider、模型列表和当前 Agent 配置。
+13. [x] 登录成功后刷新 Provider、模型列表和当前 Agent 配置；空闲 Agent 自动重连，运行中 Agent 延后生效。
 14. [x] 增加 Provider 状态、退出登录和凭据来源显示；退出登录只对 `auth.json` 来源开放。
 15. 增加 `!command` Key 和 `auth.provider` 配置。
 
-批次 43（提交 `5d489c02a`）已完成第 14 项。下一步完成第 13 项：登录 / 退出成功后刷新 Provider、模型列表和当前 Agent 配置；随后用 OpenRouter 完成第 12 项真实 OAuth 验收。
+批次 43（提交 `5d489c02a`）已完成第 14 项；批次 44（提交 `796171533`）已完成第 13 项。下一步用 OpenRouter 完成第 12 项真实 OAuth 验收，然后进入阶段 3。
 
 ### 阶段 3：会话和命令补齐
 

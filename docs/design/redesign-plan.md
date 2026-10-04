@@ -22,8 +22,8 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-43 已提交到本地 `main`。
-批次 41-43 已提交：`/mcp` 管理入口、MCP 运行状态、扩展隔离、设置消息栈、权限下拉统一、Tavily 密码字段和状态持久化都已收口；Provider 凭据状态、来源显示和重复配置标记也已完成。下一步继续阶段 2 的登录后模型 / Agent 刷新和 OAuth 真实验收。
+再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-45 已提交到本地 `main`。
+批次 41-45 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标和 Kimi 深色图标都已收口。下一步只剩 OpenRouter 真实 OAuth 端到端验收和阶段 2 收尾。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条都已验收，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
@@ -121,7 +121,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ### 下一步
 
-批次 43 已提交。下一步继续 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 2：登录 / 退出成功后刷新 Provider、模型列表和当前 Agent 配置，再做 OpenRouter OAuth 真实验收。
+批次 44-45 已提交。下一步继续 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 2：用 OpenRouter 完成真实 OAuth 端到端验收，然后进入阶段 3。
 
 ### 改版前的基线（历史记录，仅作对照）
 
@@ -936,6 +936,30 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿。
 - 真实客户端已重启。
 
+### 2026-10-04 批次 44：登录后刷新 Agent 与模型（已提交）
+
+- `pi-auth-helper` 读取认证状态前显式加载 `auth.json`，修复 OAuth 登录成功后状态仍显示未配置的问题。
+- 登录或退出后，空闲 Agent 会重连并重新读取模型列表和当前模型配置；运行中或等待授权的 Agent 不强行重启，只提示稍后生效。
+- 登录 / 退出后会刷新 Provider 凭据状态和当前 Agent 的模型选择。
+
+验证：
+
+- `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿。
+- 隔离 Electron 中完成 OpenRouter OAuth 写入验证，helper 返回 `configured: true`、`authType: oauth`、`source: stored`。
+
+### 2026-10-04 批次 45：Provider 搜索与厂商图标（已提交）
+
+- Provider 登录弹窗的选择框改为可输入组合框，支持按名称 / ID 过滤。
+- 删除到空字符串时保持为空，不再自动回填当前选项；右侧箭头区域也可点击展开。
+- 接入固定版本 `@lobehub/icons-static-svg@1.95.1`，在凭据状态列表、自定义模型列表和登录弹窗中显示厂商图标。
+- Kimi 使用深色图标，适配浅色背景；未知厂商回退到 Server 图标。
+- 搜索图标和输入文字垂直居中，焦点环只画在最外层选择框。
+
+验证：
+
+- `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿。
+- 隔离 Electron：Provider 组合框可过滤、可清空、右侧可展开，品牌图标无破图。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -959,6 +983,8 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 19. [x] **MCP 管理入口**：批次 41 已实现并完成隔离与视觉验证。下一步进入阶段 2：Provider 认证与凭据来源补齐。
 20. [x] **MCP 设置反馈与扩展隔离收口**：批次 42 已实现、验证并提交。
 21. [x] **Provider 凭据状态与来源显示**：批次 43 已实现、验证并提交；下一步是登录后刷新模型列表和当前 Agent。
+22. [x] **登录后刷新 Agent 与模型**：批次 44 已实现、验证并提交。
+23. [x] **Provider 搜索与厂商图标**：批次 45 已实现、验证并提交；下一步只剩 OpenRouter 真实 OAuth 端到端验收。
 
 ## 未提交状态
 
