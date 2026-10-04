@@ -22,8 +22,8 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-46 已提交到本地 `main`。
-批次 41-46 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作和 OpenRouter OAuth 验收流程都已收口。下一步进入阶段 3。
+再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-47 已提交到本地 `main`。
+批次 41-47 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作、OpenRouter OAuth 验收、Git Bash 黑窗修复和 Shell 重启弹窗都已收口。下一步进入阶段 3。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条都已验收，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
@@ -972,6 +972,18 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿。
 - 隔离 Electron：键盘选择、点击关闭、空输入和右侧展开均通过。
 
+### 2026-10-04 批次 47：Git Bash 黑窗修复与 Shell 重启提示（已提交）
+
+- 定位到 `git-bash.exe` 是可见终端启动器，不是可静默执行的 shell。
+- `AppSettingsStore` 自动把 `git-bash.exe` 纠正为同目录的 `Git\bin\bash.exe`，并迁移现有 `settings.json`。
+- 设置页说明补充 `Git\bin\bash.exe` / `Git\usr\bin\bash.exe`，明确不要配置 `git-bash.exe`。
+- 保存 Shell 路径后弹窗提供“稍后”和“立即重启”，避免用户不知道何时生效。
+
+验证：
+
+- `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿。
+- 实际配置已迁移为 `D:\git\Git\bin\bash.exe`。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -998,6 +1010,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 22. [x] **登录后刷新 Agent 与模型**：批次 44 已实现、验证并提交。
 23. [x] **Provider 搜索与厂商图标**：批次 45 已实现、验证并提交；下一步只剩 OpenRouter 真实 OAuth 端到端验收。
 24. [x] **Provider 组合框交互修正**：批次 46 已实现、验证并提交。
+25. [x] **Git Bash 黑窗修复与 Shell 重启提示**：批次 47 已实现、验证并提交。
 
 ## 未提交状态
 
