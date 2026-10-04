@@ -2,6 +2,7 @@ import type { ProviderApi, ProviderInput, ProviderModelSummary, ProviderSummary 
 import { KeyRound, Pencil, Plus, Server, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { SelectMenu } from "./select-menu.tsx";
+import { showSettingsToast } from "./settings-toast-store.ts";
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
@@ -70,6 +71,7 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 	const [providers, setProviders] = useState<ProviderSummary[] | null>(demoMode ? DEMO_PROVIDERS : null);
 	const [draft, setDraft] = useState<Draft | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [notice, setNotice] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 
 	const refresh = useCallback(async (): Promise<void> => {
@@ -89,6 +91,18 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 	useEffect(() => {
 		void refresh();
 	}, [refresh]);
+
+	useEffect(() => {
+		if (!notice) return;
+		showSettingsToast(notice, "success");
+		setNotice(null);
+	}, [notice]);
+
+	useEffect(() => {
+		if (!error) return;
+		showSettingsToast(error, "error");
+		setError(null);
+	}, [error]);
 
 	function updateModel(index: number, patch: Partial<ProviderModelSummary>): void {
 		if (!draft) return;
@@ -119,6 +133,7 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 				},
 			]);
 			setDraft(null);
+			setNotice("Provider 已保存。");
 			return;
 		}
 		if (!("codepiddy" in window)) return;
@@ -126,6 +141,7 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 		try {
 			setProviders(await window.codepiddy.saveProvider(input));
 			setDraft(null);
+			setNotice("Provider 已保存。");
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存 Provider 失败");
@@ -137,12 +153,14 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 	async function remove(id: string): Promise<void> {
 		if (demoMode) {
 			setProviders((current) => (current ?? []).filter((provider) => provider.id !== id));
+			setNotice("Provider 已删除。");
 			return;
 		}
 		if (!("codepiddy" in window)) return;
 		setBusy(true);
 		try {
 			setProviders(await window.codepiddy.deleteProvider(id));
+			setNotice("Provider 已删除。");
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "删除 Provider 失败");
@@ -347,12 +365,6 @@ export function ProviderSettings({ onOpenAuth }: { onOpenAuth?: (mode: "login" |
 						</button>
 					</div>
 				</div>
-			) : null}
-
-			{error ? (
-				<p className="permission-settings-error" role="alert">
-					{error}
-				</p>
 			) : null}
 		</section>
 	);

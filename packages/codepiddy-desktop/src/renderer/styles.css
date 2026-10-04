@@ -2150,19 +2150,6 @@ textarea:focus-visible,
 }
 .permission-picker-trigger svg { flex: 0 0 auto; transform: rotate(90deg); transition: transform 140ms ease; }
 .permission-picker-trigger[aria-expanded="true"] svg { transform: rotate(-90deg); }
-.permission-picker-list button {
-  min-height: 32px;
-  padding: var(--cp-space-xxs) var(--cp-space-sm);
-  border: 0;
-  border-radius: var(--cp-radius-sm);
-  background: transparent;
-  color: var(--cp-ink);
-  cursor: pointer;
-  text-align: left;
-}
-.permission-picker-list button:hover,
-.permission-picker-list button:focus-visible { outline: 0; background: var(--cp-surface-secondary); }
-.permission-picker-list button[aria-selected="true"] { background: var(--cp-surface-secondary); color: var(--cp-accent); font-weight: 600; }
 .permission-settings-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--cp-space-lg); }
 .permission-settings-footer small { max-width: 68ch; line-height: 1.5; }
 /* 右侧工作区：文件 / 更改 / 运行三个视图，共享现有 tool 事件数据。 */
@@ -3342,11 +3329,17 @@ textarea:focus-visible,
 .quick-start-button,
 .danger-button,
 .jump-to-latest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--cp-space-xs);
   min-height: var(--cp-control);
   padding: 0 var(--cp-space-md);
   border-radius: var(--cp-radius-md);
   font-size: 12.5px;
   font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
   box-shadow: none;
   backdrop-filter: none;
   transition: background var(--cp-dur-fast) var(--cp-ease), color var(--cp-dur-fast) var(--cp-ease),
@@ -4347,18 +4340,68 @@ body {
 .permission-picker-trigger {
   min-height: var(--cp-control);
   border: 0;
-  border-radius: var(--cp-radius-sm);
+  border-radius: var(--cp-radius-md);
   background: var(--cp-surface);
   color: var(--cp-ink);
   font-size: 12.5px;
-  box-shadow: var(--cp-elevation-raised);
+  box-shadow: inset 0 0 0 0.5px var(--cp-line-subtle);
 }
 
 .permission-picker-trigger:hover,
 .permission-picker-trigger[aria-expanded="true"] {
   border: 0;
   background: var(--cp-surface);
-  box-shadow: var(--cp-elevation-raised), 0 0 0 2px var(--cp-accent-ring);
+  box-shadow: inset 0 0 0 0.5px var(--cp-line-subtle), 0 0 0 2px var(--cp-accent-ring);
+}
+
+.permission-picker-list {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + var(--cp-space-xs));
+  right: 0;
+  display: grid;
+  width: 180px;
+  min-width: 100%;
+  gap: var(--cp-space-micro);
+  padding: var(--cp-space-xs);
+  border-radius: var(--cp-radius-lg);
+  background: var(--cp-surface);
+  box-shadow: var(--cp-elevation-float);
+}
+
+.permission-picker-list button {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-xs) var(--cp-space-sm);
+  border: 0;
+  border-radius: var(--cp-radius-sm);
+  background: transparent;
+  color: var(--cp-ink-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.permission-picker-list button:hover,
+.permission-picker-list button:focus-visible {
+  outline: 0;
+  background: var(--cp-surface-secondary);
+  color: var(--cp-ink);
+}
+
+.permission-picker-list button.is-selected {
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  font-weight: 560;
+}
+
+.permission-picker-list button svg {
+  flex: none;
+  color: var(--cp-accent);
 }
 
 .permission-settings-footer small {
@@ -4632,6 +4675,41 @@ body {
   box-shadow: 0 0 0 2px var(--cp-accent-ring);
 }
 
+.settings-secret-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.settings-secret-field input {
+  width: 100%;
+  padding-right: 42px;
+}
+
+.settings-secret-toggle {
+  position: absolute;
+  right: var(--cp-space-xs);
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--cp-radius-sm);
+  background: transparent;
+  color: var(--cp-ink-muted);
+  cursor: pointer;
+}
+
+.settings-secret-toggle:hover:not(:disabled) {
+  background: var(--cp-surface-secondary);
+  color: var(--cp-ink);
+}
+
+.settings-secret-toggle:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .settings-checkbox {
   display: flex;
   align-items: center;
@@ -4756,6 +4834,128 @@ body {
   font-size: 11px;
 }
 
+.mcp-settings-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--cp-space-sm);
+}
+
+.mcp-settings-toolbar > .mcp-settings-actions {
+  display: flex;
+  gap: var(--cp-space-sm);
+}
+
+.mcp-runtime-panel {
+  display: grid;
+  gap: var(--cp-space-sm);
+  padding-top: var(--cp-space-lg);
+  border-top: 0.5px solid var(--cp-line-subtle);
+}
+
+.mcp-runtime-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+}
+
+.mcp-runtime-heading > div {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.mcp-runtime-heading strong {
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.mcp-runtime-heading small {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
+.mcp-runtime-list {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.mcp-runtime-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--cp-space-sm);
+  min-height: 36px;
+  padding: var(--cp-space-xs) var(--cp-space-sm);
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-surface-secondary);
+}
+
+.mcp-runtime-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--cp-radius-full);
+  background: var(--cp-ink-faint);
+}
+
+.mcp-runtime-row.is-connected .mcp-runtime-dot {
+  background: var(--cp-success-vivid);
+}
+
+.mcp-runtime-row.is-failed .mcp-runtime-dot {
+  background: var(--cp-danger-vivid);
+}
+
+.mcp-runtime-row.is-needs-auth .mcp-runtime-dot {
+  background: var(--cp-warning-vivid);
+}
+
+.mcp-runtime-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.mcp-runtime-copy strong {
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.mcp-runtime-copy small {
+  overflow: hidden;
+  color: var(--cp-ink-muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-runtime-tools,
+.mcp-runtime-state {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.mcp-runtime-state.is-connected {
+  color: var(--cp-success);
+}
+
+.mcp-runtime-state.is-failed {
+  color: var(--cp-danger);
+}
+
+.mcp-runtime-state.is-needs-auth {
+  color: var(--cp-warning);
+}
+
+.mcp-runtime-error {
+  grid-column: 2 / -1;
+  color: var(--cp-danger);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .mcp-editor {
   display: grid;
   gap: var(--cp-space-md);
@@ -4837,13 +5037,51 @@ body {
   background: transparent;
 }
 
-.mcp-settings-notice {
-  margin: 0;
-  padding: var(--cp-space-sm) var(--cp-space-md);
-  border-radius: var(--cp-radius-md);
+.settings-toast-stack {
+  position: fixed;
+  right: var(--cp-space-xl);
+  bottom: var(--cp-space-xl);
+  z-index: 80;
+  display: grid;
+  width: min(420px, calc(100vw - var(--cp-space-2xl)));
+  gap: var(--cp-space-sm);
+}
+
+.settings-toast {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: var(--cp-space-md);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-lg);
+  box-shadow: var(--cp-elevation-float);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-toast span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-toast button {
+  flex: none;
+  padding: var(--cp-space-micro) var(--cp-space-xs);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.settings-toast.is-success {
   background: var(--cp-accent-soft);
   color: var(--cp-accent);
-  font-size: 12px;
+}
+
+.settings-toast.is-error {
+  background: color-mix(in oklab, var(--cp-danger) 9%, transparent);
+  color: var(--cp-danger);
 }
 
 .provider-editor-grid {

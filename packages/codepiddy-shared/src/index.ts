@@ -310,6 +310,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	setPermissionDefaults(input: PermissionDefaults): Promise<PermissionDefaults>;
 	saveTavilyApiKey(apiKey: string): Promise<SettingsStatus>;
 	clearTavilyApiKey(): Promise<SettingsStatus>;
+	getTavilyApiKey(): Promise<string | null>;
 	saveShellPath(shellPath: string): Promise<SettingsStatus>;
 	listMcpServers(projectRoot?: string): Promise<McpServerSummary[]>;
 	saveMcpServer(input: McpServerInput): Promise<McpServerSummary[]>;
@@ -511,12 +512,44 @@ export interface McpServerInput {
 }
 
 export interface McpActionInput {
-	action: "login" | "logout";
+	action: "list" | "login" | "logout";
+	name?: string;
+}
+
+export type McpServerRuntimeState =
+	| "connected"
+	| "disabled"
+	| "failed"
+	| "disconnected"
+	| "needs-auth"
+	| "starting"
+	| "unknown";
+
+export interface McpToolSummary {
 	name: string;
+	description?: string;
+}
+
+export interface McpServerRuntimeStatus {
+	name: string;
+	scope: string;
+	source: string;
+	enabled: boolean;
+	exposure: McpExposure;
+	transport: string;
+	state: McpServerRuntimeState;
+	tools: McpToolSummary[];
+	error?: string;
+}
+
+export interface McpRuntimeSnapshot {
+	servers: McpServerRuntimeStatus[];
+	errors: string[];
 }
 
 export interface McpActionResult {
 	output: string;
+	snapshot?: McpRuntimeSnapshot;
 }
 
 export const PROVIDER_APIS = [

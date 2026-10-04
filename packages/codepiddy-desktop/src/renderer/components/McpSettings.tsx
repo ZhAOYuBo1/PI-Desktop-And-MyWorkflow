@@ -3,13 +3,15 @@ import type {
 	McpClientRegistration,
 	McpExposure,
 	McpProjectOverrideInput,
+	McpRuntimeSnapshot,
 	McpServerInput,
 	McpServerSummary,
 	McpTransport,
 } from "@codepiddy/shared";
-import { Globe, LogIn, LogOut, Pencil, Plug, Plus, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Activity, Globe, LogIn, LogOut, Pencil, Plug, Plus, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { SelectMenu } from "./select-menu.tsx";
+import { showSettingsToast } from "./settings-toast-store.ts";
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
@@ -58,6 +60,42 @@ const DEMO_SERVERS: McpServerSummary[] = [
 		source: "global",
 	},
 ];
+
+const DEMO_RUNTIME: McpRuntimeSnapshot = {
+	servers: [
+		{
+			name: "web_search",
+			scope: "global",
+			source: "~/.pi/agent/mcp.json",
+			enabled: false,
+			exposure: "direct",
+			transport: "node tavily-search.js",
+			state: "disabled",
+			tools: [],
+		},
+		{
+			name: "chrome-devtools",
+			scope: "global",
+			source: "~/.pi/agent/mcp.json",
+			enabled: true,
+			exposure: "codemode",
+			transport: "npx chrome-devtools-mcp@1.6.0",
+			state: "connected",
+			tools: [{ name: "navigate" }, { name: "screenshot" }, { name: "evaluate" }],
+		},
+	],
+	errors: [],
+};
+
+function runtimeStateLabel(state: McpRuntimeSnapshot["servers"][number]["state"]): string {
+	if (state === "connected") return "已连接";
+	if (state === "disabled") return "已禁用";
+	if (state === "failed") return "失败";
+	if (state === "disconnected") return "未连接";
+	if (state === "needs-auth") return "需要登录";
+	if (state === "starting") return "连接中";
+	return "未知";
+}
 
 interface ServerDraft {
 	name: string;
@@ -227,6 +265,8 @@ export function McpSettings({
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
+	const [runtimeSnapshot, setRuntimeSnapshot] = useState<McpRuntimeSnapshot | null>(demoMode ? DEMO_RUNTIME : null);
+	const [runtimeBusy, setRuntimeBusy] = useState(false);
 
 	const refresh = useCallback(async (): Promise<void> => {
 		if (demoMode) return;
@@ -245,6 +285,40 @@ export function McpSettings({
 	useEffect(() => {
 		void refresh();
 	}, [refresh]);
+
+	const refreshRuntime = useCallback(async (): Promise<void> => {
+		if (demoMode) {
+			setRuntimeSnapshot(DEMO_RUNTIME);
+			return;
+		}
+		if (!("codepiddy" in window)) return;
+		setRuntimeBusy(true);
+		try {
+			const result = await window.codepiddy.runMcpAction({ action: "list" });
+			setRuntimeSnapshot(result.snapshot ?? { servers: [], errors: [result.output] });
+			setError(null);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "读取 MCP 运行状态失败");
+		} finally {
+			setRuntimeBusy(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		void refreshRuntime();
+	}, [refreshRuntime]);
+
+	useEffect(() => {
+		if (!notice) return;
+		showSettingsToast(notice, "success");
+		setNotice(null);
+	}, [notice]);
+
+	useEffect(() => {
+		if (!error) return;
+		showSettingsToast(error, "error");
+		setError(null);
+	}, [error]);
 
 	async function saveServer(): Promise<void> {
 		if (!draft) return;
@@ -332,6 +406,7 @@ export function McpSettings({
 			setDraft(null);
 			setNotice("MCP 服务已保存。");
 			setError(null);
+			void refreshRuntime();
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存 MCP 配置失败");
 		} finally {
@@ -375,6 +450,7 @@ export function McpSettings({
 			setOverrideDraft(null);
 			setNotice("项目覆盖已保存。");
 			setError(null);
+			void refreshRuntime();
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存项目覆盖失败");
 		} finally {
@@ -393,6 +469,7 @@ export function McpSettings({
 		try {
 			setServers(await window.codepiddy.deleteMcpServer(name));
 			setError(null);
+			void refreshRuntime();
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "删除 MCP 配置失败");
 		} finally {
@@ -416,6 +493,7 @@ export function McpSettings({
 			setOverrideDraft(null);
 			setNotice("项目覆盖已移除。");
 			setError(null);
+			void refreshRuntime();
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "移除项目覆盖失败");
 		} finally {
@@ -434,6 +512,7 @@ export function McpSettings({
 			const result = await window.codepiddy.runMcpAction({ action, name });
 			setNotice(result.output || (action === "login" ? "登录完成。" : "已退出。"));
 			setError(null);
+			void refreshRuntime();
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : `MCP ${action} 失败`);
 		} finally {
@@ -450,6 +529,7 @@ export function McpSettings({
 			await window.codepiddy.reconnectAgent(activeAgent);
 			setNotice("当前 Agent 已重连，MCP 配置已重新加载。");
 			setError(null);
+			void refreshRuntime();
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "重连 Agent 失败");
 		} finally {
@@ -477,14 +557,63 @@ export function McpSettings({
 					<strong>连接控制</strong>
 					<small>{activeAgent ? "重连当前 Agent 会重新连接全部 MCP 服务。" : "打开一个 Agent 后可重连。"}</small>
 				</div>
-				<button
-					className="secondary-button"
-					type="button"
-					disabled={!activeAgent || busy !== null}
-					onClick={() => void reconnectActiveAgent()}
-				>
-					<RefreshCw size={14} strokeWidth={2} /> 重连当前 Agent
-				</button>
+				<div className="mcp-settings-actions">
+					<button
+						className="secondary-button"
+						type="button"
+						disabled={runtimeBusy}
+						onClick={() => void refreshRuntime()}
+					>
+						<Activity size={14} strokeWidth={2} /> 刷新状态
+					</button>
+					<button
+						className="secondary-button"
+						type="button"
+						disabled={!activeAgent || busy !== null}
+						onClick={() => void reconnectActiveAgent()}
+					>
+						<RefreshCw size={14} strokeWidth={2} /> 重连当前 Agent
+					</button>
+				</div>
+			</div>
+
+			<div className="mcp-runtime-panel">
+				<div className="mcp-runtime-heading">
+					<div>
+						<strong>运行状态</strong>
+						<small>来自 Pi 原生 `pi mcp list --json`，不代表设置是否已保存。</small>
+					</div>
+					{runtimeBusy ? <span className="settings-status">读取中</span> : null}
+				</div>
+				{runtimeSnapshot?.servers.length ? (
+					<div className="mcp-runtime-list">
+						{runtimeSnapshot.servers.map((server) => (
+							<div className={`mcp-runtime-row is-${server.state}`} key={server.name}>
+								<span className="mcp-runtime-dot" aria-hidden="true" />
+								<span className="mcp-runtime-copy">
+									<strong>{server.name}</strong>
+									<small title={server.transport}>{server.transport || server.source}</small>
+								</span>
+								<span className="mcp-runtime-tools">
+									{server.tools.length > 0 ? `${server.tools.length} 个工具` : "无工具"}
+								</span>
+								<span className={`mcp-runtime-state is-${server.state}`}>
+									{runtimeStateLabel(server.state)}
+								</span>
+								{server.error ? <span className="mcp-runtime-error">{server.error}</span> : null}
+							</div>
+						))}
+					</div>
+				) : (
+					<p className="work-change-note">{runtimeSnapshot?.errors[0] || "没有可显示的 MCP 运行状态。"}</p>
+				)}
+				{runtimeSnapshot && runtimeSnapshot.errors.length > 1
+					? runtimeSnapshot.errors.slice(1).map((entry) => (
+							<p className="permission-settings-error" key={entry}>
+								{entry}
+							</p>
+						))
+					: null}
 			</div>
 
 			<div className="mcp-server-list">
@@ -919,13 +1048,6 @@ export function McpSettings({
 						</button>
 					</div>
 				</div>
-			) : null}
-
-			{notice ? <output className="mcp-settings-notice">{notice}</output> : null}
-			{error ? (
-				<p className="permission-settings-error" role="alert">
-					{error}
-				</p>
 			) : null}
 		</section>
 	);

@@ -61,6 +61,8 @@
 - 配置统一后，`web_search` 由 Pi 原生 MCP 连接、重连、权限、曝光和日志系统管理。
 - 命名策略已决定：接受原生工具名 `mcp__web_search__web_search`，不增加别名适配层。
   客户端工具卡和设置页仍显示友好名称 `web_search`，实际调用名保持 Pi 原生格式。
+- 扩展隔离策略：保留 `--no-extensions` 避免自动加载用户第三方 extension，同时显式加载
+  `builtin:mcp`、`builtin:codemode`、`builtin:tool-search` 和 CodePIddy 自己的 permission/review/retry。
 
 ### Pi 1.0.1 原生 MCP 能力
 
@@ -150,8 +152,8 @@
 | `auth.provider` | 已覆盖 | 设置页可编辑 |
 | MCP resources | 缺失 | 无资源浏览入口 |
 | MCP permissions annotations | 部分覆盖 | 有统一 MCP 权限开关，但没有按 annotation 展示 |
-| `/mcp` | 缺失 | 命令菜单没有入口 |
-| `pi mcp add/remove/list/login/logout` | 缺失 | 没有 CLI 包装入口 |
+| `/mcp` | 已覆盖 | 客户端命令菜单提供 `/mcp`，打开设置页的 MCP 管理入口 |
+| `pi mcp add/remove/list/login/logout` | 已覆盖 | `list/login/logout` 走 Pi CLI；add/remove 走客户端原生设置 UI |
 | Tavily `web_search` | 已覆盖 | 已写入 Pi 原生 `mcp.json`，Key 使用 `${TAVILY_API_KEY}`，工具名 `mcp__web_search__web_search` |
 
 ### 导出、分享与诊断
@@ -221,7 +223,7 @@
 7. [x] 将 `web_search` 写入 Pi 原生 `mcp.json`，env 使用 `${TAVILY_API_KEY}`。
 8. [x] 决定原生 MCP 工具名策略：接受 `mcp__web_search__web_search`，仅在客户端显示层使用短名。
 9. [x] 升级 MCP 设置 UI：项目级 override、enabled、exposure、toolExposure、description、timeout、OAuth。
-10. 增加 `/mcp` 命令入口和 `pi mcp` 包装。
+10. [x] 增加 `/mcp` 命令入口和 `pi mcp` 包装；状态读取使用 `pi mcp list --json`。
 
 ### 阶段 2：认证与 Provider
 

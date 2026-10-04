@@ -453,10 +453,12 @@ export function parseMcpProjectOverrideLocator(value: unknown): McpProjectOverri
 
 export function parseMcpActionInput(value: unknown): McpActionInput {
 	const input = record(value, "MCP Action");
-	if (input.action !== "login" && input.action !== "logout") throw new Error("MCP 操作无效");
+	if (input.action !== "list" && input.action !== "login" && input.action !== "logout") {
+		throw new Error("MCP 操作无效");
+	}
 	return {
 		action: input.action,
-		name: text(input.name, "MCP 服务名", 100),
+		...(input.action === "list" ? {} : { name: text(input.name, "MCP 服务名", 100) }),
 	};
 }
 

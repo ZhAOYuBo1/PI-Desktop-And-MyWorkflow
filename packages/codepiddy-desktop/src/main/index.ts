@@ -40,6 +40,7 @@ import type {
 	InvokeAgentBuiltinCommandInput,
 	McpActionInput,
 	McpActionResult,
+	McpRuntimeSnapshot,
 	PendingPermissionRequest,
 	ProjectSummary,
 	ResetAgentInput,
@@ -141,6 +142,7 @@ const channels = {
 	respondToExtensionUi: "codepiddy:agent:extension-ui-response",
 	getPendingPermissionRequest: "codepiddy:agent:permission:get-pending",
 	settingsClearTavily: "codepiddy:settings:tavily:clear",
+	settingsGetTavily: "codepiddy:settings:tavily:get",
 	settingsListSkills: "codepiddy:settings:skills:list",
 	settingsGetRoleSkills: "codepiddy:settings:role-skills:get",
 	settingsSetRoleSkills: "codepiddy:settings:role-skills:set",
@@ -313,6 +315,65 @@ function roleLabel(role: AgentRole): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseMcpRuntimeSnapshot(value: unknown): McpRuntimeSnapshot {
+	if (!isRecord(value)) return { servers: [], errors: [] };
+	const servers = Array.isArray(value.servers)
+		? value.servers.flatMap((entry): McpRuntimeSnapshot["servers"] => {
+				if (!isRecord(entry) || typeof entry.name !== "string") return [];
+				const state =
+					entry.state === "connected" ||
+					entry.state === "disabled" ||
+					entry.state === "failed" ||
+					entry.state === "disconnected" ||
+					entry.state === "needs-auth" ||
+					entry.state === "starting"
+						? entry.state
+						: "unknown";
+				const exposure =
+					entry.exposure === "codemode" ||
+					entry.exposure === "deferred" ||
+					entry.exposure === "direct" ||
+					entry.exposure === "hidden"
+						? entry.exposure
+						: "codemode";
+				return [
+					{
+						name: entry.name,
+						scope: typeof entry.scope === "string" ? entry.scope : "global",
+						source: typeof entry.source === "string" ? entry.source : "",
+						enabled: entry.enabled !== false,
+						exposure,
+						transport: typeof entry.transport === "string" ? entry.transport : "",
+						state,
+						tools: Array.isArray(entry.tools)
+							? entry.tools.flatMap((tool) =>
+									typeof tool === "string"
+										? [{ name: tool }]
+										: isRecord(tool) && typeof tool.name === "string"
+											? [
+													{
+														name: tool.name,
+														...(typeof tool.description === "string"
+															? { description: tool.description }
+															: {}),
+													},
+												]
+											: [],
+								)
+							: [],
+						...(typeof entry.error === "string" && entry.error ? { error: entry.error } : {}),
+					},
+				];
+			})
+		: [];
+	return {
+		servers,
+		errors: Array.isArray(value.errors)
+			? value.errors.filter((entry): entry is string => typeof entry === "string")
+			: [],
+	};
 }
 
 function parseContextUsage(value: unknown): AgentContextUsage | undefined {
@@ -571,6 +632,12 @@ async function probePiUpdate(
 			path.join(stagingRoot, "probe-sessions"),
 			"--continue",
 			"--extension",
+			"builtin:codemode",
+			"--extension",
+			"builtin:tool-search",
+			"--extension",
+			"builtin:mcp",
+			"--extension",
 			path.join(extensions, "permission.js"),
 			"--extension",
 			path.join(extensions, "review.js"),
@@ -733,6 +800,7 @@ class AgentManager {
 				? path.join(this.repositoryRoot, "coding-agent-package", "dist", "bundle", "cli.js")
 				: path.join(this.repositoryRoot, "packages", "coding-agent-runtime", "dist", "bundle", "cli.js"));
 		const nodeExecutable = process.env.CODEPIDDY_NODE_EXECUTABLE ?? (packaged ? process.execPath : "node");
+		const tavilyApiKey = await this.settingsStore.getTavilyApiKey();
 		const args = [
 			...(compiledRuntime
 				? [cliPath]
@@ -743,7 +811,8 @@ class AgentManager {
 					]),
 			"mcp",
 			input.action,
-			input.name,
+			...(input.name ? [input.name] : []),
+			...(input.action === "list" ? ["--json"] : []),
 			...(input.action === "login" ? ["--timeout", "300"] : []),
 		];
 		const env: NodeJS.ProcessEnv = {
@@ -751,6 +820,7 @@ class AgentManager {
 			...(packaged ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
 			...(await this.settingsStore.getProviderEnv()),
 			...(await this.settingsStore.getMcpEnv()),
+			...(tavilyApiKey ? { TAVILY_API_KEY: tavilyApiKey } : {}),
 			...(compiledRuntime
 				? {
 						PI_PACKAGE_DIR:
@@ -768,17 +838,34 @@ class AgentManager {
 				stdio: ["ignore", "pipe", "pipe"],
 				windowsHide: true,
 			});
-			let output = "";
-			const append = (chunk: Buffer): void => {
-				output = `${output}${chunk.toString("utf8")}`.slice(-64 * 1024);
+			let stdout = "";
+			let stderr = "";
+			const appendStdout = (chunk: Buffer): void => {
+				stdout = `${stdout}${chunk.toString("utf8")}`.slice(-64 * 1024);
 			};
-			child.stdout.on("data", append);
-			child.stderr.on("data", append);
+			const appendStderr = (chunk: Buffer): void => {
+				stderr = `${stderr}${chunk.toString("utf8")}`.slice(-64 * 1024);
+			};
+			child.stdout.on("data", appendStdout);
+			child.stderr.on("data", appendStderr);
 			child.once("error", reject);
 			child.once("exit", (code) => {
-				const text = output.trim();
-				if (code === 0) resolve({ output: text });
-				else reject(new Error(text || `Pi MCP ${input.action} exited with code ${code ?? "unknown"}`));
+				const stdoutText = stdout.trim();
+				const stderrText = stderr.trim();
+				const text = stdoutText || stderrText;
+				if (input.action === "list") {
+					let snapshot: McpRuntimeSnapshot;
+					try {
+						snapshot = parseMcpRuntimeSnapshot(JSON.parse(stdoutText || "{}") as unknown);
+					} catch {
+						snapshot = { servers: [], errors: [stderrText || stdoutText || "Pi MCP list returned no JSON"] };
+					}
+					resolve({ output: text, snapshot });
+				} else if (code === 0) {
+					resolve({ output: text });
+				} else {
+					reject(new Error(text || `Pi MCP ${input.action} exited with code ${code ?? "unknown"}`));
+				}
 			});
 		});
 	}
@@ -1327,6 +1414,12 @@ class AgentManager {
 				"--session-dir",
 				agent.sessionDirectory,
 				...(selectedSessionId ? ["--session", selectedSessionId] : ["--continue"]),
+				"--extension",
+				"builtin:codemode",
+				"--extension",
+				"builtin:tool-search",
+				"--extension",
+				"builtin:mcp",
 				"--extension",
 				compiledRuntime
 					? path.join(extensionRoot, "permission.js")
@@ -1916,6 +2009,7 @@ function registerIpcHandlers(
 		settingsStore.saveTavilyApiKey(parseBoundedText(rawApiKey, "Tavily API Key", 500)),
 	);
 	ipcMain.handle(channels.settingsClearTavily, () => settingsStore.clearTavilyApiKey());
+	ipcMain.handle(channels.settingsGetTavily, () => settingsStore.getTavilyApiKey());
 	ipcMain.handle(channels.settingsSaveShell, (_event, rawShellPath: unknown) =>
 		settingsStore.setShellPath(parseBoundedText(rawShellPath, "Shell 路径", 1024)),
 	);

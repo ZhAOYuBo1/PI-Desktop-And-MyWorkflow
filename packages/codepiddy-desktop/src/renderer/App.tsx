@@ -27,7 +27,7 @@ import type {
 	SettingsStatus,
 	WorkItemSummary,
 } from "@codepiddy/shared";
-import { Trash2 } from "lucide-react";
+import { Check, Eye, EyeOff, Trash2 } from "lucide-react";
 import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AppIcon, type AppIconName } from "./components/app-icon.tsx";
 import { FileMentionMenu } from "./components/FileMentionMenu.tsx";
@@ -37,6 +37,8 @@ import { ProviderSettings } from "./components/ProviderSettings.tsx";
 import { SlashCommandMenu } from "./components/SlashCommandMenu.tsx";
 import { StreamStats } from "./components/StreamStats.tsx";
 import { SelectMenu } from "./components/select-menu.tsx";
+import { SettingsToastHost } from "./components/settings-toast-host.tsx";
+import { showSettingsToast } from "./components/settings-toast-store.ts";
 import { estimateTokens, extractUsageOutput, type FinalStreamStats, formatElapsed } from "./components/stream-stats.ts";
 import { ThinkingControl } from "./components/ThinkingControl.tsx";
 import { ToolCallCard } from "./components/ToolCallCard.tsx";
@@ -845,11 +847,13 @@ function PermissionSettingRow({
 							<button
 								key={choice.value}
 								type="button"
+								className={value === choice.value ? "is-selected" : ""}
 								role="option"
 								aria-selected={value === choice.value}
 								onClick={() => choose(choice.value)}
 							>
-								{choice.label}
+								<span>{choice.label}</span>
+								{value === choice.value ? <Check size={13} strokeWidth={2} aria-hidden="true" /> : null}
 							</button>
 						))}
 					</div>
@@ -1281,8 +1285,8 @@ export function App() {
 	const [permissionSaving, setPermissionSaving] = useState(false);
 	// 权限卡自己的错误位。设置页通用的 error 横幅固定在 main pane 顶部，
 	// 页面滚到下面就看不见，而这里恰恰是最需要立刻看到失败的地方。
-	const [permissionError, setPermissionError] = useState<string | null>(null);
 	const [tavilyApiKey, setTavilyApiKey] = useState("");
+	const [tavilyKeyRevealed, setTavilyKeyRevealed] = useState(false);
 	const [shellPath, setShellPath] = useState("");
 	const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([]);
 	const [roleSkillAssignments, setRoleSkillAssignments] = useState<RoleSkillAssignments>({
@@ -2279,6 +2283,24 @@ export function App() {
 	}, [error]);
 
 	useEffect(() => {
+		if (demoMode || selection.type !== "settings" || settingsSection !== "search" || !("codepiddy" in window)) {
+			return;
+		}
+		let cancelled = false;
+		void window.codepiddy
+			.getSettingsStatus()
+			.then((status) => {
+				if (!cancelled) setSettingsStatus(status);
+			})
+			.catch((caught: unknown) => {
+				if (!cancelled) setError(caught instanceof Error ? caught.message : "读取 Tavily 配置状态失败");
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [selection.type, settingsSection]);
+
+	useEffect(() => {
 		if (!archiveToast) return;
 		const timer = window.setTimeout(() => setArchiveToast(null), 4500);
 		return () => window.clearTimeout(timer);
@@ -2839,6 +2861,11 @@ export function App() {
 				return;
 			}
 			if (command.source === "builtin") {
+				if (name === "mcp") {
+					setDrafts((current) => ({ ...current, [agentId]: "" }));
+					await openSettings("mcp");
+					return;
+				}
 				if (name === "settings") {
 					setDrafts((current) => ({ ...current, [agentId]: "" }));
 					await openSettings();
@@ -3571,7 +3598,8 @@ export function App() {
 		abortAgent,
 	]);
 
-	async function openSettings(): Promise<void> {
+	async function openSettings(section: SettingsSectionId = "runtime"): Promise<void> {
+		setSettingsSection(section);
 		setSelection({ type: "settings" });
 		if (!("codepiddy" in window)) return;
 		const [status, permissions, skills, assignments, piRuntime] = await Promise.all([
@@ -3605,12 +3633,11 @@ export function App() {
 		const next = { ...previous, ...patch };
 		setPermissionDefaults(next);
 		setPermissionSaving(true);
-		setPermissionError(null);
 		try {
 			setPermissionDefaults(await window.codepiddy.setPermissionDefaults(next));
 		} catch (caught) {
 			setPermissionDefaults(previous);
-			setPermissionError(caught instanceof Error ? caught.message : "保存默认权限失败");
+			showSettingsToast(caught instanceof Error ? caught.message : "保存默认权限失败", "error");
 		} finally {
 			setPermissionSaving(false);
 		}
@@ -3679,6 +3706,7 @@ export function App() {
 		try {
 			setSettingsStatus(await window.codepiddy.saveTavilyApiKey(tavilyApiKey));
 			setTavilyApiKey("");
+			setTavilyKeyRevealed(false);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存 Tavily API Key 失败");
 		}
@@ -3687,6 +3715,30 @@ export function App() {
 	async function clearTavilyKey(): Promise<void> {
 		if (!("codepiddy" in window)) return;
 		setSettingsStatus(await window.codepiddy.clearTavilyApiKey());
+		setTavilyApiKey("");
+		setTavilyKeyRevealed(false);
+	}
+
+	async function toggleTavilyKeyReveal(): Promise<void> {
+		if (!("codepiddy" in window)) return;
+		if (tavilyKeyRevealed) {
+			setTavilyKeyRevealed(false);
+			return;
+		}
+		if (tavilyApiKey) {
+			setTavilyKeyRevealed(true);
+			return;
+		}
+		if (!settingsStatus?.tavilyApiKeyConfigured) return;
+		try {
+			const apiKey = await window.codepiddy.getTavilyApiKey();
+			if (apiKey) {
+				setTavilyApiKey(apiKey);
+				setTavilyKeyRevealed(true);
+			}
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "读取 Tavily API Key 失败");
+		}
 	}
 
 	async function saveShellPath(value: string): Promise<void> {
@@ -4038,11 +4090,6 @@ export function App() {
 									}
 								/>
 							</div>
-							{permissionError ? (
-								<p className="permission-settings-error" role="alert">
-									{permissionError}
-								</p>
-							) : null}
 							<div className="permission-settings-footer">
 								<small>
 									直接允许命令执行可运行任意命令。改动即时保存，对所有 Agent
@@ -4059,12 +4106,28 @@ export function App() {
 							<div className="settings-status">
 								{settingsStatus?.tavilyApiKeyConfigured ? "已配置" : "未配置"}
 							</div>
-							<input
-								type="password"
-								value={tavilyApiKey}
-								onChange={(event) => setTavilyApiKey(event.target.value)}
-								placeholder="tvly-…"
-							/>
+							<div className="settings-secret-field">
+								<input
+									type={tavilyKeyRevealed ? "text" : "password"}
+									value={tavilyApiKey}
+									onChange={(event) => setTavilyApiKey(event.target.value)}
+									placeholder={settingsStatus?.tavilyApiKeyConfigured ? "••••••••••••••••" : "tvly-…"}
+								/>
+								<button
+									className="settings-secret-toggle"
+									type="button"
+									aria-label={tavilyKeyRevealed ? "隐藏 Tavily API Key" : "显示 Tavily API Key"}
+									title={tavilyKeyRevealed ? "隐藏 Key" : "显示 Key"}
+									disabled={!settingsStatus?.tavilyApiKeyConfigured && !tavilyApiKey}
+									onClick={() => void toggleTavilyKeyReveal()}
+								>
+									{tavilyKeyRevealed ? (
+										<EyeOff size={14} strokeWidth={2} />
+									) : (
+										<Eye size={14} strokeWidth={2} />
+									)}
+								</button>
+							</div>
 							<div className="settings-actions">
 								<button
 									className="primary-button"
@@ -4883,6 +4946,7 @@ export function App() {
 				) : null}
 				{renderMainContent()}
 			</main>
+			<SettingsToastHost />
 			{sessionPanel ? (
 				<div className="modal-backdrop" role="presentation">
 					<button

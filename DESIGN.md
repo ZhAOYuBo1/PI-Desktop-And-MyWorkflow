@@ -308,7 +308,8 @@ components:
 设置页是左侧分类导航 + 右侧内容，一次只显示一个分类：`常规`（Pi 运行时、Shell）、`集成`（Provider 与模型、MCP 服务、Tavily Search）、`Agent`（默认权限、Agent Skills）。导航是 208px 的次级底色列，选中项白底抬起；不再把所有设置堆在同一页。
 
 - **Provider 与模型**：读写 Pi 原生 `~/.pi/agent/models.json`。API Key 用 Electron safeStorage 加密保存在本机，models.json 里只写 `$ENV` 引用，启动 Agent 时通过环境变量注入，不落明文。
-- **MCP 服务**：读写 Pi 原生 `~/.pi/agent/mcp.json`，并支持项目级 `.pi/mcp.json` 覆盖 `enabled` / `exposure` / `toolExposure`。全局编辑器覆盖 stdio / HTTP、参数、环境变量、Headers、描述、超时、工具级 exposure、OAuth 和 `auth.provider`。OAuth client secret 使用 safeStorage，配置只写环境变量引用；登录 / 退出调用 Pi 原生 `mcp` 子命令，重连复用当前 Agent 进程重启。内置 `web_search`（Tavily MCP）由客户端维护为原生 MCP 条目，Key 只在 Tavily Search 里配置并注入 `TAVILY_API_KEY`；实际工具名是 `mcp__web_search__web_search`，工具卡显示短名 `web_search`。
+- **MCP 服务**：读写 Pi 原生 `~/.pi/agent/mcp.json`，并支持项目级 `.pi/mcp.json` 覆盖 `enabled` / `exposure` / `toolExposure`。全局编辑器覆盖 stdio / HTTP、参数、环境变量、Headers、描述、超时、工具级 exposure、OAuth 和 `auth.provider`。OAuth client secret 使用 safeStorage，配置只写环境变量引用；登录 / 退出调用 Pi 原生 `mcp` 子命令，重连复用当前 Agent 进程重启。`/mcp` 在客户端命令菜单中打开 MCP 管理页，运行状态由 `pi mcp list --json` 包装读取。内置 `web_search`（Tavily MCP）由客户端维护为原生 MCP 条目，Key 只在 Tavily Search 里配置并注入 `TAVILY_API_KEY`；实际工具名是 `mcp__web_search__web_search`，工具卡显示短名 `web_search`。
+- **设置反馈**：MCP、Provider 和权限设置统一使用右下角 `SettingsToast` 消息栈。成功和错误提示自动消失、可手动关闭；多条消息纵向堆叠，不互相覆盖。Tavily Key 使用掩码密码字段，眼睛按钮按需解密显示。
 - 两类配置都只影响新启动或重置后的 Agent；正在运行的 Agent 不受影响。
 
 ### Tool Card（签名组件）
