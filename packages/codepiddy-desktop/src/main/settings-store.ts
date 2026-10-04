@@ -124,6 +124,13 @@ function providerEnvName(id: string): string {
 	return `CODEPIDDY_PROVIDER_${id.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_API_KEY`;
 }
 
+function normalizeShellExecutable(value: string | null): string | null {
+	if (!value || path.basename(value).toLowerCase() !== "git-bash.exe") return value;
+	const root = path.dirname(value);
+	const candidates = [path.join(root, "bin", "bash.exe"), path.join(root, "usr", "bin", "bash.exe")];
+	return candidates.find((candidate) => existsSync(candidate)) ?? value;
+}
+
 function isProviderApi(value: unknown): value is ProviderApi {
 	return (
 		value === "openai-completions" ||
@@ -280,7 +287,7 @@ export class AppSettingsStore {
 		await writeFile(this.piSettingsPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
 	}
 
-	async getShellPath(): Promise<string | null> {
+	private async readStoredShellPath(): Promise<string | null> {
 		try {
 			const parsed = JSON.parse(await readFile(this.shellPathFile, "utf8")) as unknown;
 			if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
@@ -290,6 +297,16 @@ export class AppSettingsStore {
 			if (isNotFound(error)) return null;
 			throw error;
 		}
+	}
+
+	async getShellPath(): Promise<string | null> {
+		return this.readStoredShellPath();
+	}
+
+	async ensureShellPathNormalized(): Promise<void> {
+		const stored = await this.readStoredShellPath();
+		const normalized = normalizeShellExecutable(stored);
+		if (normalized && normalized !== stored) await this.setShellPath(normalized);
 	}
 
 	/**
@@ -330,7 +347,7 @@ export class AppSettingsStore {
 	}
 
 	async setShellPath(value: string): Promise<SettingsStatus> {
-		const shellPath = value.trim();
+		const shellPath = normalizeShellExecutable(value.trim()) ?? "";
 		if (shellPath && !existsSync(shellPath)) throw new Error(`Shell 路径不存在：${shellPath}`);
 		if (shellPath) {
 			await mkdir(path.dirname(this.shellPathFile), { recursive: true });

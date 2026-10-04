@@ -1261,6 +1261,7 @@ export function App() {
 	const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
 	const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
 	const [resetAgentDialog, setResetAgentDialog] = useState<ResetAgentDialogState | null>(null);
+	const [shellRestartDialog, setShellRestartDialog] = useState(false);
 	const [agentActionsOpen, setAgentActionsOpen] = useState<string | null>(null);
 	const [sessionPanel, setSessionPanel] = useState<SessionPanelState | null>(null);
 	const [sessionPanelLoading, setSessionPanelLoading] = useState(false);
@@ -3614,6 +3615,7 @@ export function App() {
 				setModelPickerAgentId(null);
 				setModelSearch("");
 			} else if (sessionPanel) setSessionPanel(null);
+			else if (shellRestartDialog) setShellRestartDialog(false);
 			else if (deleteDialog) setDeleteDialog(null);
 			else if (resetAgentDialog) setResetAgentDialog(null);
 			else if (renameDialog) setRenameDialog(null);
@@ -3645,6 +3647,7 @@ export function App() {
 		selectedWorkItem,
 		selection,
 		sessionPanel,
+		shellRestartDialog,
 		writeLeaseDialog,
 		abortAgent,
 	]);
@@ -3797,6 +3800,7 @@ export function App() {
 		try {
 			setSettingsStatus(await window.codepiddy.saveShellPath(value));
 			setShellPath("");
+			setShellRestartDialog(true);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存 Shell 路径失败");
 		}
@@ -4206,7 +4210,8 @@ export function App() {
 								<p>
 									Agent 的 <code>bash</code> 工具需要一个 bash 可执行文件。留空则自动探测（Program Files 下的
 									Git Bash、PATH 上的 bash.exe）；Git for Windows 装在非标准目录时填这里，否则工具会报 “No bash
-									shell found”。
+									shell found”。请填 <code>Git\bin\bash.exe</code> 或 <code>Git\usr\bin\bash.exe</code>，不要填{" "}
+									<code>git-bash.exe</code>，后者会弹出可见终端窗口。
 								</p>
 							</div>
 							<div className="settings-status">{settingsStatus?.shellPath ? "已配置" : "自动探测"}</div>
@@ -5178,6 +5183,32 @@ export function App() {
 								onClick={() => void clearStaleWriteLease()}
 							>
 								清理写锁
+							</button>
+						</div>
+					</div>
+				</div>
+			) : null}
+			{shellRestartDialog ? (
+				<div className="modal-backdrop" role="presentation">
+					<button
+						className="modal-backdrop-dismiss"
+						type="button"
+						aria-label="稍后重启"
+						onClick={() => setShellRestartDialog(false)}
+					/>
+					<div className="modal" role="dialog" aria-modal="true" aria-label="重启 CodePIddy">
+						<h2>重启 CodePIddy？</h2>
+						<p>Shell 路径已保存。重启客户端后，新启动的 Agent 会使用新的 bash 配置。</p>
+						<div className="modal-actions">
+							<button type="button" onClick={() => setShellRestartDialog(false)}>
+								稍后
+							</button>
+							<button
+								className="primary-button"
+								type="button"
+								onClick={() => void window.codepiddy.restartCodePIddy()}
+							>
+								立即重启
 							</button>
 						</div>
 					</div>

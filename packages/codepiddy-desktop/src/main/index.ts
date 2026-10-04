@@ -2155,6 +2155,7 @@ if (!hasSingleInstanceLock) {
 		});
 		await settingsStore.ensurePermissionPolicy();
 		await settingsStore.ensurePiRetrySettings();
+		await settingsStore.ensureShellPathNormalized();
 		await settingsStore.ensureTavilyMcpServer();
 		const recentProjects = new RecentProjectStore(app.getPath("userData"), {
 			discoverKnownRoots: process.env.CODEPIDDY_DISABLE_PROJECT_DISCOVERY !== "1",
