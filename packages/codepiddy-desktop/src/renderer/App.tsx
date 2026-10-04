@@ -34,6 +34,7 @@ import { FileMentionMenu } from "./components/FileMentionMenu.tsx";
 import { McpSettings } from "./components/McpSettings.tsx";
 import { MessageContent } from "./components/message-content.tsx";
 import { ProviderSettings } from "./components/ProviderSettings.tsx";
+import { ProviderIcon } from "./components/provider-icon.tsx";
 import { SlashCommandMenu } from "./components/SlashCommandMenu.tsx";
 import { StreamStats } from "./components/StreamStats.tsx";
 import { SelectMenu } from "./components/select-menu.tsx";
@@ -5425,10 +5426,13 @@ export function App() {
 									label="Provider"
 									value={authProviderId ?? ""}
 									disabled={authBusy || authRequestId !== null}
+									searchable={authDialogMode === "login"}
+									searchPlaceholder="搜索 Provider 名称或 ID"
 									placeholder={authBusy ? "正在读取 Provider…" : "没有可用 Provider"}
 									options={authProviders.map((provider) => ({
 										value: provider.id,
 										label: provider.name,
+										icon: <ProviderIcon providerId={provider.id} size={15} />,
 										...(provider.configured ? { description: "已配置" } : {}),
 									}))}
 									onChange={(value) => {

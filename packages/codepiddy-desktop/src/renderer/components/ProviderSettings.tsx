@@ -6,20 +6,9 @@ import type {
 	ProviderModelSummary,
 	ProviderSummary,
 } from "@codepiddy/shared";
-import {
-	CircleCheck,
-	CircleOff,
-	KeyRound,
-	LogIn,
-	LogOut,
-	Pencil,
-	Plus,
-	RefreshCw,
-	Server,
-	ShieldCheck,
-	Trash2,
-} from "lucide-react";
+import { KeyRound, LogIn, LogOut, Pencil, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ProviderIcon } from "./provider-icon.tsx";
 import { SelectMenu } from "./select-menu.tsx";
 import { showSettingsToast } from "./settings-toast-store.ts";
 
@@ -359,12 +348,12 @@ export function ProviderSettings({
 							className={`provider-auth-row${provider.configured ? " is-configured" : " is-unconfigured"}`}
 							key={provider.id}
 						>
-							<span className="provider-auth-state">
-								{provider.configured ? (
-									<CircleCheck size={14} strokeWidth={2} />
-								) : (
-									<CircleOff size={14} strokeWidth={2} />
-								)}
+							<span className="provider-auth-icon">
+								<ProviderIcon providerId={provider.id} size={16} />
+								<span
+									className={`provider-auth-state-dot${provider.configured ? " is-configured" : ""}`}
+									title={provider.configured ? "已配置" : "未配置"}
+								/>
 							</span>
 							<span className="mcp-server-copy">
 								<strong>{provider.name}</strong>
@@ -435,7 +424,7 @@ export function ProviderSettings({
 				{(providers ?? []).map((provider) => (
 					<div className="provider-config-row" key={provider.id}>
 						<span className="mcp-server-icon">
-							<Server size={14} strokeWidth={2} />
+							<ProviderIcon providerId={provider.id} size={15} />
 						</span>
 						<span className="mcp-server-copy">
 							<strong>{provider.id}</strong>

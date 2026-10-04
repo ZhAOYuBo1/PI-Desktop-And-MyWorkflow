@@ -1041,20 +1041,58 @@ button { color: inherit; }
   opacity: 0.55;
 }
 
-.select-menu-trigger > span {
+.select-menu-search-trigger {
+  overflow: hidden;
+  cursor: text;
+}
+
+.select-menu-search-trigger input,
+.select-menu-search-trigger input:focus {
+  display: block;
+  height: 100%;
   min-width: 0;
+  flex: 1;
+  line-height: normal;
+  padding: 0;
+  border: 0;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent;
+  color: var(--cp-ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.select-menu-search-trigger input::placeholder {
+  color: var(--cp-ink-muted);
+}
+
+.select-menu-search-trigger > svg {
+  flex: none;
+  color: var(--cp-ink-muted);
+}
+
+.select-menu-trigger-content {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  gap: var(--cp-space-sm);
+}
+
+.select-menu-trigger-content > span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.select-menu-trigger > svg {
+.select-menu-chevron {
   flex: none;
   color: var(--cp-ink-muted);
   transition: transform var(--cp-dur-fast) var(--cp-ease);
 }
 
-.select-menu.is-open .select-menu-trigger > svg {
+.select-menu.is-open .select-menu-chevron {
   transform: rotate(180deg);
 }
 
@@ -1102,10 +1140,26 @@ button { color: inherit; }
   opacity: 0.5;
 }
 
-.select-menu-option > span {
+.select-menu-option-content {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  gap: var(--cp-space-sm);
+}
+
+.select-menu-option-copy {
   display: grid;
   min-width: 0;
   gap: 1px;
+}
+
+.select-menu-option-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  place-items: center;
 }
 
 .select-menu-option strong,
@@ -4682,6 +4736,14 @@ body {
   box-shadow: 0 0 0 2px var(--cp-accent-ring);
 }
 
+.settings-field .select-menu-search-trigger input,
+.settings-field .select-menu-search-trigger input:focus {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
 .settings-secret-field {
   position: relative;
   display: flex;
@@ -4897,20 +4959,30 @@ body {
   background: var(--cp-surface);
 }
 
-.provider-auth-state {
+.provider-auth-icon {
+  position: relative;
   display: grid;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   flex: none;
   place-items: center;
-  border-radius: var(--cp-radius-full);
-  background: color-mix(in oklab, var(--cp-success) 10%, transparent);
-  color: var(--cp-success);
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-surface);
 }
 
-.provider-auth-row.is-unconfigured .provider-auth-state {
-  background: var(--cp-surface-inset);
-  color: var(--cp-ink-muted);
+.provider-auth-state-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--cp-surface);
+  border-radius: var(--cp-radius-full);
+  background: var(--cp-ink-faint);
+}
+
+.provider-auth-state-dot.is-configured {
+  background: var(--cp-success);
 }
 
 .provider-auth-empty {
@@ -4934,6 +5006,11 @@ body {
 
 .provider-auth-toggle:hover {
   text-decoration: underline;
+}
+
+.provider-brand-icon {
+  display: block;
+  object-fit: contain;
 }
 
 .provider-config-heading {
@@ -5327,11 +5404,11 @@ body {
     grid-template-areas:
       "state copy action"
       ". badges badges";
-    grid-template-columns: 22px minmax(0, 1fr) auto;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
     row-gap: var(--cp-space-xs);
   }
 
-  .provider-auth-state {
+  .provider-auth-icon {
     grid-area: state;
   }
 
