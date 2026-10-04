@@ -106,10 +106,11 @@
 | `/model` | 已覆盖 | 模型选择器、模型搜索、当前模型 |
 | `/thinking` | 已覆盖 | Thinking 波场选择器 |
 | Provider API Key | 部分覆盖 | `ProviderSettings` 可写 `models.json`，Key 加密保存 |
-| Provider 登录 | 已完成验证，待验收 | 客户端设置页入口；隔离目录下 API Key 登录成功写入 `auth.json` |
-| Provider 退出 | 已实现，待验收 | 客户端设置页入口，调用 `ModelRuntime.logout()` |
-| OAuth 登录 | 已接入，待真实 Provider 验收 | auth URL、manual code、device code、进度和取消事件已打通；仍需真实账号端到端验收 |
+| Provider 登录 | 已实现，待真实 OAuth 验收 | 客户端设置页入口；隔离目录下 API Key 登录成功写入 `auth.json` |
+| Provider 退出 | 已实现，待真实验收 | 客户端设置页入口，调用 `ModelRuntime.logout()`；仅对 `auth.json` 来源显示 |
+| OAuth 登录 | 已接入，待 OpenRouter 真实验收 | auth URL、manual code、device code、进度和取消事件已打通；OpenRouter 账号已准备 |
 | 环境变量 Key | 部分覆盖 | 启动 Agent 时已有 Provider env 注入基础 |
+| 凭据来源显示 | 已覆盖 | 汇总显示 `auth.json`、`models.json`、环境变量和运行时来源；`models.json` 覆盖会单独标记 |
 | `!command` Key | 缺失 | Pi 原生支持命令型 Key，客户端没有配置入口 |
 | `/scoped-models` | 缺失 | 交互式模型循环范围配置 |
 | `/llama` | 缺失 | llama.cpp router、模型管理和分类 |
@@ -230,8 +231,10 @@
 11. 审核并验收客户端设置页的 Provider 登录 / 退出 UI；不接入 `/login`、`/logout` 命令。
 12. 支持 Provider OAuth、API Key、device code、manual code 和浏览器回调。
 13. 登录成功后刷新 Provider、模型列表和当前 Agent 配置。
-14. 增加 Provider 状态、退出登录和凭据来源显示。
+14. [x] 增加 Provider 状态、退出登录和凭据来源显示；退出登录只对 `auth.json` 来源开放。
 15. 增加 `!command` Key 和 `auth.provider` 配置。
+
+批次 43（提交 `5d489c02a`）已完成第 14 项。下一步完成第 13 项：登录 / 退出成功后刷新 Provider、模型列表和当前 Agent 配置；随后用 OpenRouter 完成第 12 项真实 OAuth 验收。
 
 ### 阶段 3：会话和命令补齐
 

@@ -22,8 +22,8 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-42 已提交到本地 `main`。
-批次 41-42 已提交：`/mcp` 管理入口、MCP 运行状态、扩展隔离、设置消息栈、权限下拉统一、Tavily 密码字段和状态持久化都已收口。下一步进入阶段 2 的 Provider 认证与凭据来源补齐。
+再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-43 已提交到本地 `main`。
+批次 41-43 已提交：`/mcp` 管理入口、MCP 运行状态、扩展隔离、设置消息栈、权限下拉统一、Tavily 密码字段和状态持久化都已收口；Provider 凭据状态、来源显示和重复配置标记也已完成。下一步继续阶段 2 的登录后模型 / Agent 刷新和 OAuth 真实验收。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条都已验收，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
@@ -90,7 +90,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 权限下拉改为统一浮层样式，选中项使用浅蓝底和勾选图标。
 - Tavily Search 改为掩码密码字段，眼睛按钮按需解密显示；进入设置分区会刷新配置状态，重启后仍显示已配置。
 - 完整功能审计、MCP 方案、缺失功能矩阵和分阶段任务清单见 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
-- 客户端设置页 Provider 登录/退出已完成实现和隔离验证；不接入 `/login`、`/logout` 命令。
+- 客户端设置页 Provider 登录/退出已完成实现和隔离验证；不接入 `/login`、`/logout` 命令。Provider 设置页现在显示凭据来源（`auth.json` / `models.json` / 环境变量），只有 `auth.json` 来源显示退出登录；同一 Provider 被 `models.json` 覆盖时两边都有标记。
 - 设置页和登录弹窗的所有下拉列表已统一为自定义 `SelectMenu`，列表最大高度受控，不再使用系统原生超长弹层。
 
 ### 本轮改动清单
@@ -121,7 +121,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ### 下一步
 
-批次 41-42 已提交。MCP 统一阶段已收口；下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 2，补齐 Provider 认证状态、凭据来源、OAuth 真实服务验收和 `!command` Key。
+批次 43 已提交。下一步继续 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 2：登录 / 退出成功后刷新 Provider、模型列表和当前 Agent 配置，再做 OpenRouter OAuth 真实验收。
 
 ### 改版前的基线（历史记录，仅作对照）
 
@@ -923,6 +923,19 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - Playwright：权限下拉、MCP 运行状态、双消息 toast 堆叠和 Tavily 密码字段均通过。
 - 真实客户端已重启。
 
+### 2026-10-04 批次 43：Provider 凭据状态与来源显示（已提交）
+
+- 设置页把 `Pi 认证状态` 改成 `Provider 凭据状态`，明确汇总 `auth.json`、`models.json` 和环境变量，而不是只代表登录凭据。
+- 每个 Provider 行显示认证类型和凭据来源；`models.json` 配置的 Provider 不再显示无意义的退出登录按钮。
+- 退出登录弹窗只列出真正来自 `auth.json` 的 Provider；退出后重新读取状态，不会误删或误判 `models.json` Key。
+- 同一个 Provider 同时存在内置定义和 `models.json` 覆盖时，两侧分别标记 `models.json 覆盖` / `内置 Provider 覆盖`，避免看起来像两个独立配置。
+- 900px 和 1440px 浏览器截图无横向溢出。
+
+验证：
+
+- `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿。
+- 真实客户端已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -945,6 +958,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 18. [x] **MCP 设置完整能力**：批次 40 已验收并提交。下一步是 `/mcp` 的客户端等价入口和 `pi mcp` 包装。
 19. [x] **MCP 管理入口**：批次 41 已实现并完成隔离与视觉验证。下一步进入阶段 2：Provider 认证与凭据来源补齐。
 20. [x] **MCP 设置反馈与扩展隔离收口**：批次 42 已实现、验证并提交。
+21. [x] **Provider 凭据状态与来源显示**：批次 43 已实现、验证并提交；下一步是登录后刷新模型列表和当前 Agent。
 
 ## 未提交状态
 
