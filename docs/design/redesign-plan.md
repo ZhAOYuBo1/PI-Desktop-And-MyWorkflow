@@ -22,8 +22,8 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-40 已提交到本地 `main`。
-批次 41-42 已实现并验证，尚未提交：`/mcp` 管理入口、MCP 运行状态、扩展隔离、设置消息栈、权限下拉统一、Tavily 密码字段和状态持久化都已收口。下一步进入阶段 2 的 Provider 认证与凭据来源补齐。
+再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-42 已提交到本地 `main`。
+批次 41-42 已提交：`/mcp` 管理入口、MCP 运行状态、扩展隔离、设置消息栈、权限下拉统一、Tavily 密码字段和状态持久化都已收口。下一步进入阶段 2 的 Provider 认证与凭据来源补齐。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条都已验收，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
@@ -57,7 +57,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-04 批次 42：MCP 管理入口与设置反馈收口，待提交）
+## 当前状态（2026-10-04 批次 42：MCP 管理入口与设置反馈收口，已提交）
 
 - `styles.css` 4253 行，顶部是完整的 `--cp-*` 令牌层；旧玻璃层的死规则已删除，`rgb(255 255 255 / N%)` 只剩侧栏 sheen 两处。
 - 间距令牌已建立：`--cp-space-micro` 到 `--cp-space-5xl`（2/4/6/8/12/16/24/32/40/48/64px）；组件间距声明已全部改用令牌。
@@ -121,7 +121,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ### 下一步
 
-批次 41-42 待提交。MCP 统一阶段已收口；下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 2，补齐 Provider 认证状态、凭据来源、OAuth 真实服务验收和 `!command` Key。
+批次 41-42 已提交。MCP 统一阶段已收口；下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 2，补齐 Provider 认证状态、凭据来源、OAuth 真实服务验收和 `!command` Key。
 
 ### 改版前的基线（历史记录，仅作对照）
 
@@ -894,7 +894,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - Playwright：1440px 与 900px 视口无横向溢出；编辑器、OAuth 和项目覆盖状态均可渲染。
 - `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿；真实客户端已重启。
 
-### 2026-10-04 批次 41：MCP 管理入口（待提交）
+### 2026-10-04 批次 41：MCP 管理入口（已提交）
 
 - 客户端命令菜单新增 `/mcp`，选中后打开设置页 MCP 分区，不把 MCP 状态做成必须手输的 slash command。
 - 新增 `pi mcp list --json` 包装，解析服务状态、工具数量、transport 和错误。
@@ -906,7 +906,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - Playwright：MCP 运行状态区渲染 2 行，1440px 无横向溢出。
 - `npm run check`、desktop typecheck、`npm run build:codepiddy` 全绿；真实客户端已重启。
 
-### 2026-10-04 批次 42：MCP 设置反馈与扩展隔离收口（待提交）
+### 2026-10-04 批次 42：MCP 设置反馈与扩展隔离收口（已提交）
 
 - `/mcp` 现在由 Pi 原生 `mcp` extension 提供；启动参数继续隔离第三方 extension，同时显式加载
   `builtin:mcp`、`builtin:codemode`、`builtin:tool-search` 和 CodePIddy 自己的 permission/review/retry。
@@ -944,11 +944,11 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 17. [x] **web_search 原生 MCP 统一**：批次 39 已验收并提交。下一步是 MCP 设置 UI 的项目级 override、enabled、exposure、toolExposure、description、timeout 和 OAuth。
 18. [x] **MCP 设置完整能力**：批次 40 已验收并提交。下一步是 `/mcp` 的客户端等价入口和 `pi mcp` 包装。
 19. [x] **MCP 管理入口**：批次 41 已实现并完成隔离与视觉验证。下一步进入阶段 2：Provider 认证与凭据来源补齐。
-20. [ ] **MCP 设置反馈与扩展隔离收口**：批次 42 已实现并完成验证，随本轮提交。
+20. [x] **MCP 设置反馈与扩展隔离收口**：批次 42 已实现、验证并提交。
 
 ## 未提交状态
 
-批次 40 已提交到本地 `main`；批次 41-42 工作树改动尚未提交。最近提交：
+批次 41-42 已提交到本地 `main`，提交号 `c25bfe386`；尚未推送。最近提交：
 
 - `888ed5b27 docs(desktop): record Pi 1.0.1 audit and handoff`
 - `55e6d4bf3 feat(desktop): finalize UI, pin Pi runtime and add provider login`
