@@ -220,6 +220,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function findAgentStatus(project: ProjectSummary | null, locator: AgentInstanceLocator): AgentStatus | null {
+	for (const lane of project?.lanes ?? []) {
+		for (const workItem of lane.workItems) {
+			const slot = workItem.agentSlots.find(
+				(candidate) => candidate.role === locator.role && candidate.currentInstanceId === locator.agentInstanceId,
+			);
+			if (slot) return slot.status;
+		}
+	}
+	return null;
+}
+
 function extractMessageText(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (Array.isArray(value)) return value.map(extractMessageText).filter(Boolean).join("\n");
@@ -1401,6 +1413,7 @@ export function App() {
 	const permissionResponsesInFlight = useRef(new Set<string>());
 	const agentCommandLoads = useRef(new Map<string, Promise<AgentCommandOption[]>>());
 	const activatedAgentKey = useRef<string | null>(null);
+	const lastActiveAgentLocatorRef = useRef<AgentInstanceLocator | null>(null);
 	const projectRef = useRef<ProjectSummary | null>(project);
 	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1535,6 +1548,42 @@ export function App() {
 			role: selection.role,
 		};
 	}, [activeAgentId, project, selectedWorkItem, selection]);
+
+	useEffect(() => {
+		if (activeAgentLocator) lastActiveAgentLocatorRef.current = activeAgentLocator;
+	}, [activeAgentLocator]);
+
+	const refreshAfterAuthChange = useCallback(async (action: "login" | "logout"): Promise<void> => {
+		setProviderSettingsRefreshToken((current) => current + 1);
+		const label = action === "login" ? "Provider 登录成功" : "已退出该 Provider";
+		const locator = lastActiveAgentLocatorRef.current;
+		if (!locator) {
+			setSessionNotice(label);
+			return;
+		}
+		const status = findAgentStatus(projectRef.current, locator);
+		if (!status) {
+			setSessionNotice(label);
+			return;
+		}
+		if (status === "running" || status === "waiting") {
+			setSessionNotice(`${label}；当前 Agent 正在运行，停止或重新连接后生效`);
+			return;
+		}
+		try {
+			await window.codepiddy.reconnectAgent(locator);
+			const [modelSelection, snapshot] = await Promise.all([
+				window.codepiddy.getAgentModelSelection(locator),
+				window.codepiddy.getAgentSessionSnapshot(locator),
+			]);
+			setModelSelections((current) => ({ ...current, [locator.agentInstanceId]: modelSelection }));
+			setAgentSessionSnapshots((current) => ({ ...current, [locator.agentInstanceId]: snapshot }));
+			setSessionNotice(`${label}；当前 Agent 已重新连接`);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "刷新 Agent 凭据失败");
+			setSessionNotice(`${label}；当前 Agent 刷新失败`);
+		}
+	}, []);
 
 	/*
 	 * 输入框跟随内容增高。
@@ -2330,8 +2379,7 @@ export function App() {
 				setAuthMessage("登录成功。");
 				setAuthRequestId(null);
 				setAuthPrompt(null);
-				setSessionNotice("Provider 登录成功");
-				setProviderSettingsRefreshToken((current) => current + 1);
+				void refreshAfterAuthChange("login");
 				void window.codepiddy
 					.listAuthProviders()
 					.then(setAuthProviders)
@@ -2343,7 +2391,7 @@ export function App() {
 			}
 		});
 		return off;
-	}, [authDialogMode, authRequestId]);
+	}, [authDialogMode, authRequestId, refreshAfterAuthChange]);
 
 	useEffect(() => {
 		const element = transcriptRef.current;
@@ -3218,8 +3266,8 @@ export function App() {
 		try {
 			await window.codepiddy.logoutAuthProvider(authProviderId);
 			setAuthMessage("已退出该 Provider。");
-			setProviderSettingsRefreshToken((current) => current + 1);
 			setAuthProviders(await window.codepiddy.listAuthProviders());
+			void refreshAfterAuthChange("logout");
 		} catch (caught) {
 			setAuthError(caught instanceof Error ? caught.message : "退出登录失败");
 		} finally {

@@ -34,6 +34,7 @@ const runtime = await ModelRuntime.create({
 	allowModelNetwork: true,
 	refreshOnCreate: false,
 });
+await runtime.refresh({ allowNetwork: false });
 
 function write(value) {
 	process.stdout.write(`${JSON.stringify(value)}\n`);
