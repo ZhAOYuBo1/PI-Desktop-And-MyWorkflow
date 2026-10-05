@@ -22,7 +22,7 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-53 已提交到本地 `main`，当前 HEAD 是 `52a1da50f`，工作树干净，`origin/main` 落后 4 个提交。批次 51-53 `/share`、独立分享设置、品牌图标和通用路径检测已实现并验收。
+再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-53 已提交到本地 `main`，当前 HEAD 是 `855225c02`，工作树干净，`origin/main` 落后 5 个提交。批次 51-53 `/share`、独立分享设置、品牌图标和通用路径检测已实现并验收。
 批次 41-50 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作、OpenRouter OAuth 验收、Git Bash 黑窗修复、Shell 重启弹窗、常用模型范围、JSONL 导入、项目信任持久化、Session 统计、Session 重命名和 llama.cpp 客户端适配都已收口。
 阶段 3 已完成 `/scoped-models`、`/import`、`/trust`、`/session`、`/name`、`/llama`、`/share`。下一步是第 23 项：Pi 1.0.1 没有原生 `/bug`，要做客户端原生诊断包导出（版本、平台、Agent / Session / Provider 状态、日志路径、可选脱敏 Session JSONL、ZIP，不上传）；llama.cpp 真实 router 端到端测试待后续环境。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条都已验收，不要重做。文件搜索和终端多标签已取消，不再推进。
@@ -60,7 +60,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ## 当前状态（2026-10-05 批次 53：分享设置图标与路径检测收口，已验收并提交）
 
-- 提交：`52a1da50f feat(desktop): add native session sharing and share settings`；当前 HEAD `52a1da50f`，工作树干净，`origin/main` 落后 4 个提交。
+- 提交：`52a1da50f feat(desktop): add native session sharing and share settings`，随后以 `855225c02 docs(desktop): finalize share handoff and diagnostics plan` 更新交接文档；当前 HEAD `855225c02`，工作树干净，`origin/main` 落后 5 个提交。
 - 阶段 3 前六项已客户端化：`/scoped-models` 变成“常用模型范围”，`/import` 使用原生文件选择器导入 JSONL，`/trust` 使用原生弹窗和 `trust.json`，`/session` 使用完整统计面板，`/name` 支持无参查询和会话树重命名，`/llama` 改为客户端原生 llama.cpp 管理页；均不新增必须手输的 `/` 命令。
 - `/share`：会话树操作区和命令菜单都打开客户端原生分享弹窗；先显示隐私确认，再由主进程导出当前 Session HTML，优先尝试 Radius，未配置时通过本机 GitHub CLI 创建 secret gist，成功后可复制 viewer 链接或打开 Gist。
 - 分享设置已从 Provider 页面拆出：设置页新增“集成 > 分享”，Radius 在此登录/退出并继续复用 Pi `auth.json`；GitHub CLI 在此检测路径、登录状态和版本，支持手动选择 `gh.exe` 并持久化到 CodePIddy `share.json`，不保存 GitHub Token。helper 优先使用用户配置的路径，其次检查 `CODEPIDDY_GH_PATH`、PATH 和标准安装目录。Radius 仍保留 Pi Provider 认证层，但不再出现在“Provider 与模型”的凭据列表和登录入口中。
@@ -1116,7 +1116,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ## 未提交状态
 
-批次 51-53 的 `/share`、分享设置和图标路径改动已验收并提交为 `52a1da50f`；工作树干净，下一项进入客户端诊断包导出。
+批次 51-53 的 `/share`、分享设置和图标路径改动已验收并提交为 `52a1da50f`，交接文档提交为 `855225c02`；工作树干净，下一项进入客户端诊断包导出。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
