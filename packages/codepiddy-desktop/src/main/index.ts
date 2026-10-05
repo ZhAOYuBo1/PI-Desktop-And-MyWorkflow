@@ -62,6 +62,7 @@ import type {
 } from "@codepiddy/shared";
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, webContents } from "electron";
 import pty, { type IPty } from "node-pty";
+import { type DiagnosticsAgentSnapshot, type DiagnosticsErrorEntry, DiagnosticsManager } from "./diagnostics.ts";
 import { getGitHubCliStatus } from "./github-cli.ts";
 import {
 	assertPathInside,
@@ -71,6 +72,7 @@ import {
 	parseBoundedText,
 	parseCreateAgentInput,
 	parseCreateWorkItemInput,
+	parseDiagnosticsExportInput,
 	parseExtensionUiResponseInput,
 	parseExternalUrl,
 	parseForkAgentSessionInput,
@@ -205,6 +207,8 @@ const channels = {
 	piRuntimeInstall: "codepiddy:pi-runtime:install",
 	piRuntimeRollback: "codepiddy:pi-runtime:rollback",
 	piRuntimeRestart: "codepiddy:pi-runtime:restart",
+	diagnosticsInfo: "codepiddy:diagnostics:info",
+	diagnosticsExport: "codepiddy:diagnostics:export",
 	searchProjectFiles: "codepiddy:project:files:search",
 	listWorkspaceDir: "codepiddy:workspace:dir:list",
 	readWorkspaceFile: "codepiddy:workspace:file:read",
@@ -803,6 +807,7 @@ class AgentManager {
 	private readonly processStarts = new SingleFlightMap<string, PiRpcProcess>();
 	private readonly pendingPermissions = new Map<string, PendingPermissionRequest>();
 	private readonly builtinCommandsCache = new Map<string, AgentCommandOption[]>();
+	private readonly recentDiagnosticsErrors: DiagnosticsErrorEntry[] = [];
 
 	constructor(
 		runtimeRoot: string,
@@ -1271,6 +1276,51 @@ class AgentManager {
 	async getSessionStats(input: AgentInstanceLocator): Promise<AgentSessionStats> {
 		const process = await this.ensureProcess(await this.resolve(input));
 		return parseAgentSessionStats(await process.getSessionStats());
+	}
+
+	async getDiagnosticsAgentSnapshot(locator?: AgentInstanceLocator): Promise<DiagnosticsAgentSnapshot | null> {
+		if (!locator) return null;
+		const agent = await this.resolve(locator);
+		const process = this.processes.get(agent.id);
+		let state: Record<string, unknown> | null = null;
+		let stats: AgentSessionStats | null = null;
+		if (process?.isRunning) {
+			try {
+				const stateResponse = await process.getState();
+				state = isRecord(stateResponse.data) ? stateResponse.data : null;
+			} catch (error) {
+				this.recordDiagnosticsError("agent-state", error);
+			}
+			try {
+				stats = parseAgentSessionStats(await process.getSessionStats());
+			} catch (error) {
+				this.recordDiagnosticsError("agent-session-stats", error);
+			}
+		}
+		const selectedSessionId = await readSelectedSessionId(agent.sessionDirectory);
+		const stateSessionFile = typeof state?.sessionFile === "string" ? state.sessionFile : null;
+		const sessionFile =
+			stateSessionFile ??
+			(selectedSessionId ? await findSessionFileById(agent.sessionDirectory, selectedSessionId) : null);
+		const sessionSummary = sessionFile
+			? await readSessionFileSummary(
+					sessionFile,
+					selectedSessionId ?? (typeof state?.sessionId === "string" ? state.sessionId : ""),
+				)
+			: null;
+		return {
+			locator,
+			status: agent.status,
+			sessionDirectory: agent.sessionDirectory,
+			sessionFile,
+			sessionSummary,
+			state,
+			stats,
+		};
+	}
+
+	getRecentDiagnosticsErrors(): DiagnosticsErrorEntry[] {
+		return [...this.recentDiagnosticsErrors];
 	}
 
 	async forkSession(input: ForkAgentSessionInput): Promise<ForkAgentSessionResult> {
@@ -1766,6 +1816,8 @@ class AgentManager {
 			} else if (event.type === "process_error" || event.type === "process_exit") {
 				this.pendingPermissions.delete(agent.id);
 				if (event.expected === true || this.processes.get(agent.id) !== rpc) return;
+				if (typeof event.error === "string" && event.error)
+					this.recordDiagnosticsError("agent-process", event.error);
 				this.processes.delete(agent.id);
 				this.processAgents.delete(agent.id);
 				if (agent.role !== "requirement-analysis") void this.writeLeases.release(agent.projectId, agent.id);
@@ -1789,6 +1841,7 @@ class AgentManager {
 			});
 			return rpc;
 		} catch (error) {
+			this.recordDiagnosticsError("agent-process-start", error);
 			if (this.processes.get(agent.id) === rpc) this.processes.delete(agent.id);
 			this.processAgents.delete(agent.id);
 			await rpc.stop().catch(() => undefined);
@@ -1837,6 +1890,7 @@ class AgentManager {
 				});
 				return;
 			} catch (error) {
+				this.recordDiagnosticsError("agent-process-recovery", error);
 				this.broadcast({
 					agentInstanceId: agent.id,
 					projectId: agent.projectId,
@@ -1900,6 +1954,16 @@ class AgentManager {
 				}
 			}),
 		);
+	}
+
+	private recordDiagnosticsError(source: string, error: unknown): void {
+		this.recentDiagnosticsErrors.push({
+			timestamp: new Date().toISOString(),
+			source,
+			message: error instanceof Error ? error.message : String(error),
+		});
+		if (this.recentDiagnosticsErrors.length > 50)
+			this.recentDiagnosticsErrors.splice(0, this.recentDiagnosticsErrors.length - 50);
 	}
 
 	private broadcast(event: AgentClientEvent): void {
@@ -2002,6 +2066,7 @@ function registerIpcHandlers(
 	piAuthManager: PiAuthManager,
 	piTrustManager: PiTrustManager,
 	llamaCppManager: LlamaCppManager,
+	diagnosticsManager: DiagnosticsManager,
 ): void {
 	const openedProjects = new Map<string, string>();
 	const rootKey = (projectRoot: string): string =>
@@ -2316,6 +2381,20 @@ function registerIpcHandlers(
 		app.relaunch();
 		app.quit();
 	});
+	ipcMain.handle(channels.diagnosticsInfo, () => diagnosticsManager.getInfo());
+	ipcMain.handle(channels.diagnosticsExport, async (_event, raw: unknown) => {
+		const input = parseDiagnosticsExportInput(raw);
+		const timestamp = new Date().toISOString().replace(/[:.]/gu, "-");
+		const selected = await dialog.showSaveDialog({
+			title: "导出 CodePIddy 诊断包",
+			defaultPath: path.join(app.getPath("downloads"), `codepiddy-diagnostics-${timestamp}.zip`),
+			filters: [{ name: "ZIP 压缩包", extensions: ["zip"] }],
+		});
+		if (selected.canceled || !selected.filePath) return null;
+		const result = await diagnosticsManager.export(input, selected.filePath);
+		shell.showItemInFolder(result.filePath);
+		return result;
+	});
 	ipcMain.handle(channels.settingsGetPermissions, () => settingsStore.getPermissionDefaults());
 	ipcMain.handle(channels.settingsSetPermissions, (_event, raw: unknown) =>
 		settingsStore.setPermissionDefaults(parsePermissionDefaults(raw)),
@@ -2581,6 +2660,21 @@ if (!hasSingleInstanceLock) {
 				),
 		});
 		const llamaCppManager = new LlamaCppManager(resolvePiAgentDir());
+		const diagnosticsManager = new DiagnosticsManager({
+			userDataPath: app.getPath("userData"),
+			agentDir: resolvePiAgentDir(),
+			appVersion: app.getVersion(),
+			getPiRuntimeStatus: () => piRuntimeUpdater.status(),
+			listAuthProviders: () => piAuthManager.listProviders(),
+			listConfiguredProviders: () => settingsStore.listProviders(),
+			getMcpSnapshot: async () => {
+				const result = await agentManager.runMcpAction({ action: "list" });
+				return result.snapshot ?? { servers: [], errors: result.output ? [result.output] : [] };
+			},
+			getAgentSnapshot: (locator) => agentManager.getDiagnosticsAgentSnapshot(locator),
+			getTrustStatus: (projectRoot) => (projectRoot ? piTrustManager.getStatus(projectRoot) : Promise.resolve(null)),
+			getRecentErrors: () => agentManager.getRecentDiagnosticsErrors(),
+		});
 		registerIpcHandlers(
 			agentManager,
 			settingsStore,
@@ -2589,6 +2683,7 @@ if (!hasSingleInstanceLock) {
 			piAuthManager,
 			piTrustManager,
 			llamaCppManager,
+			diagnosticsManager,
 		);
 		mainWindow = createWindow(recentProjects);
 		mainWindow.on("closed", () => {

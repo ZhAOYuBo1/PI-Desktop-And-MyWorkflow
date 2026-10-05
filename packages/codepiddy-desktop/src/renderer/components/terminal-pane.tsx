@@ -4,6 +4,7 @@ import "@xterm/xterm/css/xterm.css";
 import { Trash2 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { PanelIconButton } from "./panel-icon-button.tsx";
+import { StateBlock } from "./state-block.tsx";
 
 const TERMINAL_THEME: ITheme = {
 	background: "#ffffff",
@@ -162,7 +163,7 @@ export const TerminalPane = memo(function TerminalPane({ projectRoot }: { projec
 				</PanelIconButton>
 			</div>
 			<div className="terminal-host" ref={hostRef} />
-			{error ? <p className="terminal-error">{error}</p> : null}
+			{error ? <StateBlock compact tone="error" title={error} /> : null}
 		</div>
 	);
 });

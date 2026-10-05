@@ -44,10 +44,12 @@ import {
 	useState,
 } from "react";
 import { AppIcon, type AppIconName } from "./components/app-icon.tsx";
+import { DiagnosticsSettings } from "./components/DiagnosticsSettings.tsx";
 import { FileMentionMenu } from "./components/FileMentionMenu.tsx";
 import { McpSettings } from "./components/McpSettings.tsx";
 import { ModelScopeSettings } from "./components/ModelScopeSettings.tsx";
 import { MessageContent } from "./components/message-content.tsx";
+import { ModalShell } from "./components/modal-shell.tsx";
 import { ProjectTrustSettings } from "./components/ProjectTrustSettings.tsx";
 import { ProviderSettings } from "./components/ProviderSettings.tsx";
 import { ProviderIcon } from "./components/provider-icon.tsx";
@@ -57,8 +59,10 @@ import { ShareSettings } from "./components/ShareSettings.tsx";
 import { SlashCommandMenu } from "./components/SlashCommandMenu.tsx";
 import { StreamStats } from "./components/StreamStats.tsx";
 import { SelectMenu } from "./components/select-menu.tsx";
+import { SettingsCheckbox } from "./components/settings-checkbox.tsx";
 import { SettingsToastHost } from "./components/settings-toast-host.tsx";
 import { showSettingsToast } from "./components/settings-toast-store.ts";
+import { StateBlock } from "./components/state-block.tsx";
 import { estimateTokens, extractUsageOutput, type FinalStreamStats, formatElapsed } from "./components/stream-stats.ts";
 import { ThinkingControl } from "./components/ThinkingControl.tsx";
 import { ToolCallCard } from "./components/ToolCallCard.tsx";
@@ -113,12 +117,6 @@ interface WorkItemDialogState {
 	lane: LaneKind;
 	title: string;
 	description: string;
-}
-
-interface ArchiveToast {
-	lane: LaneKind;
-	workItemId: string;
-	title: string;
 }
 
 interface RenameDialogState {
@@ -1125,6 +1123,7 @@ const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.sear
 type SettingsSectionId =
 	| "runtime"
 	| "shell"
+	| "diagnostics"
 	| "providers"
 	| "llama"
 	| "mcp"
@@ -1139,6 +1138,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 		items: [
 			{ id: "runtime", label: "Pi 运行时", icon: "settings" },
 			{ id: "shell", label: "Shell", icon: "terminal" },
+			{ id: "diagnostics", label: "诊断", icon: "bug" },
 		],
 	},
 	{
@@ -1277,6 +1277,7 @@ const demoAgentCommands: AgentCommandOption[] = [
 	},
 	{ name: "export", command: "/export", description: "Export session", argumentHint: "[path]", source: "builtin" },
 	{ name: "share", command: "/share", description: "Share session as a secret GitHub gist", source: "builtin" },
+	{ name: "debug", command: "/debug", description: "Export a local diagnostics package", source: "builtin" },
 	{ name: "copy", command: "/copy", description: "Copy last agent message to clipboard", source: "builtin" },
 	{ name: "llama", command: "/llama", description: "Manage llama.cpp router models", source: "builtin" },
 	{
@@ -1331,7 +1332,6 @@ export function App() {
 		new Set(demoMode ? ["project:demo-project", "lane:requirements", "lane:bugs", "work-item:FEAT-001"] : []),
 	);
 	const [dialog, setDialog] = useState<WorkItemDialogState | null>(null);
-	const [archiveToast, setArchiveToast] = useState<ArchiveToast | null>(null);
 	const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 	const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
 	const [sessionRenameDialog, setSessionRenameDialog] = useState<SessionRenameDialogState | null>(null);
@@ -2501,15 +2501,9 @@ export function App() {
 	}, [selection.type, settingsSection]);
 
 	useEffect(() => {
-		if (!archiveToast) return;
-		const timer = window.setTimeout(() => setArchiveToast(null), 4500);
-		return () => window.clearTimeout(timer);
-	}, [archiveToast]);
-
-	useEffect(() => {
 		if (!sessionNotice) return;
-		const timer = window.setTimeout(() => setSessionNotice(null), 3200);
-		return () => window.clearTimeout(timer);
+		showSettingsToast(sessionNotice, "success");
+		setSessionNotice(null);
 	}, [sessionNotice]);
 
 	useEffect(() => {
@@ -2830,7 +2824,12 @@ export function App() {
 			});
 			setProject(nextProject);
 			setSelection({ type: "lane", lane });
-			setArchiveToast({ lane, workItemId: item.id, title: item.title });
+			showSettingsToast(`“${item.title}”已归档`, "success", {
+				action: {
+					label: "撤销",
+					onClick: () => void restoreWorkItem(lane, item.id),
+				},
+			});
 		} finally {
 			setBusy(false);
 		}
@@ -2854,13 +2853,6 @@ export function App() {
 		} finally {
 			setBusy(false);
 		}
-	}
-
-	async function restoreArchived(): Promise<void> {
-		if (!archiveToast) return;
-		const toast = archiveToast;
-		setArchiveToast(null);
-		await restoreWorkItem(toast.lane, toast.workItemId);
 	}
 
 	async function renameSelectedWorkItem(): Promise<void> {
@@ -3138,6 +3130,11 @@ export function App() {
 			if (name === "llama") {
 				setDrafts((current) => ({ ...current, [agentId]: "" }));
 				await openSettings("llama");
+				return;
+			}
+			if (name === "debug") {
+				setDrafts((current) => ({ ...current, [agentId]: "" }));
+				await openSettings("diagnostics");
 				return;
 			}
 			if (command.source === "builtin") {
@@ -4689,6 +4686,13 @@ export function App() {
 							</div>
 							<small>修改后，新启动或重置后的 Agent 才会使用新路径。</small>
 						</section>
+						<div className="settings-section-slot" hidden={settingsSection !== "diagnostics"}>
+							<DiagnosticsSettings
+								projectRoot={project?.rootPath ?? null}
+								activeAgent={activeAgentLocator ?? lastActiveAgentLocatorRef.current}
+								uiError={error}
+							/>
+						</div>
 
 						<section className="settings-card skill-settings-card" hidden={settingsSection !== "skills"}>
 							<div className="settings-card-heading">
@@ -4726,24 +4730,19 @@ export function App() {
 											{availableSkills.map((skill) => {
 												const checked = roleSkillAssignments[role].includes(skill.id);
 												return (
-													<label
+													<SettingsCheckbox
 														className={`role-skill-option ${checked ? "selected" : ""}`}
 														key={skill.id}
+														checked={checked}
+														disabled={roleSkillSaving !== null}
+														onChange={(enabled) => void toggleRoleSkill(role, skill.id, enabled)}
+														trailing={<em>{skill.source}</em>}
 													>
-														<input
-															type="checkbox"
-															checked={checked}
-															disabled={roleSkillSaving !== null}
-															onChange={(event) =>
-																void toggleRoleSkill(role, skill.id, event.target.checked)
-															}
-														/>
-														<span>
+														<span className="role-skill-copy">
 															<strong>{skill.name}</strong>
 															<small>{skill.description || skill.filePath}</small>
 														</span>
-														<em>{skill.source}</em>
-													</label>
+													</SettingsCheckbox>
 												);
 											})}
 											{availableSkills.length === 0 ? (
@@ -5468,268 +5467,231 @@ export function App() {
 			</aside>
 			<main className="main-pane">
 				{error ? (
-					<div className="error-banner" role="alert">
-						<AppIcon name="warning" size={15} />
-						<span>{error}</span>
-						<button type="button" aria-label="关闭错误提示" onClick={() => setError(null)}>
-							<AppIcon name="close" />
-						</button>
-					</div>
+					<StateBlock
+						className="app-error-state"
+						tone="error"
+						title={error}
+						actions={
+							<IconButton label="关闭错误提示" onClick={() => setError(null)}>
+								<AppIcon name="close" />
+							</IconButton>
+						}
+					/>
 				) : null}
 				{renderMainContent()}
 			</main>
 			<SettingsToastHost />
 			{sessionPanel ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="关闭会话树"
-						onClick={() => setSessionPanel(null)}
-					/>
-					<div className="modal session-tree-modal" role="dialog" aria-modal="true" aria-label="Agent 会话树">
-						<div className="session-tree-heading">
-							<div>
-								<h2>{sessionPanel.displayName} 会话树</h2>
-								<p>
-									当前会话：{sessionPanel.snapshot.sessionName || "未命名会话"}。点用户消息右侧的 Fork
-									从此处创建分支； 原消息会填回输入框，原会话不会被修改。
-								</p>
+				<ModalShell
+					title={`${sessionPanel.displayName} 会话树`}
+					description={`当前会话：${sessionPanel.snapshot.sessionName || "未命名会话"}。点用户消息右侧的 Fork 从此处创建分支；原消息会填回输入框，原会话不会被修改。`}
+					onClose={() => setSessionPanel(null)}
+					width="xl"
+					className="session-tree-modal"
+				>
+					<div className="session-picker">
+						<div className="session-picker-heading">
+							<strong>会话</strong>
+							<div className="session-picker-actions">
+								<button
+									className="secondary-button"
+									type="button"
+									disabled={sessionPanelLoading}
+									onClick={() =>
+										void openSessionShare(
+											{
+												agentInstanceId: sessionPanel.agentInstanceId,
+												projectId: sessionPanel.projectId,
+												workItemId: sessionPanel.workItemId,
+												role: sessionPanel.role,
+											},
+											sessionPanel.displayName,
+											sessionPanel.snapshot.sessionName ?? null,
+										)
+									}
+								>
+									<AppIcon name="share" size={13} /> 分享
+								</button>
+								<button
+									className="secondary-button"
+									type="button"
+									disabled={sessionPanelLoading}
+									onClick={() =>
+										setSessionRenameDialog({
+											locator: {
+												agentInstanceId: sessionPanel.agentInstanceId,
+												projectId: sessionPanel.projectId,
+												workItemId: sessionPanel.workItemId,
+												role: sessionPanel.role,
+											},
+											displayName: sessionPanel.displayName,
+											name: sessionPanel.snapshot.sessionName ?? "",
+										})
+									}
+								>
+									<AppIcon name="edit" size={13} /> 重命名
+								</button>
+								<button
+									className="secondary-button"
+									type="button"
+									disabled={sessionPanelLoading}
+									onClick={() =>
+										void openSessionStats(
+											{
+												agentInstanceId: sessionPanel.agentInstanceId,
+												projectId: sessionPanel.projectId,
+												workItemId: sessionPanel.workItemId,
+												role: sessionPanel.role,
+											},
+											sessionPanel.displayName,
+										)
+									}
+								>
+									<AppIcon name="checklist" size={13} /> 会话统计
+								</button>
+								<button
+									className="secondary-button"
+									type="button"
+									disabled={sessionPanelLoading}
+									onClick={() => void importAgentSession()}
+								>
+									<AppIcon name="restore" size={13} /> 导入会话
+								</button>
+								<button
+									className="secondary-button"
+									type="button"
+									disabled={sessionPanelLoading}
+									onClick={() => void createAgentSession()}
+								>
+									<AppIcon name="plus" size={13} /> 新建会话
+								</button>
 							</div>
-							<IconButton label="关闭会话树" onClick={() => setSessionPanel(null)}>
-								<AppIcon name="close" />
-							</IconButton>
 						</div>
-						<div className="session-picker">
-							<div className="session-picker-heading">
-								<strong>会话</strong>
-								<div className="session-picker-actions">
+						<div className="session-picker-list">
+							{sessionPanel.sessions.map((session) => (
+								<div
+									key={session.sessionId}
+									className={`session-picker-item${session.isCurrent ? " active" : ""}`}
+								>
 									<button
-										className="secondary-button"
 										type="button"
+										className="session-picker-main"
 										disabled={sessionPanelLoading}
-										onClick={() =>
-											void openSessionShare(
-												{
-													agentInstanceId: sessionPanel.agentInstanceId,
-													projectId: sessionPanel.projectId,
-													workItemId: sessionPanel.workItemId,
-													role: sessionPanel.role,
-												},
-												sessionPanel.displayName,
-												sessionPanel.snapshot.sessionName ?? null,
-											)
-										}
+										onClick={() => void switchAgentSession(session.sessionId)}
 									>
-										<AppIcon name="share" size={13} /> 分享
+										<span className="session-picker-copy">
+											<strong>{session.name || "未命名会话"}</strong>
+											<small>
+												{session.messageCount} 条消息 ·{" "}
+												{session.updatedAt ? new Date(session.updatedAt).toLocaleString() : "—"}
+											</small>
+										</span>
+										{session.isCurrent ? <em>当前</em> : null}
 									</button>
-									<button
-										className="secondary-button"
-										type="button"
-										disabled={sessionPanelLoading}
-										onClick={() =>
-											setSessionRenameDialog({
-												locator: {
-													agentInstanceId: sessionPanel.agentInstanceId,
-													projectId: sessionPanel.projectId,
-													workItemId: sessionPanel.workItemId,
-													role: sessionPanel.role,
-												},
-												displayName: sessionPanel.displayName,
-												name: sessionPanel.snapshot.sessionName ?? "",
-											})
-										}
-									>
-										<AppIcon name="edit" size={13} /> 重命名
-									</button>
-									<button
-										className="secondary-button"
-										type="button"
-										disabled={sessionPanelLoading}
-										onClick={() =>
-											void openSessionStats(
-												{
-													agentInstanceId: sessionPanel.agentInstanceId,
-													projectId: sessionPanel.projectId,
-													workItemId: sessionPanel.workItemId,
-													role: sessionPanel.role,
-												},
-												sessionPanel.displayName,
-											)
-										}
-									>
-										<AppIcon name="checklist" size={13} /> 会话统计
-									</button>
-									<button
-										className="secondary-button"
-										type="button"
-										disabled={sessionPanelLoading}
-										onClick={() => void importAgentSession()}
-									>
-										<AppIcon name="restore" size={13} /> 导入会话
-									</button>
-									<button
-										className="secondary-button"
-										type="button"
-										disabled={sessionPanelLoading}
-										onClick={() => void createAgentSession()}
-									>
-										<AppIcon name="plus" size={13} /> 新建会话
-									</button>
-								</div>
-							</div>
-							<div className="session-picker-list">
-								{sessionPanel.sessions.map((session) => (
-									<div
-										key={session.sessionId}
-										className={`session-picker-item${session.isCurrent ? " active" : ""}`}
-									>
+									{session.isCurrent ? null : (
 										<button
 											type="button"
-											className="session-picker-main"
+											className="work-panel-icon-button"
+											aria-label="删除会话"
+											title="删除会话"
 											disabled={sessionPanelLoading}
-											onClick={() => void switchAgentSession(session.sessionId)}
+											onClick={() => void deleteAgentSession(session.sessionId)}
 										>
-											<span className="session-picker-copy">
-												<strong>{session.name || "未命名会话"}</strong>
-												<small>
-													{session.messageCount} 条消息 ·{" "}
-													{session.updatedAt ? new Date(session.updatedAt).toLocaleString() : "—"}
-												</small>
-											</span>
-											{session.isCurrent ? <em>当前</em> : null}
+											<Trash2 size={13} strokeWidth={2} />
 										</button>
-										{session.isCurrent ? null : (
-											<button
-												type="button"
-												className="work-panel-icon-button"
-												aria-label="删除会话"
-												title="删除会话"
-												disabled={sessionPanelLoading}
-												onClick={() => void deleteAgentSession(session.sessionId)}
-											>
-												<Trash2 size={13} strokeWidth={2} />
-											</button>
-										)}
-									</div>
-								))}
-							</div>
-						</div>
-						<div className="session-summary">
-							<span>{sessionPanel.snapshot.messageCount} 条消息</span>
-							<span>{sessionPanel.snapshot.nodes.length} 个节点</span>
-							{sessionPanel.snapshot.contextUsage ? (
-								<span>
-									上下文{" "}
-									{sessionPanel.snapshot.contextUsage.tokens === null
-										? "—"
-										: formatTokenCount(sessionPanel.snapshot.contextUsage.tokens)}{" "}
-									/ {formatTokenCount(sessionPanel.snapshot.contextUsage.contextWindow)}
-									{sessionPanel.snapshot.contextUsage.percent === null
-										? ""
-										: ` · ${Math.round(sessionPanel.snapshot.contextUsage.percent)}%`}
-								</span>
-							) : null}
-							{sessionPanel.snapshot.isCompacting ? (
-								<strong className="summary-warning">正在压缩上下文</strong>
-							) : null}
-							{sessionPanel.snapshot.isStreaming ? (
-								<strong className="summary-active">Agent 正在运行</strong>
-							) : null}
-						</div>
-						<div className="session-tree-list">
-							{sessionPanel.snapshot.nodes.length === 0 ? (
-								<div className="session-tree-empty">
-									<div className="state-mark state-mark-muted">
-										<AppIcon name="branch" size={18} />
-									</div>
-									<strong>当前会话还没有节点</strong>
-									<p>发送消息后，这里会显示可以回溯和分叉的会话路径。</p>
+									)}
 								</div>
-							) : (
-								sessionPanel.snapshot.nodes.map((node) => {
-									const nodeLabel =
-										node.label ||
-										(node.role === "user" ? "你" : node.role === "assistant" ? "Pi" : node.role || node.type);
-									return (
-										<div
-											className={`session-node ${node.isLeaf ? "current" : ""}`}
-											key={node.entryId}
-											style={{ "--session-depth": Math.min(node.depth, 8) } as CSSProperties}
-										>
-											<div className="session-node-rail">
-												<AppIcon name="branch" size={14} />
-											</div>
-											<div className="session-node-copy">
-												<div className="session-node-meta">
-													<span>{nodeLabel}</span>
-													{node.isLeaf ? <strong>当前节点</strong> : null}
-													{node.timestamp ? (
-														<time>{new Date(node.timestamp).toLocaleString()}</time>
-													) : null}
-												</div>
-												<p>{node.text || node.type}</p>
-											</div>
-											{node.forkable ? (
-												<button
-													className="session-fork-button"
-													type="button"
-													disabled={sessionPanelLoading}
-													aria-label={`从${nodeLabel}节点创建分支`}
-													title="从此节点创建分支"
-													onClick={() => void forkAgentSession(node.entryId)}
-												>
-													{sessionPanelLoading ? "处理中…" : "Fork"}
-												</button>
-											) : null}
-										</div>
-									);
-								})
-							)}
-						</div>
-						<div className="session-tree-footer">
-							<code>
-								{sessionPanel.snapshot.sessionName || `未命名会话 · ${sessionPanel.snapshot.sessionId}`}
-							</code>
-							<button className="secondary-button" type="button" onClick={() => setSessionPanel(null)}>
-								关闭
-							</button>
+							))}
 						</div>
 					</div>
-				</div>
+					<div className="session-summary">
+						<span>{sessionPanel.snapshot.messageCount} 条消息</span>
+						<span>{sessionPanel.snapshot.nodes.length} 个节点</span>
+						{sessionPanel.snapshot.contextUsage ? (
+							<span>
+								上下文{" "}
+								{sessionPanel.snapshot.contextUsage.tokens === null
+									? "—"
+									: formatTokenCount(sessionPanel.snapshot.contextUsage.tokens)}{" "}
+								/ {formatTokenCount(sessionPanel.snapshot.contextUsage.contextWindow)}
+								{sessionPanel.snapshot.contextUsage.percent === null
+									? ""
+									: ` · ${Math.round(sessionPanel.snapshot.contextUsage.percent)}%`}
+							</span>
+						) : null}
+						{sessionPanel.snapshot.isCompacting ? (
+							<strong className="summary-warning">正在压缩上下文</strong>
+						) : null}
+						{sessionPanel.snapshot.isStreaming ? (
+							<strong className="summary-active">Agent 正在运行</strong>
+						) : null}
+					</div>
+					<div className="session-tree-list">
+						{sessionPanel.snapshot.nodes.length === 0 ? (
+							<div className="session-tree-empty">
+								<div className="state-mark state-mark-muted">
+									<AppIcon name="branch" size={18} />
+								</div>
+								<strong>当前会话还没有节点</strong>
+								<p>发送消息后，这里会显示可以回溯和分叉的会话路径。</p>
+							</div>
+						) : (
+							sessionPanel.snapshot.nodes.map((node) => {
+								const nodeLabel =
+									node.label ||
+									(node.role === "user" ? "你" : node.role === "assistant" ? "Pi" : node.role || node.type);
+								return (
+									<div
+										className={`session-node ${node.isLeaf ? "current" : ""}`}
+										key={node.entryId}
+										style={{ "--session-depth": Math.min(node.depth, 8) } as CSSProperties}
+									>
+										<div className="session-node-rail">
+											<AppIcon name="branch" size={14} />
+										</div>
+										<div className="session-node-copy">
+											<div className="session-node-meta">
+												<span>{nodeLabel}</span>
+												{node.isLeaf ? <strong>当前节点</strong> : null}
+												{node.timestamp ? <time>{new Date(node.timestamp).toLocaleString()}</time> : null}
+											</div>
+											<p>{node.text || node.type}</p>
+										</div>
+										{node.forkable ? (
+											<button
+												className="session-fork-button"
+												type="button"
+												disabled={sessionPanelLoading}
+												aria-label={`从${nodeLabel}节点创建分支`}
+												title="从此节点创建分支"
+												onClick={() => void forkAgentSession(node.entryId)}
+											>
+												{sessionPanelLoading ? "处理中…" : "Fork"}
+											</button>
+										) : null}
+									</div>
+								);
+							})
+						)}
+					</div>
+					<div className="session-tree-footer">
+						<code>{sessionPanel.snapshot.sessionName || `未命名会话 · ${sessionPanel.snapshot.sessionId}`}</code>
+						<button className="secondary-button" type="button" onClick={() => setSessionPanel(null)}>
+							关闭
+						</button>
+					</div>
+				</ModalShell>
 			) : null}
 			{sessionRenameDialog ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="取消重命名会话"
-						onClick={() => setSessionRenameDialog(null)}
-					/>
-					<form
-						className="modal session-rename-modal"
-						onSubmit={(event) => {
-							event.preventDefault();
-							void renameAgentSession();
-						}}
-					>
-						<h2>重命名会话</h2>
-						<p>为 {sessionRenameDialog.displayName} 的当前会话设置一个便于识别的名称。留空不会清除名称。</p>
-						<label>
-							会话名称
-							<input
-								maxLength={200}
-								placeholder="未命名会话"
-								value={sessionRenameDialog.name}
-								onChange={(event) =>
-									setSessionRenameDialog({
-										...sessionRenameDialog,
-										name: event.target.value,
-									})
-								}
-							/>
-						</label>
-						<div className="modal-actions">
+				<ModalShell
+					title="重命名会话"
+					description={`为 ${sessionRenameDialog.displayName} 的当前会话设置一个便于识别的名称。留空不会清除名称。`}
+					onClose={() => setSessionRenameDialog(null)}
+					closeDisabled={sessionPanelLoading}
+					width="sm"
+					className="session-rename-modal"
+					footer={
+						<>
 							<button type="button" onClick={() => setSessionRenameDialog(null)}>
 								取消
 							</button>
@@ -5740,71 +5702,65 @@ export function App() {
 							>
 								{sessionPanelLoading ? "保存中…" : "保存"}
 							</button>
-						</div>
-					</form>
-				</div>
+						</>
+					}
+				>
+					<label>
+						会话名称
+						<input
+							maxLength={200}
+							placeholder="未命名会话"
+							value={sessionRenameDialog.name}
+							onChange={(event) =>
+								setSessionRenameDialog({
+									...sessionRenameDialog,
+									name: event.target.value,
+								})
+							}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") void renameAgentSession();
+							}}
+						/>
+					</label>
+				</ModalShell>
 			) : null}
 			{sessionStatsDialog ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="关闭会话统计"
-						onClick={() => setSessionStatsDialog(null)}
-					/>
-					<SessionStatsDialog
-						displayName={sessionStatsDialog.displayName}
-						stats={sessionStats}
-						loading={sessionStatsLoading}
-						onClose={() => setSessionStatsDialog(null)}
-					/>
-				</div>
+				<SessionStatsDialog
+					displayName={sessionStatsDialog.displayName}
+					stats={sessionStats}
+					loading={sessionStatsLoading}
+					onClose={() => setSessionStatsDialog(null)}
+				/>
 			) : null}
 			{sessionShareDialog ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="取消分享会话"
-						disabled={sessionShareBusy}
-						onClick={() => {
-							if (!sessionShareBusy) setSessionShareDialog(null);
-						}}
-					/>
-					<SessionShareDialog
-						displayName={sessionShareDialog.displayName}
-						sessionName={sessionShareDialog.sessionName}
-						busy={sessionShareBusy}
-						result={sessionShareDialog.result}
-						error={sessionShareDialog.error}
-						onConfirm={() => void shareAgentSession()}
-						onClose={() => {
-							if (!sessionShareBusy) setSessionShareDialog(null);
-						}}
-						onOpenUrl={openExternalLink}
-					/>
-				</div>
+				<SessionShareDialog
+					displayName={sessionShareDialog.displayName}
+					sessionName={sessionShareDialog.sessionName}
+					busy={sessionShareBusy}
+					result={sessionShareDialog.result}
+					error={sessionShareDialog.error}
+					onConfirm={() => void shareAgentSession()}
+					onClose={() => {
+						if (!sessionShareBusy) setSessionShareDialog(null);
+					}}
+					onOpenUrl={openExternalLink}
+				/>
 			) : null}
 			{projectTrustPromptOpen && project ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="稍后设置项目信任"
-						onClick={() => setProjectTrustPromptOpen(false)}
-					/>
-					<div className="modal project-trust-modal" role="dialog" aria-modal="true" aria-label="项目信任">
-						<div className="session-tree-heading">
-							<div>
-								<h2>信任这个项目？</h2>
-								<p>
-									信任后 Pi 才会加载项目级 settings、extensions、skills 和 packages。决定写入{" "}
-									<code>~/.pi/agent/trust.json</code>，当前 Agent 重新连接后生效。
-								</p>
-							</div>
-						</div>
-						<code className="project-trust-path">{project.rootPath}</code>
-						<div className="modal-actions project-trust-actions">
+				<ModalShell
+					title="信任这个项目？"
+					description={
+						<>
+							信任后 Pi 才会加载项目级 settings、extensions、skills 和 packages。决定写入{" "}
+							<code>~/.pi/agent/trust.json</code>，当前 Agent 重新连接后生效。
+						</>
+					}
+					onClose={() => setProjectTrustPromptOpen(false)}
+					closeDisabled={projectTrustBusy}
+					width="sm"
+					className="project-trust-modal"
+					footer={
+						<div className="project-trust-actions">
 							<button
 								className="primary-button"
 								type="button"
@@ -5833,28 +5789,20 @@ export function App() {
 								稍后
 							</button>
 						</div>
-					</div>
-				</div>
+					}
+				>
+					<code className="project-trust-path">{project.rootPath}</code>
+				</ModalShell>
 			) : null}
 			{writeLeaseDialog?.lease ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="取消清理写锁"
-						onClick={() => setWriteLeaseDialog(null)}
-					/>
-					<div className="modal danger-modal" role="dialog" aria-modal="true" aria-label="清理失效写锁">
-						<h2>发现失效的项目写锁</h2>
-						<p>
-							{writeLeaseDialog.lease.workItemId} / {writeLeaseDialog.lease.role} Agent
-							持有的写锁对应进程已经不存在。 清理后可以重新发送当前消息。
-						</p>
-						<div className="lease-details">
-							<span>Agent：{writeLeaseDialog.lease.holderAgentInstanceId}</span>
-							<span>最后心跳：{new Date(writeLeaseDialog.lease.heartbeatAt).toLocaleString()}</span>
-						</div>
-						<div className="modal-actions">
+				<ModalShell
+					title="发现失效的项目写锁"
+					description={`${writeLeaseDialog.lease.workItemId} / ${writeLeaseDialog.lease.role} Agent 持有的写锁对应进程已经不存在。清理后可以重新发送当前消息。`}
+					onClose={() => setWriteLeaseDialog(null)}
+					width="sm"
+					className="danger-modal"
+					footer={
+						<>
 							<button type="button" onClick={() => setWriteLeaseDialog(null)}>
 								取消
 							</button>
@@ -5866,22 +5814,23 @@ export function App() {
 							>
 								清理写锁
 							</button>
-						</div>
+						</>
+					}
+				>
+					<div className="lease-details">
+						<span>Agent：{writeLeaseDialog.lease.holderAgentInstanceId}</span>
+						<span>最后心跳：{new Date(writeLeaseDialog.lease.heartbeatAt).toLocaleString()}</span>
 					</div>
-				</div>
+				</ModalShell>
 			) : null}
 			{shellRestartDialog ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="稍后重启"
-						onClick={() => setShellRestartDialog(false)}
-					/>
-					<div className="modal" role="dialog" aria-modal="true" aria-label="重启 CodePIddy">
-						<h2>重启 CodePIddy？</h2>
-						<p>Shell 路径已保存。重启客户端后，新启动的 Agent 会使用新的 bash 配置。</p>
-						<div className="modal-actions">
+				<ModalShell
+					title="重启 CodePIddy？"
+					description="Shell 路径已保存。重启客户端后，新启动的 Agent 会使用新的 bash 配置。"
+					onClose={() => setShellRestartDialog(false)}
+					width="sm"
+					footer={
+						<>
 							<button type="button" onClick={() => setShellRestartDialog(false)}>
 								稍后
 							</button>
@@ -5892,24 +5841,20 @@ export function App() {
 							>
 								立即重启
 							</button>
-						</div>
-					</div>
-				</div>
+						</>
+					}
+				/>
 			) : null}
 			{resetAgentDialog ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="取消重置 Agent"
-						onClick={() => setResetAgentDialog(null)}
-					/>
-					<div className="modal danger-modal" role="dialog" aria-modal="true" aria-label="重置 Agent">
-						<h2>重置 {resetAgentDialog.slot.displayName}？</h2>
-						<p>
-							当前会话会归档到本地运行目录，然后为这个 Slot 创建一个全新的 Agent Instance。项目文件不会被删除。
-						</p>
-						<div className="modal-actions">
+				<ModalShell
+					title={`重置 ${resetAgentDialog.slot.displayName}？`}
+					description="当前会话会归档到本地运行目录，然后为这个 Slot 创建一个全新的 Agent Instance。项目文件不会被删除。"
+					onClose={() => setResetAgentDialog(null)}
+					closeDisabled={busy}
+					width="sm"
+					className="danger-modal"
+					footer={
+						<>
 							<button type="button" onClick={() => setResetAgentDialog(null)}>
 								取消
 							</button>
@@ -5921,26 +5866,18 @@ export function App() {
 							>
 								重置 Agent
 							</button>
-						</div>
-					</div>
-				</div>
+						</>
+					}
+				/>
 			) : null}
 			{renameDialog ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="取消重命名"
-						onClick={() => setRenameDialog(null)}
-					/>
+				<ModalShell title="重命名工作项" onClose={() => setRenameDialog(null)} closeDisabled={busy} width="sm">
 					<form
-						className="modal"
 						onSubmit={(event) => {
 							event.preventDefault();
 							void renameSelectedWorkItem();
 						}}
 					>
-						<h2>重命名工作项</h2>
 						<label>
 							标题
 							<input
@@ -5957,54 +5894,45 @@ export function App() {
 							</button>
 						</div>
 					</form>
-				</div>
+				</ModalShell>
 			) : null}
 			{deleteDialog ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="取消永久删除"
-						onClick={() => setDeleteDialog(null)}
-					/>
-					<div className="modal danger-modal" role="dialog" aria-modal="true" aria-label="永久删除工作项">
-						<h2>永久删除工作项？</h2>
-						<p>
-							将删除“{deleteDialog.item.id}：{deleteDialog.item.title}”的项目文件、Agent 会话和本地运行记录。
-							此操作无法撤销。
-						</p>
-						<div className="modal-actions">
-							<button type="button" onClick={() => setDeleteDialog(null)}>
-								取消
-							</button>
-							<button
-								className="danger-button"
-								type="button"
-								disabled={busy}
-								onClick={() => void permanentlyDeleteWorkItem()}
-							>
-								永久删除
-							</button>
-						</div>
+				<ModalShell
+					title="永久删除工作项？"
+					description={`将删除“${deleteDialog.item.id}：${deleteDialog.item.title}”的项目文件、Agent 会话和本地运行记录。此操作无法撤销。`}
+					onClose={() => setDeleteDialog(null)}
+					closeDisabled={busy}
+					width="sm"
+					className="danger-modal"
+				>
+					<div className="modal-actions">
+						<button type="button" onClick={() => setDeleteDialog(null)}>
+							取消
+						</button>
+						<button
+							className="danger-button"
+							type="button"
+							disabled={busy}
+							onClick={() => void permanentlyDeleteWorkItem()}
+						>
+							永久删除
+						</button>
 					</div>
-				</div>
+				</ModalShell>
 			) : null}
 			{dialog ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="取消创建工作项"
-						onClick={() => setDialog(null)}
-					/>
+				<ModalShell
+					title={dialog.lane === "requirements" ? "新建需求" : "新建修漏洞"}
+					onClose={() => setDialog(null)}
+					closeDisabled={busy}
+					width="sm"
+				>
 					<form
-						className="modal"
 						onSubmit={(event) => {
 							event.preventDefault();
 							void createWorkItem();
 						}}
 					>
-						<h2>{dialog.lane === "requirements" ? "新建需求" : "新建修漏洞"}</h2>
 						<label>
 							标题
 							<input
@@ -6029,239 +5957,214 @@ export function App() {
 							</button>
 						</div>
 					</form>
-				</div>
+				</ModalShell>
 			) : null}
 			{extensionDialog ? (
-				<div className="modal-backdrop" role="presentation">
-					<div className="modal permission-modal" role="dialog" aria-modal="true" aria-label="权限请求">
-						<h2>权限请求</h2>
-						<pre className="permission-message">
-							{extensionDialog.title}
-							{extensionDialog.message ? `\n\n${extensionDialog.message}` : ""}
-						</pre>
-						<button
-							className="permission-defer"
-							type="button"
-							onClick={() => {
-								setDeferredPermissionAgentId(extensionDialog.agentInstanceId);
-								setExtensionDialog(null);
+				<ModalShell
+					title="权限请求"
+					onClose={() => void respondToExtensionDialog({ cancelled: true })}
+					width="sm"
+					className="permission-modal"
+					backdropDismiss={false}
+				>
+					<pre className="permission-message">
+						{extensionDialog.title}
+						{extensionDialog.message ? `\n\n${extensionDialog.message}` : ""}
+					</pre>
+					<button
+						className="permission-defer"
+						type="button"
+						onClick={() => {
+							setDeferredPermissionAgentId(extensionDialog.agentInstanceId);
+							setExtensionDialog(null);
+						}}
+					>
+						稍后处理
+					</button>
+					{extensionDialog.method === "select" ? (
+						<div className="permission-options">
+							{extensionDialog.options.map((option) => (
+								<button
+									className={permissionChoicePresentation(option).className}
+									type="button"
+									key={option}
+									onClick={() => void respondToExtensionDialog({ value: option })}
+								>
+									{option}
+								</button>
+							))}
+						</div>
+					) : extensionDialog.method === "confirm" ? (
+						<div className="modal-actions">
+							<button type="button" onClick={() => void respondToExtensionDialog({ confirmed: false })}>
+								拒绝
+							</button>
+							<button
+								className="primary-button"
+								type="button"
+								onClick={() => void respondToExtensionDialog({ confirmed: true })}
+							>
+								允许
+							</button>
+						</div>
+					) : (
+						<form
+							onSubmit={(event) => {
+								event.preventDefault();
+								void respondToExtensionDialog({ value: extensionDialog.value });
 							}}
 						>
-							稍后处理
-						</button>
-						{extensionDialog.method === "select" ? (
-							<div className="permission-options">
-								{extensionDialog.options.map((option) => (
-									<button
-										className={permissionChoicePresentation(option).className}
-										type="button"
-										key={option}
-										onClick={() => void respondToExtensionDialog({ value: option })}
-									>
-										{option}
-									</button>
-								))}
-							</div>
-						) : extensionDialog.method === "confirm" ? (
+							<textarea
+								rows={extensionDialog.method === "editor" ? 8 : 3}
+								placeholder={extensionDialog.placeholder}
+								value={extensionDialog.value}
+								onChange={(event) => setExtensionDialog({ ...extensionDialog, value: event.target.value })}
+							/>
 							<div className="modal-actions">
-								<button type="button" onClick={() => void respondToExtensionDialog({ confirmed: false })}>
-									拒绝
+								<button type="button" onClick={() => void respondToExtensionDialog({ cancelled: true })}>
+									取消
 								</button>
-								<button
-									className="primary-button"
-									type="button"
-									onClick={() => void respondToExtensionDialog({ confirmed: true })}
-								>
-									允许
+								<button className="primary-button" type="submit">
+									提交
 								</button>
 							</div>
-						) : (
+						</form>
+					)}
+					{extensionDialog.method === "select" ? (
+						<button
+							className="permission-cancel"
+							type="button"
+							onClick={() => void respondToExtensionDialog({ cancelled: true })}
+						>
+							取消
+						</button>
+					) : null}
+				</ModalShell>
+			) : null}
+			{authDialogMode ? (
+				<ModalShell
+					title={authDialogMode === "login" ? "Provider 登录" : "退出 Provider"}
+					description={
+						authDialogMode === "login"
+							? "使用 Pi 原生登录流程配置订阅或 API Key，凭据写入 ~/.pi/agent/auth.json。"
+							: "移除 Pi 已保存的 Provider 凭据；环境变量和 models.json 中的 Key 不受影响。"
+					}
+					onClose={closeAuthDialog}
+					width="md"
+					className="auth-modal"
+				>
+					<div className="auth-form">
+						<div className="settings-field">
+							<span>Provider</span>
+							<SelectMenu
+								label="Provider"
+								value={authProviderId ?? ""}
+								disabled={authBusy || authRequestId !== null}
+								searchable={authDialogMode === "login"}
+								searchPlaceholder="搜索 Provider 名称或 ID"
+								placeholder={authBusy ? "正在读取 Provider…" : "没有可用 Provider"}
+								options={authProviders.map((provider) => ({
+									value: provider.id,
+									label: provider.name,
+									icon: <ProviderIcon providerId={provider.id} size={15} />,
+									...(provider.configured ? { description: "已配置" } : {}),
+								}))}
+								onChange={(value) => {
+									const provider = authProviders.find((candidate) => candidate.id === value);
+									setAuthProviderId(provider?.id ?? null);
+									setAuthMethod(provider?.methods[0]?.type ?? null);
+								}}
+							/>
+						</div>
+						{authDialogMode === "login" && selectedAuthProvider && selectedAuthProvider.methods.length > 1 ? (
+							<div className="settings-field">
+								<span>登录方式</span>
+								<SelectMenu
+									label="登录方式"
+									value={authMethod ?? ""}
+									disabled={authBusy || authRequestId !== null}
+									options={selectedAuthProvider.methods.map((method) => ({
+										value: method.type,
+										label: method.name,
+										...(method.isSubscription ? { description: "订阅登录" } : {}),
+									}))}
+									onChange={(value) => setAuthMethod(value as AuthMethodType)}
+								/>
+							</div>
+						) : null}
+						{authPrompt ? (
 							<form
 								onSubmit={(event) => {
 									event.preventDefault();
-									void respondToExtensionDialog({ value: extensionDialog.value });
+									void submitAuthPrompt();
 								}}
 							>
-								<textarea
-									rows={extensionDialog.method === "editor" ? 8 : 3}
-									placeholder={extensionDialog.placeholder}
-									value={extensionDialog.value}
-									onChange={(event) => setExtensionDialog({ ...extensionDialog, value: event.target.value })}
-								/>
+								<label className="settings-field" htmlFor={`auth-prompt-${authPrompt.promptId}`}>
+									<span>{authPrompt.message}</span>
+									{authPrompt.type === "select" ? (
+										<SelectMenu
+											label={authPrompt.message}
+											value={authPromptValue}
+											disabled={authBusy}
+											options={(authPrompt.options ?? []).map((option) => ({
+												value: option.id,
+												label: option.label,
+												...(option.description ? { description: option.description } : {}),
+											}))}
+											onChange={setAuthPromptValue}
+										/>
+									) : (
+										<input
+											id={`auth-prompt-${authPrompt.promptId}`}
+											type={authPrompt.type === "secret" ? "password" : "text"}
+											value={authPromptValue}
+											placeholder={authPrompt.placeholder}
+											disabled={authBusy}
+											onChange={(event) => setAuthPromptValue(event.target.value)}
+										/>
+									)}
+								</label>
 								<div className="modal-actions">
-									<button type="button" onClick={() => void respondToExtensionDialog({ cancelled: true })}>
+									<button type="button" disabled={authBusy} onClick={closeAuthDialog}>
 										取消
 									</button>
-									<button className="primary-button" type="submit">
-										提交
+									<button className="primary-button" type="submit" disabled={authBusy}>
+										继续
 									</button>
 								</div>
 							</form>
-						)}
-						{extensionDialog.method === "select" ? (
-							<button
-								className="permission-cancel"
-								type="button"
-								onClick={() => void respondToExtensionDialog({ cancelled: true })}
-							>
-								取消
-							</button>
+						) : null}
+						{authMessage ? <p className="auth-message">{authMessage}</p> : null}
+						{authError ? <StateBlock compact tone="error" title={authError} /> : null}
+						{!authPrompt ? (
+							<div className="modal-actions">
+								{authDialogMode === "login" && authRequestId === null ? (
+									<button
+										className="primary-button"
+										type="button"
+										disabled={authBusy || !selectedAuthProvider || !authMethod}
+										onClick={() => void startAuthLogin()}
+									>
+										开始登录
+									</button>
+								) : null}
+								{authDialogMode === "logout" ? (
+									<button
+										className="primary-button"
+										type="button"
+										disabled={authBusy || !selectedAuthProvider}
+										onClick={() => void logoutAuthProvider()}
+									>
+										退出登录
+									</button>
+								) : null}
+								<button type="button" onClick={closeAuthDialog}>
+									关闭
+								</button>
+							</div>
 						) : null}
 					</div>
-				</div>
-			) : null}
-			{authDialogMode ? (
-				<div className="modal-backdrop" role="presentation">
-					<button
-						className="modal-backdrop-dismiss"
-						type="button"
-						aria-label="关闭 Provider 登录"
-						onClick={closeAuthDialog}
-					/>
-					<div className="modal auth-modal" role="dialog" aria-modal="true" aria-label="Provider 登录">
-						<div className="session-tree-heading">
-							<div>
-								<h2>{authDialogMode === "login" ? "Provider 登录" : "退出 Provider"}</h2>
-								<p>
-									{authDialogMode === "login"
-										? "使用 Pi 原生登录流程配置订阅或 API Key，凭据写入 ~/.pi/agent/auth.json。"
-										: "移除 Pi 已保存的 Provider 凭据；环境变量和 models.json 中的 Key 不受影响。"}
-								</p>
-							</div>
-							<IconButton label="关闭" onClick={closeAuthDialog}>
-								<AppIcon name="close" />
-							</IconButton>
-						</div>
-						<div className="auth-form">
-							<div className="settings-field">
-								<span>Provider</span>
-								<SelectMenu
-									label="Provider"
-									value={authProviderId ?? ""}
-									disabled={authBusy || authRequestId !== null}
-									searchable={authDialogMode === "login"}
-									searchPlaceholder="搜索 Provider 名称或 ID"
-									placeholder={authBusy ? "正在读取 Provider…" : "没有可用 Provider"}
-									options={authProviders.map((provider) => ({
-										value: provider.id,
-										label: provider.name,
-										icon: <ProviderIcon providerId={provider.id} size={15} />,
-										...(provider.configured ? { description: "已配置" } : {}),
-									}))}
-									onChange={(value) => {
-										const provider = authProviders.find((candidate) => candidate.id === value);
-										setAuthProviderId(provider?.id ?? null);
-										setAuthMethod(provider?.methods[0]?.type ?? null);
-									}}
-								/>
-							</div>
-							{authDialogMode === "login" && selectedAuthProvider && selectedAuthProvider.methods.length > 1 ? (
-								<div className="settings-field">
-									<span>登录方式</span>
-									<SelectMenu
-										label="登录方式"
-										value={authMethod ?? ""}
-										disabled={authBusy || authRequestId !== null}
-										options={selectedAuthProvider.methods.map((method) => ({
-											value: method.type,
-											label: method.name,
-											...(method.isSubscription ? { description: "订阅登录" } : {}),
-										}))}
-										onChange={(value) => setAuthMethod(value as AuthMethodType)}
-									/>
-								</div>
-							) : null}
-							{authPrompt ? (
-								<form
-									onSubmit={(event) => {
-										event.preventDefault();
-										void submitAuthPrompt();
-									}}
-								>
-									<label className="settings-field" htmlFor={`auth-prompt-${authPrompt.promptId}`}>
-										<span>{authPrompt.message}</span>
-										{authPrompt.type === "select" ? (
-											<SelectMenu
-												label={authPrompt.message}
-												value={authPromptValue}
-												disabled={authBusy}
-												options={(authPrompt.options ?? []).map((option) => ({
-													value: option.id,
-													label: option.label,
-													...(option.description ? { description: option.description } : {}),
-												}))}
-												onChange={setAuthPromptValue}
-											/>
-										) : (
-											<input
-												id={`auth-prompt-${authPrompt.promptId}`}
-												type={authPrompt.type === "secret" ? "password" : "text"}
-												value={authPromptValue}
-												placeholder={authPrompt.placeholder}
-												disabled={authBusy}
-												onChange={(event) => setAuthPromptValue(event.target.value)}
-											/>
-										)}
-									</label>
-									<div className="modal-actions">
-										<button type="button" disabled={authBusy} onClick={closeAuthDialog}>
-											取消
-										</button>
-										<button className="primary-button" type="submit" disabled={authBusy}>
-											继续
-										</button>
-									</div>
-								</form>
-							) : null}
-							{authMessage ? <p className="auth-message">{authMessage}</p> : null}
-							{authError ? (
-								<p className="permission-settings-error" role="alert">
-									{authError}
-								</p>
-							) : null}
-							{!authPrompt ? (
-								<div className="modal-actions">
-									{authDialogMode === "login" && authRequestId === null ? (
-										<button
-											className="primary-button"
-											type="button"
-											disabled={authBusy || !selectedAuthProvider || !authMethod}
-											onClick={() => void startAuthLogin()}
-										>
-											开始登录
-										</button>
-									) : null}
-									{authDialogMode === "logout" ? (
-										<button
-											className="primary-button"
-											type="button"
-											disabled={authBusy || !selectedAuthProvider}
-											onClick={() => void logoutAuthProvider()}
-										>
-											退出登录
-										</button>
-									) : null}
-									<button type="button" onClick={closeAuthDialog}>
-										关闭
-									</button>
-								</div>
-							) : null}
-						</div>
-					</div>
-				</div>
-			) : null}
-			{archiveToast ? (
-				<output className="toast" aria-live="polite">
-					“{archiveToast.title}”已归档
-					<button type="button" onClick={() => void restoreArchived()}>
-						撤销
-					</button>
-				</output>
-			) : null}
-			{sessionNotice ? (
-				<output className="toast" aria-live="polite">
-					{sessionNotice}
-				</output>
+				</ModalShell>
 			) : null}
 		</div>
 	);

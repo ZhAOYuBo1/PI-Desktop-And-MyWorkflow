@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 // Only commands for which this desktop client has an implementation should be offered.
 const DESKTOP_BUILTINS = new Set([
 	"settings",
+	"debug",
 	"mcp",
 	"llama",
 	"model",

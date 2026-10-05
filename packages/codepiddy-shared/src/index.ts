@@ -362,6 +362,8 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	getPendingPermissionRequest(input: AgentInstanceLocator): Promise<PendingPermissionRequest | null>;
 	getSettingsStatus(): Promise<SettingsStatus>;
 	getPiRuntimeStatus(): Promise<PiRuntimeStatus>;
+	getDiagnosticsInfo(): Promise<DiagnosticsInfo>;
+	exportDiagnostics(input: DiagnosticsExportInput): Promise<DiagnosticsExportResult | null>;
 	checkPiRuntimeUpdate(): Promise<PiRuntimeStatus>;
 	installPiRuntimeUpdate(version: string): Promise<PiRuntimeStatus>;
 	rollbackPiRuntime(): Promise<PiRuntimeStatus>;
@@ -752,6 +754,33 @@ export interface PiRuntimeStatus {
 	restartRequired: boolean;
 	npmAvailable: boolean;
 	warning: string | null;
+}
+
+export interface DiagnosticsInfo {
+	codepiddyVersion: string;
+	piRuntime: PiRuntimeStatus;
+	platform: string;
+	architecture: string;
+	electronVersion: string | null;
+	nodeVersion: string;
+	osRelease: string;
+	osVersion: string;
+	debugLogPath: string;
+	mcpLogPath: string;
+}
+
+export interface DiagnosticsExportInput {
+	includeSession: boolean;
+	agent?: AgentInstanceLocator;
+	projectRoot?: string;
+	uiError?: string;
+}
+
+export interface DiagnosticsExportResult {
+	filePath: string;
+	createdAt: string;
+	sizeBytes: number;
+	includedSession: boolean;
 }
 
 export const PERMISSION_STATES = ["allow", "ask", "deny"] as const;

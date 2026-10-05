@@ -7,6 +7,7 @@ import type {
 	ArchiveWorkItemInput,
 	CreateAgentInput,
 	CreateWorkItemInput,
+	DiagnosticsExportInput,
 	ExtensionUiResponseInput,
 	ForkAgentSessionInput,
 	InvokeAgentBuiltinCommandInput,
@@ -115,6 +116,26 @@ export function parseExternalUrl(value: unknown): string {
 	}
 	if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("只允许打开 HTTP 或 HTTPS 链接");
 	return url.toString();
+}
+
+export function parseDiagnosticsExportInput(value: unknown): DiagnosticsExportInput {
+	const input = record(value, "Diagnostics Export");
+	if (typeof input.includeSession !== "boolean") throw new Error("诊断包 includeSession 必须是布尔值");
+	const agent = input.agent === undefined || input.agent === null ? undefined : parseAgentLocator(input.agent);
+	const projectRoot =
+		input.projectRoot === undefined || input.projectRoot === null
+			? undefined
+			: path.resolve(text(input.projectRoot, "项目路径", 2048));
+	const uiError =
+		input.uiError === undefined || input.uiError === null
+			? undefined
+			: text(input.uiError, "界面错误信息", 20_000, true);
+	return {
+		includeSession: input.includeSession,
+		...(agent ? { agent } : {}),
+		...(projectRoot ? { projectRoot } : {}),
+		...(uiError ? { uiError } : {}),
+	};
 }
 
 export function parseCreateWorkItemInput(value: unknown): CreateWorkItemInput {

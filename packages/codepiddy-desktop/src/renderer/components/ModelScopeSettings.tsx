@@ -1,7 +1,8 @@
 import type { AgentInstanceLocator, AgentModelOption, AgentModelScope } from "@codepiddy/shared";
-import { Check, ChevronDown, ChevronUp, RefreshCw, Search } from "lucide-react";
+import { ChevronDown, ChevronUp, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProviderIcon } from "./provider-icon.tsx";
+import { SettingsCheckbox } from "./settings-checkbox.tsx";
 import { showSettingsToast } from "./settings-toast-store.ts";
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
@@ -229,16 +230,16 @@ export function ModelScopeSettings({
 									const enabled = enabledSet.has(id);
 									return (
 										<div className={`model-scope-row${enabled ? " is-enabled" : ""}`} key={id}>
-											<label className="model-scope-check">
-												<input type="checkbox" checked={enabled} onChange={() => toggleModel(id)} />
-												<span className="model-scope-checkmark" aria-hidden="true">
-													{enabled ? <Check size={12} strokeWidth={2.4} /> : null}
-												</span>
+											<SettingsCheckbox
+												className="model-scope-check"
+												checked={enabled}
+												onChange={() => toggleModel(id)}
+											>
 												<span className="model-scope-model-copy">
 													<strong>{model.name}</strong>
 													<small title={id}>{id}</small>
 												</span>
-											</label>
+											</SettingsCheckbox>
 											<span className="model-scope-reorder">
 												<button
 													type="button"

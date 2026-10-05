@@ -3,7 +3,6 @@ import {
 	Check,
 	ChevronLeft,
 	ChevronRight,
-	CircleAlert,
 	Copy,
 	FileDiff,
 	FileQuestion,
@@ -33,6 +32,7 @@ import {
 } from "react";
 import { MessageContent } from "./message-content.tsx";
 import { PanelIconButton } from "./panel-icon-button.tsx";
+import { StateBlock } from "./state-block.tsx";
 import {
 	extractPanelPath,
 	formatPanelSize,
@@ -696,13 +696,9 @@ export const WorkPanel = memo(function WorkPanel({
 		}
 		if (fileState.status === "error")
 			return (
-				<div className="work-panel-empty is-error" role="alert">
-					<div className="state-mark state-mark-error">
-						<CircleAlert size={18} strokeWidth={2} aria-hidden="true" />
-					</div>
-					<strong>文件读取失败</strong>
-					<p>文件可能已被移动或删除，刷新目录树后重试。</p>
-				</div>
+				<StateBlock tone="error" title="文件读取失败">
+					文件可能已被移动或删除，刷新目录树后重试。
+				</StateBlock>
 			);
 		const { content } = fileState;
 		if (content.kind === "image" && content.dataUrl)
@@ -859,13 +855,7 @@ export const WorkPanel = memo(function WorkPanel({
 	};
 
 	const renderTerminalView = (): ReactNode => (
-		<Suspense
-			fallback={
-				<output className="terminal-loading" aria-live="polite">
-					正在加载终端…
-				</output>
-			}
-		>
+		<Suspense fallback={<StateBlock tone="loading" title="正在加载终端…" />}>
 			<TerminalPane projectRoot={projectRoot} />
 		</Suspense>
 	);

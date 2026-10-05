@@ -8,7 +8,9 @@ import type {
 } from "@codepiddy/shared";
 import { Download, HardDrive, Loader2, Play, RefreshCw, Search, Server, Square } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { SettingsCheckbox } from "./settings-checkbox.tsx";
 import { showSettingsToast } from "./settings-toast-store.ts";
+import { StateBlock } from "./state-block.tsx";
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
@@ -375,15 +377,9 @@ export function LlamaCppSettings({ activeAgent }: { activeAgent: AgentInstanceLo
 					</label>
 				</div>
 				<div className="llama-connection-actions">
-					<label className="settings-checkbox">
-						<input
-							type="checkbox"
-							checked={clearApiKey}
-							disabled={!config?.apiKeyConfigured}
-							onChange={(event) => setClearApiKey(event.target.checked)}
-						/>
-						<span>清除已保存的 API Key</span>
-					</label>
+					<SettingsCheckbox checked={clearApiKey} disabled={!config?.apiKeyConfigured} onChange={setClearApiKey}>
+						清除已保存的 API Key
+					</SettingsCheckbox>
 					<div className="settings-actions">
 						<button className="primary-button" type="button" disabled={saving} onClick={() => void save()}>
 							{saving ? "保存中…" : "保存并测试"}
@@ -400,7 +396,7 @@ export function LlamaCppSettings({ activeAgent }: { activeAgent: AgentInstanceLo
 				</div>
 			</div>
 
-			{runtime?.error ? <div className="llama-error-note">{runtime.error}</div> : null}
+			{runtime?.error ? <StateBlock compact tone="error" title={runtime.error} /> : null}
 
 			<div className="llama-model-heading">
 				<div>

@@ -11,7 +11,9 @@ import type {
 import { Activity, Globe, LogIn, LogOut, Pencil, Plug, Plus, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { SelectMenu } from "./select-menu.tsx";
+import { SettingsCheckbox } from "./settings-checkbox.tsx";
 import { showSettingsToast } from "./settings-toast-store.ts";
+import { StateBlock } from "./state-block.tsx";
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
@@ -600,7 +602,7 @@ export function McpSettings({
 								<span className={`mcp-runtime-state is-${server.state}`}>
 									{runtimeStateLabel(server.state)}
 								</span>
-								{server.error ? <span className="mcp-runtime-error">{server.error}</span> : null}
+								{server.error ? <StateBlock compact tone="error" title={server.error} /> : null}
 							</div>
 						))}
 					</div>
@@ -608,11 +610,9 @@ export function McpSettings({
 					<p className="work-change-note">{runtimeSnapshot?.errors[0] || "没有可显示的 MCP 运行状态。"}</p>
 				)}
 				{runtimeSnapshot && runtimeSnapshot.errors.length > 1
-					? runtimeSnapshot.errors.slice(1).map((entry) => (
-							<p className="permission-settings-error" key={entry}>
-								{entry}
-							</p>
-						))
+					? runtimeSnapshot.errors
+							.slice(1)
+							.map((entry) => <StateBlock compact tone="error" title={entry} key={entry} />)
 					: null}
 			</div>
 
@@ -783,14 +783,13 @@ export function McpSettings({
 							<p>控制启用状态、上下文暴露和连接超时。</p>
 						</div>
 						<div className="provider-editor-grid">
-							<label className="settings-checkbox mcp-checkbox-field">
-								<input
-									type="checkbox"
-									checked={draft.enabled}
-									onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-								/>
-								<span>启用这个 MCP 服务</span>
-							</label>
+							<SettingsCheckbox
+								className="mcp-checkbox-field"
+								checked={draft.enabled}
+								onChange={(enabled) => setDraft({ ...draft, enabled })}
+							>
+								启用这个 MCP 服务
+							</SettingsCheckbox>
 							<label className="settings-field">
 								<span>超时（秒）</span>
 								<input

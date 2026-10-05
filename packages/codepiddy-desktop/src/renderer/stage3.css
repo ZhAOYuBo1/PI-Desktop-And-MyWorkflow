@@ -189,6 +189,374 @@
   line-height: 1.5;
 }
 
+/* 统一复选框：16px 框体、真实勾号、只有勾选框本身和可点击文案响应。 */
+.settings-checkbox-control {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--cp-space-sm);
+  color: var(--cp-ink-secondary);
+  font-size: 12px;
+}
+
+.settings-checkbox-control > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings-checkbox-hitarea {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  place-items: center;
+  margin-top: 1px;
+  cursor: pointer;
+}
+
+.settings-checkbox-mark {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: var(--cp-radius-xs);
+  background: var(--cp-surface-inset);
+  color: var(--cp-surface);
+  transition:
+    background 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+.settings-checkbox-control > input:checked + .settings-checkbox-hitarea .settings-checkbox-mark {
+  background: var(--cp-accent);
+  color: #fff;
+}
+
+.settings-checkbox-control > input:focus-visible + .settings-checkbox-hitarea .settings-checkbox-mark {
+  box-shadow: 0 0 0 2px var(--cp-accent-ring);
+}
+
+.settings-checkbox-control > input:disabled + .settings-checkbox-hitarea {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.settings-checkbox-content {
+  display: grid;
+  min-width: 0;
+  gap: var(--cp-space-micro);
+  color: inherit;
+}
+
+.settings-checkbox-content.is-clickable {
+  cursor: pointer;
+}
+
+.settings-checkbox-control > input:disabled ~ .settings-checkbox-content {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.settings-checkbox-trailing {
+  flex: none;
+  align-self: flex-start;
+}
+
+.state-block {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+  color: var(--cp-ink-secondary);
+}
+
+.state-block.is-compact {
+  padding: var(--cp-space-sm) var(--cp-space-md);
+}
+
+.state-block-mark {
+  flex: none;
+}
+
+.state-block-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: var(--cp-space-micro);
+}
+
+.state-block-copy strong {
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.state-block-detail {
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.state-block-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--cp-space-xs);
+}
+
+.state-block.is-success {
+  background: color-mix(in oklab, var(--cp-success) 9%, transparent);
+  color: var(--cp-success);
+}
+
+.state-block.is-warning {
+  background: color-mix(in oklab, var(--cp-warning) 9%, transparent);
+  color: var(--cp-warning);
+}
+
+.state-block.is-error {
+  background: color-mix(in oklab, var(--cp-danger) 9%, transparent);
+  color: var(--cp-danger);
+}
+
+.state-block.is-loading {
+  background: var(--cp-surface-secondary);
+  color: var(--cp-accent);
+}
+
+.app-error-state {
+  position: absolute;
+  z-index: 50;
+  top: var(--cp-space-md);
+  left: 50%;
+  width: min(520px, calc(100% - 48px));
+  transform: translateX(-50%);
+}
+
+.modal-shell {
+  display: flex;
+  max-height: min(760px, calc(100vh - 32px));
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.modal-shell-sm {
+  width: min(460px, calc(100vw - 32px));
+}
+
+.modal-shell-md {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.modal-shell-lg {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.modal-shell-xl {
+  width: min(780px, calc(100vw - 32px));
+}
+
+.modal-shell-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cp-space-lg);
+  padding: var(--cp-space-xl) var(--cp-space-xl) var(--cp-space-md);
+}
+
+.modal-shell-heading h2 {
+  margin: 0 0 var(--cp-space-xxs);
+  font-size: 15px;
+  font-weight: 560;
+}
+
+.modal-shell-heading p {
+  max-width: 58ch;
+  margin: 0;
+  color: var(--cp-ink-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.modal-shell-body {
+  min-height: 0;
+  padding: 0 var(--cp-space-xl);
+  overflow-y: auto;
+}
+
+.modal-shell-footer {
+  flex: none;
+  margin: var(--cp-space-lg) var(--cp-space-xl) var(--cp-space-xl);
+}
+
+.modal-close-button {
+  flex: none;
+}
+
+.role-skill-option.settings-checkbox-control {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.role-skill-option .settings-checkbox-hitarea {
+  margin-top: var(--cp-space-xxs);
+}
+
+.role-skill-option .settings-checkbox-content,
+.role-skill-copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--cp-space-xxs);
+}
+
+.diagnostics-settings-card {
+  gap: var(--cp-space-lg);
+}
+
+.diagnostics-version-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--cp-space-sm);
+  margin-top: var(--cp-space-lg);
+}
+
+.diagnostics-version-grid > div {
+  display: grid;
+  gap: var(--cp-space-micro);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+}
+
+.diagnostics-version-grid span,
+.diagnostics-log-paths span,
+.diagnostics-export-summary span {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
+.diagnostics-version-grid strong {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostics-log-paths {
+  display: grid;
+  gap: var(--cp-space-sm);
+}
+
+.diagnostics-log-paths > div {
+  display: grid;
+  gap: var(--cp-space-micro);
+  min-width: 0;
+}
+
+.diagnostics-log-paths code {
+  overflow: hidden;
+  color: var(--cp-ink-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostics-session-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+}
+
+.diagnostics-session-option.disabled {
+  cursor: default;
+}
+
+.diagnostics-session-checkbox-control {
+  flex: 1;
+}
+
+.diagnostics-session-checkbox-control .settings-checkbox-content strong {
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.diagnostics-session-checkbox-control .settings-checkbox-content small {
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.diagnostics-export-modal {
+  width: min(520px, calc(100vw - var(--cp-space-2xl)));
+  padding: 0;
+}
+
+.diagnostics-privacy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--cp-space-md);
+  margin: var(--cp-space-lg) var(--cp-space-xl) 0;
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-lg);
+  background: color-mix(in oklab, var(--cp-warning) 9%, transparent);
+  color: var(--cp-warning);
+}
+
+.diagnostics-privacy strong {
+  display: block;
+  margin-bottom: var(--cp-space-micro);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.diagnostics-privacy p {
+  margin: 0;
+  color: var(--cp-ink-secondary);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.diagnostics-export-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--cp-space-sm);
+  margin: var(--cp-space-md) var(--cp-space-xl) 0;
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+  color: var(--cp-ink-secondary);
+}
+
+.diagnostics-export-summary > div {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.diagnostics-export-summary strong {
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.diagnostics-export-modal .modal-actions {
+  margin: var(--cp-space-lg) var(--cp-space-xl) var(--cp-space-xl);
+}
+
+.diagnostics-spinner {
+  animation: session-share-spin 850ms linear infinite;
+}
+
 .llama-connection-card {
   display: grid;
   gap: var(--cp-space-md);
@@ -705,31 +1073,6 @@
   cursor: pointer;
 }
 
-.model-scope-check input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.model-scope-checkmark {
-  display: grid;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  place-items: center;
-  border-radius: var(--cp-radius-xs);
-  background: var(--cp-surface-inset);
-  color: var(--cp-surface);
-}
-
-.model-scope-check input:checked + .model-scope-checkmark {
-  background: var(--cp-accent);
-}
-
-.model-scope-check input:focus-visible + .model-scope-checkmark {
-  box-shadow: 0 0 0 2px var(--cp-accent-ring);
-}
-
 .model-scope-model-copy {
   display: grid;
   min-width: 0;
@@ -1129,7 +1472,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .session-share-spinner {
+  .session-share-spinner,
+  .diagnostics-spinner {
     animation: none;
   }
 }
@@ -1170,5 +1514,9 @@
   .share-setting-section > .settings-actions {
     padding-left: 0;
     margin-left: 0;
+  }
+
+  .diagnostics-version-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

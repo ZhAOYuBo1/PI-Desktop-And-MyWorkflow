@@ -1,5 +1,7 @@
 import type { AgentSessionStats } from "@codepiddy/shared";
 import { Coins, FileText, Gauge, MessageSquare, Wrench } from "lucide-react";
+import { ModalShell } from "./modal-shell.tsx";
+import { StateBlock } from "./state-block.tsx";
 
 function formatNumber(value: number): string {
 	return new Intl.NumberFormat(undefined, {
@@ -33,18 +35,20 @@ export function SessionStatsDialog({
 			? null
 			: (stats.contextUsage.tokens / stats.contextUsage.contextWindow) * 100);
 	return (
-		<div className="modal session-stats-modal" role="dialog" aria-modal="true" aria-label="会话统计">
-			<div className="session-tree-heading">
-				<div>
-					<h2>{displayName} 会话统计</h2>
-					<p>统计覆盖当前 Session 的全部历史，包括已经压缩掉的上下文。</p>
-				</div>
-				<button className="work-panel-icon-button" type="button" aria-label="关闭会话统计" onClick={onClose}>
-					<span aria-hidden="true">×</span>
+		<ModalShell
+			title={`${displayName} 会话统计`}
+			description="统计覆盖当前 Session 的全部历史，包括已经压缩掉的上下文。"
+			onClose={onClose}
+			width="md"
+			className="session-stats-modal"
+			footer={
+				<button className="secondary-button" type="button" onClick={onClose}>
+					关闭
 				</button>
-			</div>
+			}
+		>
 			{loading || !stats ? (
-				<div className="session-stats-loading">正在读取 Pi Session 统计…</div>
+				<StateBlock tone="loading" title="正在读取 Pi Session 统计…" />
 			) : (
 				<>
 					<div className="session-stats-identity">
@@ -114,11 +118,6 @@ export function SessionStatsDialog({
 					</div>
 				</>
 			)}
-			<div className="modal-actions">
-				<button className="secondary-button" type="button" onClick={onClose}>
-					关闭
-				</button>
-			</div>
-		</div>
+		</ModalShell>
 	);
 }

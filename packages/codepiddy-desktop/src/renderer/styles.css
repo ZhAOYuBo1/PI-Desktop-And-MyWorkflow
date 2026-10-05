@@ -182,6 +182,9 @@ button { color: inherit; }
 .modal-actions > button:not(.primary-button) { padding: 0 var(--cp-space-md); border: 0; background: transparent; cursor: pointer; }
 .toast { position: fixed; z-index: 30; bottom: var(--cp-space-xl); left: 50%; display: flex; align-items: center; gap: var(--cp-space-lg); padding: var(--cp-space-md) var(--cp-space-md); border: 1px solid var(--cp-surface-inset); border-radius: var(--cp-radius-md); background: var(--cp-ink); color: #fff; box-shadow: 0 10px 35px rgb(0 0 0 / 18%); transform: translateX(-50%); }
 .toast button { border: 0; background: transparent; color: #fff; font-weight: 650; cursor: pointer; }
+.toast button:last-child { display: grid; width: 22px; height: 22px; flex: none; place-items: center; margin-left: auto; padding: 0; border-radius: var(--cp-radius-sm); }
+.toast button:last-child:hover,
+.toast button:last-child:focus-visible { background: rgb(255 255 255 / 12%); }
 .error-banner { position: absolute; z-index: 50; top: var(--cp-space-md); left: 50%; display: flex; width: min(520px, calc(100% - 48px)); align-items: flex-start; justify-content: space-between; gap: var(--cp-space-md); padding: var(--cp-space-md) var(--cp-space-md); border-radius: var(--cp-radius-md); background: var(--cp-danger); color: #fff; transform: translateX(-50%); overflow-wrap: anywhere; }
 .error-banner button { flex: 0 0 24px; border: 0; background: transparent; color: #fff; cursor: pointer; }
 
@@ -1969,8 +1972,6 @@ button { color: inherit; }
 }
 .role-skill-option:hover { background: var(--cp-surface-secondary); }
 .role-skill-option.selected { border-color: var(--cp-surface-inset); background: var(--cp-surface-secondary); }
-.role-skill-option input { margin: var(--cp-space-xxs) 0 0; accent-color: var(--cp-accent); }
-.role-skill-option > span { display: grid; min-width: 0; gap: var(--cp-space-xxs); }
 .role-skill-option strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .role-skill-option small {
   display: -webkit-box;
@@ -4780,18 +4781,6 @@ body {
   opacity: 0.45;
 }
 
-.settings-checkbox {
-  display: flex;
-  align-items: center;
-  gap: var(--cp-space-sm);
-  color: var(--cp-ink-secondary);
-  font-size: 12px;
-}
-
-.settings-checkbox input {
-  width: auto;
-}
-
 .mcp-server-list,
 .provider-config-list {
   display: grid;
@@ -5289,19 +5278,69 @@ body {
   line-height: 1.5;
 }
 
-.settings-toast span {
+.settings-toast-main {
+  display: grid;
   min-width: 0;
-  overflow-wrap: anywhere;
+  flex: 1;
+  gap: var(--cp-space-micro);
 }
 
-.settings-toast button {
+.settings-toast-message {
+  overflow-wrap: anywhere;
+  font-weight: 560;
+}
+
+.settings-toast-detail {
+  color: inherit;
+  font-size: 11.5px;
+  line-height: 1.45;
+  opacity: 0.78;
+}
+
+.settings-toast-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.9;
+  user-select: text;
+}
+
+.settings-toast-close {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cp-radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.settings-toast-action {
   flex: none;
   padding: var(--cp-space-micro) var(--cp-space-xs);
   border: 0;
-  background: transparent;
+  border-radius: var(--cp-radius-sm);
+  background: color-mix(in oklab, currentColor 10%, transparent);
   color: inherit;
-  font-size: 11px;
+  font: inherit;
+  font-size: 11.5px;
   cursor: pointer;
+}
+
+.settings-toast-action:hover,
+.settings-toast-action:focus-visible {
+  background: color-mix(in oklab, currentColor 16%, transparent);
+}
+
+.settings-toast-close:hover,
+.settings-toast-close:focus-visible {
+  background: color-mix(in oklab, currentColor 10%, transparent);
 }
 
 .settings-toast.is-success {

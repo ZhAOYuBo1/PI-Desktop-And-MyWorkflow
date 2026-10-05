@@ -263,6 +263,17 @@ components:
 - **Placeholder:** 必须使用 `#6e7075`（弱墨），保证 4.5:1。
 - **Disabled:** 文字转淡墨，底色不变，光标 default。
 
+### Unified Interaction Components
+
+同一种交互只允许一个组件实现。新增功能必须优先复用现有组件，不能复制一套近似样式：
+
+- 临时消息：`SettingsToast`。支持 message、detail、path、action，关闭按钮固定为最右侧 `×`；不用于常驻内容。
+- 持久内联状态：`StateBlock`。统一 neutral / success / warning / error / loading，不再为错误、加载、空态各写一套块。
+- 复选框：`SettingsCheckbox`。统一 16px 框体、真实勾号、选中/禁用/焦点态；`labelClickable=false` 用于只允许点击复选框本身的场景。
+- 弹层：`ModalShell` + `ModalCloseButton`。统一遮罩、顶部右侧关闭、底部 actions、`backdropDismiss` 和 `closeDisabled`。
+
+完整迁移规则、禁止恢复的旧实现和审计命令见 [docs/design/ui-component-rules.md](docs/design/ui-component-rules.md)。
+
 ### Composer（签名组件）
 
 底部输入区是整个客户端使用频次最高的控件。最小高度 46px（约两行），**随内容自动增高**，超过 240px 后转为内部滚动。自动增高由 `App.tsx` 的 `useLayoutEffect` 实现：先把 `height` 归零再读 `scrollHeight`，否则高度只会增不会减。注意 `.composer textarea` 必须是 `flex: none`——基础规则里的 `flex: 1` 会解析成 `flex-basis: 0%`，在 column flex 容器里会直接盖掉 `height`，导致输入框永远长不高。

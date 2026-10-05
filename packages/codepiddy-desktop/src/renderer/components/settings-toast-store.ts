@@ -1,9 +1,18 @@
-import type { SettingsToastTone } from "./settings-toast.tsx";
+import type { SettingsToastAction, SettingsToastTone } from "./settings-toast.tsx";
 
 export interface SettingsToastItem {
 	id: number;
 	message: string;
+	detail?: string;
+	path?: string;
+	action?: SettingsToastAction;
 	tone: SettingsToastTone;
+}
+
+export interface SettingsToastOptions {
+	detail?: string;
+	path?: string;
+	action?: SettingsToastAction;
 }
 
 let items: SettingsToastItem[] = [];
@@ -25,13 +34,13 @@ export function dismissSettingsToast(id: number): void {
 	emit();
 }
 
-export function showSettingsToast(message: string, tone: SettingsToastTone): void {
+export function showSettingsToast(message: string, tone: SettingsToastTone, options: SettingsToastOptions = {}): void {
 	const id = nextId++;
-	items = [...items, { id, message, tone }];
+	items = [...items, { id, message, tone, ...options }];
 	emit();
 	timers.set(
 		id,
-		window.setTimeout(() => dismissSettingsToast(id), tone === "error" ? 8000 : 3500),
+		window.setTimeout(() => dismissSettingsToast(id), tone === "error" ? 8000 : options.path ? 6000 : 3500),
 	);
 }
 

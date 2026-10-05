@@ -4,7 +4,7 @@
 
 ## 如何续接（压缩后先读这里）
 
-1. 读 [PRODUCT.md](../../PRODUCT.md)（定位、边界、反参考）→ [DESIGN.md](../../DESIGN.md)（配色、字体、层次、组件规则）→ [reference-pi-desktop.md](./reference-pi-desktop.md)（主参考项目拆解）→ [reference-dsh-effort-dial.md](./reference-dsh-effort-dial.md)（思考强度波场拆解）→ [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)（Pi 1.0.1 功能审计和后续清单）。
+1. 读 [PRODUCT.md](../../PRODUCT.md)（定位、边界、反参考）→ [DESIGN.md](../../DESIGN.md)（配色、字体、层次、组件规则）→ [ui-component-rules.md](./ui-component-rules.md)（统一组件规则）→ [reference-pi-desktop.md](./reference-pi-desktop.md)（主参考项目拆解）→ [reference-dsh-effort-dial.md](./reference-dsh-effort-dial.md)（思考强度波场拆解）→ [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)（Pi 1.0.1 功能审计和后续清单）。
 2. 翻到本文件底部「进度日志」，读最后一条，确认上一批做到哪、验证到什么程度。
 3. 恢复环境：
    - 依赖已装过，需要时 `npm install --ignore-scripts`
@@ -22,10 +22,11 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-53 已提交到本地 `main`；当前 HEAD 以 `git log -1` 为准，工作树干净，`origin/main` 落后本地 `main`。批次 51-53 `/share`、独立分享设置、品牌图标和通用路径检测已实现并验收。
-批次 41-50 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作、OpenRouter OAuth 验收、Git Bash 黑窗修复、Shell 重启弹窗、常用模型范围、JSONL 导入、项目信任持久化、Session 统计、Session 重命名和 llama.cpp 客户端适配都已收口。
-阶段 3 已完成 `/scoped-models`、`/import`、`/trust`、`/session`、`/name`、`/llama`、`/share`。下一步是第 23 项：Pi 1.0.1 没有原生 `/bug`，要做客户端原生诊断包导出（版本、平台、Agent / Session / Provider 状态、日志路径、可选脱敏 Session JSONL、ZIP，不上传）；llama.cpp 真实 router 端到端测试待后续环境。
-字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条都已验收，不要重做。文件搜索和终端多标签已取消，不再推进。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-54 已提交到本地 `main`；当前 HEAD 以 `git log -1` 为准，工作树按实际状态检查。批次 54 完成客户端诊断包导出、统一消息 / 状态块 / 复选框 / ModalShell。
+批次 41-53 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作、OpenRouter OAuth 验收、Git Bash 黑窗修复、Shell 重启弹窗、常用模型范围、JSONL 导入、项目信任持久化、Session 统计、Session 重命名、llama.cpp 客户端适配、`/share`、独立分享设置、品牌图标和通用路径检测。
+阶段 3 已全部完成。下一步进入阶段 4 第 24 项：Cache Warming 设置和状态。
+统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
+字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
 当前 HEAD 以 `git log -1` 为准。
@@ -58,9 +59,12 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-05 批次 53：分享设置图标与路径检测收口，已验收并提交）
+## 当前状态（2026-10-05 批次 54：诊断包导出与统一组件规则，已实现并提交）
 
-- 提交：`52a1da50f feat(desktop): add native session sharing and share settings`，随后用文档提交更新交接；当前 HEAD 以 `git log -1` 为准，工作树干净，`origin/main` 落后本地 `main`。
+- 批次 53 提交：`52a1da50f feat(desktop): add native session sharing and share settings`；批次 54 的代码和文档已提交，提交哈希以 `git log -1` 为准。`origin/main` 仍落后本地 `main`。
+- 批次 54 新增客户端原生诊断包导出：设置页“诊断”与 `/debug` 共用同一入口；导出前隐私确认；收集版本、系统环境、Agent / Session / Provider / MCP / trust 摘要、最近错误和日志；可选脱敏 Session JSONL；生成本地 ZIP，不上传。
+- 统一组件规则已落盘：临时消息走 `SettingsToast`，持久状态走 `StateBlock`，复选框走 `SettingsCheckbox`，弹层走 `ModalShell`；完整规则见 [ui-component-rules.md](./ui-component-rules.md)。
+- 所有复选框使用点已收口到 `SettingsCheckbox`；所有 App modal 使用点已收口到 `ModalShell`；App 临时 toast 已迁入 `SettingsToast`，全局错误和主要内联错误/加载状态已迁入 `StateBlock`。
 - 阶段 3 前六项已客户端化：`/scoped-models` 变成“常用模型范围”，`/import` 使用原生文件选择器导入 JSONL，`/trust` 使用原生弹窗和 `trust.json`，`/session` 使用完整统计面板，`/name` 支持无参查询和会话树重命名，`/llama` 改为客户端原生 llama.cpp 管理页；均不新增必须手输的 `/` 命令。
 - `/share`：会话树操作区和命令菜单都打开客户端原生分享弹窗；先显示隐私确认，再由主进程导出当前 Session HTML，优先尝试 Radius，未配置时通过本机 GitHub CLI 创建 secret gist，成功后可复制 viewer 链接或打开 Gist。
 - 分享设置已从 Provider 页面拆出：设置页新增“集成 > 分享”，Radius 在此登录/退出并继续复用 Pi `auth.json`；GitHub CLI 在此检测路径、登录状态和版本，支持手动选择 `gh.exe` 并持久化到 CodePIddy `share.json`，不保存 GitHub Token。helper 优先使用用户配置的路径，其次检查 `CODEPIDDY_GH_PATH`、PATH 和标准安装目录。Radius 仍保留 Pi Provider 认证层，但不再出现在“Provider 与模型”的凭据列表和登录入口中。
@@ -136,9 +140,12 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ### 下一步
 
-阶段 3 的 16-22 项已实现并验收，批次 51-53 已随 `52a1da50f` 提交。下一步从 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 3 第 23 项开始：
+阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4：
 
-1. 客户端原生诊断包导出（不要硬做不存在的 `/bug`）。
+1. Cache Warming 设置和状态。
+2. 自动压缩、分支摘要和 per-model compaction overrides。
+3. Codemode 设置和运行结果视图。
+4. Tool Search / Tool Exposure 设置。
 
 继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
 
@@ -1081,6 +1088,16 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 分享 helper 同步删除该机器路径，继续优先接收主进程传入的 `--gh-path`。
 - 分享会话成功态弹窗去掉重复外层 padding，宽度 560px→520px，关闭按钮右边距恢复到 24px，成功态高度收紧。
 
+### 2026-10-05 批次 54：诊断包导出与统一组件规则（已提交）
+
+- 新增客户端原生诊断包导出：设置页“诊断”与 `/debug` 共用入口，先隐私确认，再导出本地 ZIP，不上传。
+- 诊断包收集 CodePIddy / Pi / Electron / Node / 系统版本，Agent / Session / Provider / MCP / trust 摘要、最近错误、可用日志，并可选择包含脱敏后的 Session JSONL。
+- 新增 [ui-component-rules.md](./ui-component-rules.md)，明确同一种交互只允许一个组件实现。
+- 临时消息统一走 `SettingsToast`，支持 title、detail、path、action 和最右侧 `×`；App 级旧 `.toast` 已迁入。
+- 持久内联状态统一走 `StateBlock`；全局错误、分享状态、MCP / llama.cpp / terminal / WorkPanel 等主要错误和加载状态已迁移。
+- 所有复选框统一走 `SettingsCheckbox`；所有 App modal 统一走 `ModalShell`。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、诊断单测 3 项、Playwright demo 均通过；真实 Electron 已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1112,11 +1129,12 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 27. [x] **阶段 3 第 20 项 `/name`**：批次 49 已完成无参查询、会话树名称展示和客户端重命名，已验收并提交。
 28. [x] **阶段 3 第 21 项 `/llama`**：批次 50 已完成客户端原生 router 管理和 mock 验证；真实 router 端到端测试待后续环境。
 29. [x] **阶段 3 第 22 项 `/share`**：批次 51-53 已实现并验收客户端分享、独立分享设置、品牌图标和通用路径检测。
-30. [ ] **阶段 3 第 23 项：客户端诊断包导出**：Pi 1.0.1 没有 `/bug` 命令，只有 TUI `/debug`；下一项应做客户端原生诊断导出，而不是硬复刻 slash command。
+30. [x] **阶段 3 第 23 项：客户端诊断包导出**：批次 54 已实现客户端原生诊断导出、隐私确认、日志收集、可选脱敏 Session JSONL 和本地 ZIP；不做 `/bug` slash command。
+31. [x] **统一 UI 组件规则**：批次 54 已将临时消息、持久状态、复选框和弹层分别收口到 `SettingsToast`、`StateBlock`、`SettingsCheckbox`、`ModalShell`，并写入 [ui-component-rules.md](./ui-component-rules.md)。
 
-## 未提交状态
+## 提交状态
 
-批次 51-53 的 `/share`、分享设置和图标路径改动已验收并提交，交接文档已同步；工作树干净，下一项进入客户端诊断包导出。
+批次 54 的诊断包导出、统一组件规则和 UI 迁移已实现、验证并提交。提交哈希以 `git log -1` 为准；`origin/main` 仍落后本地 `main`。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 

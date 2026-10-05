@@ -1,8 +1,9 @@
 import type { AuthProviderSummary, GitHubCliSource, ShareSettingsStatus } from "@codepiddy/shared";
-import { Check, Copy, ExternalLink, FolderOpen, RefreshCw, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
+import { Check, Copy, ExternalLink, FolderOpen, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import githubCliIconUrl from "../../../../../codepiddy-icons/github-cli.svg?url";
 import radiusIconUrl from "../../../../../codepiddy-icons/radius.svg?url";
+import { StateBlock } from "./state-block.tsx";
 
 const DEMO_SHARE_SETTINGS: ShareSettingsStatus = {
 	radius: {
@@ -217,12 +218,7 @@ export function ShareSettings({
 					</div>
 					{githubCli?.path ? <code className="share-setting-path">{githubCli.path}</code> : null}
 					{githubCli?.version ? <small>GitHub CLI v{githubCli.version}</small> : null}
-					{githubCli?.error ? (
-						<div className="share-setting-note is-error">
-							<TriangleAlert size={14} strokeWidth={2} />
-							<span>{githubCli.error}</span>
-						</div>
-					) : null}
+					{githubCli?.error ? <StateBlock compact tone="error" title={githubCli.error} /> : null}
 					{githubCli?.path && !githubCli.authenticated ? (
 						<div className="share-login-command">
 							<code>{githubCli.loginCommand}</code>
@@ -278,12 +274,7 @@ export function ShareSettings({
 				</section>
 			</div>
 
-			{error ? (
-				<div className="share-setting-note is-error">
-					<TriangleAlert size={14} strokeWidth={2} />
-					<span>{error}</span>
-				</div>
-			) : null}
+			{error ? <StateBlock compact tone="error" title={error} /> : null}
 			<div className="share-settings-footer">
 				<ShieldCheck size={14} strokeWidth={2} />
 				<span>分享前仍会显示隐私确认；GitHub secret gist 拿到链接的人可以查看。</span>

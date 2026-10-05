@@ -10,6 +10,7 @@ import { KeyRound, LogIn, LogOut, Pencil, Plus, RefreshCw, ShieldCheck, Trash2 }
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProviderIcon } from "./provider-icon.tsx";
 import { SelectMenu } from "./select-menu.tsx";
+import { SettingsCheckbox } from "./settings-checkbox.tsx";
 import { showSettingsToast } from "./settings-toast-store.ts";
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
@@ -518,14 +519,12 @@ export function ProviderSettings({
 						</label>
 					</div>
 					{providers?.some((provider) => provider.id === draft.id && provider.credentialSource !== "none") ? (
-						<label className="settings-checkbox">
-							<input
-								type="checkbox"
-								checked={draft.clearApiKey}
-								onChange={(event) => setDraft({ ...draft, clearApiKey: event.target.checked })}
-							/>
-							<span>清除已保存的 API Key</span>
-						</label>
+						<SettingsCheckbox
+							checked={draft.clearApiKey}
+							onChange={(clearApiKey) => setDraft({ ...draft, clearApiKey })}
+						>
+							清除已保存的 API Key
+						</SettingsCheckbox>
 					) : null}
 
 					<div className="provider-model-list">
@@ -564,14 +563,12 @@ export function ProviderSettings({
 									title="最大输出 Token"
 									onChange={(event) => updateModel(index, { maxTokens: Number(event.target.value) })}
 								/>
-								<label className="settings-checkbox">
-									<input
-										type="checkbox"
-										checked={model.reasoning}
-										onChange={(event) => updateModel(index, { reasoning: event.target.checked })}
-									/>
-									<span>推理</span>
-								</label>
+								<SettingsCheckbox
+									checked={model.reasoning}
+									onChange={(reasoning) => updateModel(index, { reasoning })}
+								>
+									推理
+								</SettingsCheckbox>
 								<button
 									type="button"
 									className="work-panel-icon-button"
