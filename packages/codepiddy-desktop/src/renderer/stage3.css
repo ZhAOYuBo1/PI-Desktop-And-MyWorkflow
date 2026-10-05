@@ -12,6 +12,405 @@
   line-height: 1.55;
 }
 
+.llama-cpp-card {
+  gap: var(--cp-space-lg);
+}
+
+.settings-status.is-success {
+  background: color-mix(in oklab, var(--cp-success) 10%, transparent);
+  color: var(--cp-success);
+}
+
+.llama-connection-card {
+  display: grid;
+  gap: var(--cp-space-md);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+}
+
+.llama-connection-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--cp-space-sm);
+}
+
+.llama-connection-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-surface);
+  color: var(--cp-accent);
+  box-shadow: var(--cp-elevation-raised);
+}
+
+.llama-connection-heading strong,
+.llama-model-heading strong {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.llama-connection-heading small,
+.llama-model-heading small {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
+.llama-connection-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--cp-space-md);
+}
+
+.llama-connection-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+}
+
+.llama-error-note {
+  padding: var(--cp-space-sm) var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: color-mix(in oklab, var(--cp-danger) 8%, transparent);
+  color: var(--cp-danger);
+  font-size: 11.5px;
+}
+
+.llama-model-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+}
+
+.llama-model-heading .settings-actions {
+  margin-top: 0;
+}
+
+.llama-download-panel {
+  display: grid;
+  gap: var(--cp-space-md);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+}
+
+.llama-download-search {
+  display: flex;
+  height: var(--cp-field);
+  align-items: center;
+  gap: var(--cp-space-sm);
+  padding-left: var(--cp-space-sm);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface);
+  color: var(--cp-ink-muted);
+  box-shadow: inset 0 0 0 0.5px var(--cp-line-subtle);
+}
+
+.llama-download-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.llama-download-search .secondary-button {
+  margin-right: var(--cp-space-xs);
+}
+
+.llama-search-results {
+  display: grid;
+  max-height: 190px;
+  gap: var(--cp-space-micro);
+  overflow-y: auto;
+}
+
+.llama-search-results button {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-sm) var(--cp-space-md);
+  border: 0;
+  border-radius: var(--cp-radius-sm);
+  background: transparent;
+  color: var(--cp-ink-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.llama-search-results button:hover,
+.llama-search-results button.active {
+  background: var(--cp-surface);
+  color: var(--cp-ink);
+  box-shadow: var(--cp-elevation-raised);
+}
+
+.llama-search-results button > span {
+  display: grid;
+  min-width: 0;
+}
+
+.llama-search-results strong,
+.llama-search-results small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.llama-search-results strong {
+  font-size: 12px;
+  font-weight: 520;
+}
+
+.llama-search-results small {
+  color: var(--cp-ink-muted);
+  font-size: 10.5px;
+}
+
+.llama-quantization {
+  display: grid;
+  gap: var(--cp-space-sm);
+}
+
+.llama-quantization > div:first-child {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.llama-quantization > div:first-child strong {
+  font-size: 12px;
+}
+
+.llama-quantization > div:first-child small {
+  color: var(--cp-ink-muted);
+  font-size: 10.5px;
+}
+
+.llama-quantization-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cp-space-xs);
+}
+
+.llama-quantization-list button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: var(--cp-space-xs);
+  padding: 0 var(--cp-space-sm);
+  border: 0;
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-surface);
+  color: var(--cp-ink-secondary);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 0.5px var(--cp-line-subtle);
+}
+
+.llama-quantization-list button.active {
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  box-shadow: inset 0 0 0 0.5px var(--cp-accent-ring);
+}
+
+.llama-quantization-list span {
+  font-size: 11.5px;
+  font-weight: 520;
+}
+
+.llama-quantization-list small {
+  color: inherit;
+  font-size: 10px;
+  opacity: 0.72;
+}
+
+.llama-model-list {
+  display: grid;
+  gap: var(--cp-space-xs);
+}
+
+.llama-model-row {
+  display: flex;
+  min-width: 0;
+  min-height: 48px;
+  align-items: center;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-sm) var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+}
+
+.llama-model-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-surface);
+  color: var(--cp-ink-muted);
+}
+
+.llama-model-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: var(--cp-space-micro);
+}
+
+.llama-model-copy strong,
+.llama-model-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.llama-model-copy strong {
+  font-size: 12px;
+  font-weight: 540;
+}
+
+.llama-model-copy small {
+  color: var(--cp-ink-muted);
+  font-size: 10.5px;
+}
+
+.llama-inline-progress,
+.llama-progress-bar {
+  display: block;
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--cp-radius-full);
+  background: var(--cp-surface-inset);
+}
+
+.llama-inline-progress {
+  max-width: 220px;
+}
+
+.llama-inline-progress i,
+.llama-progress-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cp-accent);
+  transition: width 180ms ease-out;
+}
+
+.llama-status-chip {
+  flex: none;
+  padding: 2px var(--cp-space-sm);
+  border-radius: var(--cp-radius-full);
+  background: var(--cp-surface-inset);
+  color: var(--cp-ink-muted);
+  font-size: 10px;
+}
+
+.llama-status-chip.is-success {
+  background: color-mix(in oklab, var(--cp-success) 10%, transparent);
+  color: var(--cp-success);
+}
+
+.llama-status-chip.is-active {
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+}
+
+.llama-status-chip.is-error {
+  background: color-mix(in oklab, var(--cp-danger) 9%, transparent);
+  color: var(--cp-danger);
+}
+
+.llama-model-actions {
+  display: flex;
+  min-width: 84px;
+  justify-content: flex-end;
+}
+
+.llama-model-actions .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cp-space-xs);
+}
+
+.llama-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--cp-space-md);
+  padding: var(--cp-space-sm) var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+}
+
+.llama-progress > div {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.llama-progress strong {
+  font-size: 11.5px;
+  font-weight: 520;
+}
+
+.llama-progress small {
+  color: var(--cp-ink-muted);
+  font-size: 10px;
+}
+
+.llama-progress-bar {
+  width: 180px;
+}
+
+.llama-spin {
+  color: var(--cp-accent);
+  animation: llama-spin 800ms linear infinite;
+}
+
+.llama-settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
+@keyframes llama-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .llama-connection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .llama-connection-actions,
+  .llama-model-heading,
+  .llama-settings-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .llama-model-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .llama-model-actions {
+    width: 100%;
+  }
+}
+
 .model-scope-card,
 .project-trust-card {
   gap: var(--cp-space-lg);

@@ -22,9 +22,9 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-49 已提交到本地 `main`。
-批次 41-49 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作、OpenRouter OAuth 验收、Git Bash 黑窗修复、Shell 重启弹窗、常用模型范围、JSONL 导入、项目信任持久化、Session 统计和 Session 重命名都已收口。
-阶段 3 已完成 `/scoped-models`、`/import`、`/trust`、`/session`、`/name` 五项，下一步从第 21 项 `/llama` 继续。
+再读 PRODUCT.md、DESIGN.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-50 已提交到本地 `main`。
+批次 41-50 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作、OpenRouter OAuth 验收、Git Bash 黑窗修复、Shell 重启弹窗、常用模型范围、JSONL 导入、项目信任持久化、Session 统计、Session 重命名和 llama.cpp 客户端适配都已收口。
+阶段 3 已完成 `/scoped-models`、`/import`、`/trust`、`/session`、`/name`、`/llama` 六项；llama.cpp 真实 router 端到端测试待后续环境，下一步从第 22 项 `/share` 继续。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条都已验收，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
@@ -58,9 +58,10 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-05 批次 49：Session 命名补齐，已提交）
+## 当前状态（2026-10-05 批次 50：llama.cpp 客户端适配，已提交）
 
-- 阶段 3 前五项已客户端化：`/scoped-models` 变成“常用模型范围”，`/import` 使用原生文件选择器导入 JSONL，`/trust` 使用原生弹窗和 `trust.json`，`/session` 使用完整统计面板，`/name` 支持无参查询和会话树重命名；均不新增必须手输的 `/` 命令。
+- 阶段 3 前六项已客户端化：`/scoped-models` 变成“常用模型范围”，`/import` 使用原生文件选择器导入 JSONL，`/trust` 使用原生弹窗和 `trust.json`，`/session` 使用完整统计面板，`/name` 支持无参查询和会话树重命名，`/llama` 改为客户端原生 llama.cpp 管理页；均不新增必须手输的 `/` 命令。
+- llama.cpp：设置页新增专用管理分区，配置写入 Pi 原生 `auth.json`；通过 router HTTP API 读取状态和模型，支持加载、卸载、下载、Hugging Face GGUF 搜索、量化选择、进度事件和重新连接当前 Agent。未修改 Pi core，真实 router 端到端验证留待有本地服务时执行。
 - 常用模型范围：设置页可启停、按 Provider 批量启停、排序；`enabledModelIds = null` 表示全部都是常用，模型选择器显示“常用模型”，部分选择时显示“常用模型 / 其他模型”，明确清空时才显示“全部模型”。底层继续写 Pi 原生 `settings.json` 的 `enabledModels`。
 - JSONL 导入：会话树提供“导入会话”，校验 session 文件头、复制到当前 Agent 会话目录、处理同名冲突、切换并持久化选中 Session；取消导入不改变当前会话。
 - 项目信任：打开/切换项目时读取 Pi 原生 trust 状态；只有项目存在需要信任的资源且没有已保存/继承决定时弹窗。可选择信任当前项目、信任父目录、不信任或稍后。决定写 `~/.pi/agent/trust.json`；设置页“项目信任”可查看和修改。
@@ -130,11 +131,10 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ### 下一步
 
-阶段 3 的 16-20 项已完成并提交。下一步从 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 3 第 21 项开始：
+阶段 3 的 16-21 项已完成并提交。下一步从 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 3 第 22 项开始：
 
-1. `/llama`。
-2. `/share`。
-3. `/bug`。
+1. `/share`。
+2. `/bug`。
 
 继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
 
@@ -1034,6 +1034,15 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - Playwright demo 验证重命名弹窗、保存后的标题和当前会话列表同步。
 - 固定 Pi 1.0.1 隔离 RPC smoke test 验证 `set_session_name` 后 `get_state.sessionName` 正确更新。
 
+### 2026-10-05 批次 50：llama.cpp 客户端适配（已提交）
+
+- 设置页新增 `llama.cpp` 分类；命令菜单中的 `/llama` 打开客户端设置页，不再依赖 TUI 命令。
+- 新增 `LlamaCppManager`，通过 llama.cpp router HTTP API 读取 `/models` 和 `/props`，并执行模型加载、卸载、下载和状态刷新。
+- 配置写入 Pi 原生 `~/.pi/agent/auth.json` 的 `llama.cpp` 凭据，支持 server URL 和可选 API Key，不修改 Pi core。
+- 新增 Hugging Face GGUF 搜索、模型详情、量化版本选择和下载进度事件；支持标准 `HF_TOKEN` / `HF_HOME` / `HF_TOKEN_PATH` 凭据位置。
+- 设置页支持模型状态、上下文、文件大小、加载/卸载操作和当前 Agent 重新连接入口。
+- 已用 mock llama.cpp router 验证配置持久化、连接、模型列表、加载、卸载和下载流程；真实 router 端到端验证待后续环境。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1063,11 +1072,12 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 25. [x] **Git Bash 黑窗修复与 Shell 重启提示**：批次 47 已实现、验证并提交。
 26. [x] **阶段 3 前四项**：批次 48 已完成 `/scoped-models` 的常用模型范围、`/import` 客户端导入、`/trust` 持久化和 `/session` 统计，提交 `d402e6a7e`。
 27. [x] **阶段 3 第 20 项 `/name`**：批次 49 已完成无参查询、会话树名称展示和客户端重命名，已验收并提交。
-28. [ ] **阶段 3 第 21-23 项**：`/llama`、`/share`、`/bug`，按顺序处理；下一项是 `/llama`。
+28. [x] **阶段 3 第 21 项 `/llama`**：批次 50 已完成客户端原生 router 管理和 mock 验证；真实 router 端到端测试待后续环境。
+29. [ ] **阶段 3 第 22-23 项**：`/share`、`/bug`，按顺序处理；下一项是 `/share`。
 
 ## 未提交状态
 
-批次 49 已收口并提交，工作树应保持干净。下一个窗口从阶段 3 第 21 项 `/llama` 开始。
+批次 50 已收口并提交，工作树应保持干净。下一个窗口从阶段 3 第 22 项 `/share` 开始。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 

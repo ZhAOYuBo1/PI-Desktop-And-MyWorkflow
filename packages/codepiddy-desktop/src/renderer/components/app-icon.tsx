@@ -14,6 +14,7 @@ import {
 	Folder,
 	GitBranch,
 	Globe,
+	HardDrive,
 	List,
 	ListChecks,
 	type LucideIcon,
@@ -68,6 +69,7 @@ export type AppIconName =
 	| "checklist"
 	| "message-question"
 	| "globe"
+	| "hard-drive"
 	| "clock"
 	| "check-circle"
 	| "x-circle"
@@ -103,6 +105,7 @@ const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	checklist: ListChecks,
 	"message-question": MessageCircleQuestion,
 	globe: Globe,
+	"hard-drive": HardDrive,
 	clock: Clock,
 	"check-circle": CircleCheck,
 	"x-circle": CircleX,

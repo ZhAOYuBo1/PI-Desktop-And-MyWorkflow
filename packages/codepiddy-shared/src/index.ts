@@ -354,6 +354,14 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	listProviders(): Promise<ProviderSummary[]>;
 	saveProvider(input: ProviderInput): Promise<ProviderSummary[]>;
 	deleteProvider(id: string): Promise<ProviderSummary[]>;
+	getLlamaCppConfig(): Promise<LlamaCppConfigStatus>;
+	saveLlamaCppConfig(input: SaveLlamaCppConfigInput): Promise<LlamaCppConfigStatus>;
+	clearLlamaCppConfig(): Promise<LlamaCppConfigStatus>;
+	getLlamaCppStatus(): Promise<LlamaCppRuntimeStatus>;
+	runLlamaCppAction(input: RunLlamaCppActionInput): Promise<LlamaCppRuntimeStatus>;
+	searchLlamaCppModels(query: string): Promise<HuggingFaceModelSummary[]>;
+	getLlamaCppModelDetails(modelId: string): Promise<HuggingFaceModelDetails>;
+	onLlamaCppEvent(listener: (event: LlamaCppActionEvent) => void): () => void;
 	listAgentSkills(projectRoot?: string): Promise<AgentSkillSummary[]>;
 	getRoleSkillAssignments(): Promise<RoleSkillAssignments>;
 	setRoleSkillAssignments(input: SetRoleSkillAssignmentsInput): Promise<RoleSkillAssignments>;
@@ -622,6 +630,88 @@ export interface ProviderInput {
 	/** 省略表示保持已有 Key；空字符串表示清除。 */
 	apiKey?: string;
 	models: ProviderModelSummary[];
+}
+
+export type LlamaCppModelStatus = "unloaded" | "loading" | "loaded" | "downloading" | "sleeping";
+
+export interface LlamaCppModelSummary {
+	id: string;
+	status: LlamaCppModelStatus;
+	failed: boolean;
+	exitCode: number | null;
+	contextWindow: number | null;
+	size: number | null;
+	source: string | null;
+	input: ("text" | "image")[];
+	progress: Record<string, { done: number; total: number }> | null;
+}
+
+export type LlamaCppConfigSource = "stored" | "environment" | "none";
+
+export interface LlamaCppConfigStatus {
+	configured: boolean;
+	serverUrl: string | null;
+	apiKeyConfigured: boolean;
+	source: LlamaCppConfigSource;
+}
+
+export interface LlamaCppRuntimeStatus extends LlamaCppConfigStatus {
+	connected: boolean;
+	routerAutoload: boolean;
+	models: LlamaCppModelSummary[];
+	error: string | null;
+}
+
+export interface SaveLlamaCppConfigInput {
+	serverUrl: string;
+	/** 省略表示保持已有 Key；clearApiKey 优先。 */
+	apiKey?: string;
+	clearApiKey?: boolean;
+}
+
+export type LlamaCppAction = "refresh" | "load" | "unload" | "download";
+
+export interface RunLlamaCppActionInput {
+	action: LlamaCppAction;
+	modelId?: string;
+}
+
+export type LlamaCppActionEvent =
+	| {
+			type: "progress";
+			actionId: string;
+			modelId: string;
+			message: string;
+			ratio?: number;
+			detail?: string;
+	  }
+	| {
+			type: "complete";
+			actionId: string;
+			modelId?: string;
+			status: LlamaCppRuntimeStatus;
+	  }
+	| {
+			type: "error";
+			actionId: string;
+			modelId?: string;
+			error: string;
+	  };
+
+export interface HuggingFaceModelSummary {
+	id: string;
+	downloads: number;
+}
+
+export interface HuggingFaceQuantization {
+	name: string;
+	size?: number;
+}
+
+export interface HuggingFaceModelDetails {
+	id: string;
+	gated: false | "auto" | "manual";
+	quantizations: HuggingFaceQuantization[];
 }
 
 export interface PiRuntimeStatus {

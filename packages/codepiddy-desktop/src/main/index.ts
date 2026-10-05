@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -41,6 +42,7 @@ import type {
 	ForkAgentSessionInput,
 	ForkAgentSessionResult,
 	InvokeAgentBuiltinCommandInput,
+	LlamaCppActionEvent,
 	McpActionInput,
 	McpActionResult,
 	McpRuntimeSnapshot,
@@ -80,6 +82,8 @@ import {
 	parseRenameWorkItemInput,
 	parseResetAgentInput,
 	parseRoleSkillAssignmentsInput,
+	parseRunLlamaCppActionInput,
+	parseSaveLlamaCppConfigInput,
 	parseSendAgentPromptInput,
 	parseSetAgentModelInput,
 	parseSetAgentModelScopeInput,
@@ -91,6 +95,7 @@ import {
 	parseTerminalStartInput,
 	parseTerminalWriteInput,
 } from "./ipc-validation.ts";
+import { LlamaCppManager } from "./llama-cpp-manager.ts";
 import { PiAuthManager } from "./pi-auth.ts";
 import { loadPiBuiltinCommands, mergePiCommands } from "./pi-builtin-commands.ts";
 import { type InstalledPiRuntime, PiRuntimeUpdater } from "./pi-runtime-updater.ts";
@@ -176,6 +181,14 @@ const channels = {
 	settingsListProviders: "codepiddy:settings:providers:list",
 	settingsSaveProvider: "codepiddy:settings:providers:save",
 	settingsDeleteProvider: "codepiddy:settings:providers:delete",
+	llamaCppConfigGet: "codepiddy:llama-cpp:config:get",
+	llamaCppConfigSave: "codepiddy:llama-cpp:config:save",
+	llamaCppConfigClear: "codepiddy:llama-cpp:config:clear",
+	llamaCppStatus: "codepiddy:llama-cpp:status",
+	llamaCppAction: "codepiddy:llama-cpp:action",
+	llamaCppSearch: "codepiddy:llama-cpp:search",
+	llamaCppDetails: "codepiddy:llama-cpp:details",
+	llamaCppEvent: "codepiddy:llama-cpp:event",
 	settingsStatus: "codepiddy:settings:status",
 	piRuntimeStatus: "codepiddy:pi-runtime:status",
 	piRuntimeCheck: "codepiddy:pi-runtime:check",
@@ -1892,6 +1905,7 @@ function registerIpcHandlers(
 	piRuntimeUpdater: PiRuntimeUpdater,
 	piAuthManager: PiAuthManager,
 	piTrustManager: PiTrustManager,
+	llamaCppManager: LlamaCppManager,
 ): void {
 	const openedProjects = new Map<string, string>();
 	const rootKey = (projectRoot: string): string =>
@@ -2239,6 +2253,51 @@ function registerIpcHandlers(
 	ipcMain.handle(channels.settingsDeleteProvider, (_event, rawId: unknown) =>
 		settingsStore.deleteProvider(parseBoundedText(rawId, "Provider ID", 100)),
 	);
+	ipcMain.handle(channels.llamaCppConfigGet, () => llamaCppManager.getConfig());
+	ipcMain.handle(channels.llamaCppConfigSave, (_event, raw: unknown) =>
+		llamaCppManager.saveConfig(parseSaveLlamaCppConfigInput(raw)),
+	);
+	ipcMain.handle(channels.llamaCppConfigClear, () => llamaCppManager.clearConfig());
+	ipcMain.handle(channels.llamaCppStatus, () => llamaCppManager.getStatus());
+	ipcMain.handle(channels.llamaCppAction, async (_event, raw: unknown) => {
+		const input = parseRunLlamaCppActionInput(raw);
+		const actionId = randomUUID();
+		const broadcast = (event: LlamaCppActionEvent): void => {
+			for (const contents of webContents.getAllWebContents()) contents.send(channels.llamaCppEvent, event);
+		};
+		try {
+			const status = await llamaCppManager.runAction(input, (progress) => {
+				if (!input.modelId) return;
+				broadcast({
+					type: "progress",
+					actionId,
+					modelId: input.modelId,
+					...progress,
+				});
+			});
+			broadcast({
+				type: "complete",
+				actionId,
+				...(input.modelId ? { modelId: input.modelId } : {}),
+				status,
+			});
+			return status;
+		} catch (error) {
+			broadcast({
+				type: "error",
+				actionId,
+				...(input.modelId ? { modelId: input.modelId } : {}),
+				error: error instanceof Error ? error.message : String(error),
+			});
+			throw error;
+		}
+	});
+	ipcMain.handle(channels.llamaCppSearch, (_event, rawQuery: unknown) =>
+		llamaCppManager.searchModels(parseBoundedText(rawQuery, "Hugging Face 搜索内容", 200)),
+	);
+	ipcMain.handle(channels.llamaCppDetails, (_event, rawModelId: unknown) =>
+		llamaCppManager.getModelDetails(parseBoundedText(rawModelId, "Hugging Face 模型 ID", 300)),
+	);
 	ipcMain.handle(channels.settingsListSkills, (_event, rawProjectRoot?: unknown) => {
 		const projectRoot = rawProjectRoot === undefined ? undefined : requireOpenProjectRoot(rawProjectRoot);
 		return discoverAgentSkills(agentManager.repositoryPath, projectRoot);
@@ -2398,7 +2457,16 @@ if (!hasSingleInstanceLock) {
 					app.isPackaged ? "coding-agent-package" : path.join("packages", "coding-agent-runtime"),
 				),
 		});
-		registerIpcHandlers(agentManager, settingsStore, recentProjects, piRuntimeUpdater, piAuthManager, piTrustManager);
+		const llamaCppManager = new LlamaCppManager(resolvePiAgentDir());
+		registerIpcHandlers(
+			agentManager,
+			settingsStore,
+			recentProjects,
+			piRuntimeUpdater,
+			piAuthManager,
+			piTrustManager,
+			llamaCppManager,
+		);
 		mainWindow = createWindow(recentProjects);
 		mainWindow.on("closed", () => {
 			mainWindow = null;

@@ -113,7 +113,7 @@
 | 凭据来源显示 | 已覆盖 | 汇总显示 `auth.json`、`models.json`、环境变量和运行时来源；`models.json` 覆盖会单独标记 |
 | `!command` Key | 缺失 | Pi 原生支持命令型 Key，客户端没有配置入口 |
 | `/scoped-models` | 缺失 | 交互式模型循环范围配置 |
-| `/llama` | 缺失 | llama.cpp router、模型管理和分类 |
+| `/llama` | 部分覆盖 | 客户端原生 router 连接、模型管理、HF 下载和量化选择已实现；真实 router 端到端测试待后续环境 |
 | 自定义 Provider | 部分覆盖 | `models.json` 支持基础 Provider，没有 Provider extension 管理 |
 | 虚拟模型 | 缺失 | 没有虚拟模型注册和路由状态 UI |
 | Classifier models | 缺失 | Pi 1.0.1 可通过 codemode 调用，客户端无 UI |
@@ -243,11 +243,11 @@
 18. [x] `/trust` 持久化：批次 48 已接入 Pi `ProjectTrustStore` helper、信任弹窗、设置页状态和 `trust.json` 持久化。
 19. [x] `/session` 完整统计信息：批次 48 已接入 RPC `get_session_stats` 和客户端统计面板。
 20. [x] `/name`：批次 49 已完成无参查询、会话树名称展示和客户端重命名。
-21. `/llama`
+21. [x] `/llama`：批次 50 已完成客户端原生 router 管理、Hugging Face 下载和 mock 验证；真实 router 端到端测试待后续环境。
 22. `/share`
 23. `/bug`
 
-批次 49 已完成第 20 项 `/name`。阶段 3 下一步从第 21 项 `/llama` 开始。
+批次 50 已完成第 21 项 `/llama`。阶段 3 下一步从第 22 项 `/share` 开始。
 
 ### 阶段 4：高级运行时能力
 

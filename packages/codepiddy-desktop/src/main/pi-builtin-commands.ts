@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const DESKTOP_BUILTINS = new Set([
 	"settings",
 	"mcp",
+	"llama",
 	"model",
 	"tree",
 	"thinking",

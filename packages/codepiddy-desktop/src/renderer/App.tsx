@@ -30,7 +30,18 @@ import type {
 	WorkItemSummary,
 } from "@codepiddy/shared";
 import { Check, Eye, EyeOff, Trash2 } from "lucide-react";
-import { type CSSProperties, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+	type CSSProperties,
+	lazy,
+	memo,
+	Suspense,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { AppIcon, type AppIconName } from "./components/app-icon.tsx";
 import { FileMentionMenu } from "./components/FileMentionMenu.tsx";
 import { McpSettings } from "./components/McpSettings.tsx";
@@ -59,6 +70,10 @@ import {
 import { WorkPanel } from "./components/WorkPanel.tsx";
 import { demoProject } from "./demo-project.ts";
 import { permissionChoicePresentation } from "./permission-choices.ts";
+
+const LlamaCppSettings = lazy(() =>
+	import("./components/LlamaCppSettings.tsx").then((module) => ({ default: module.LlamaCppSettings })),
+);
 
 type Selection =
 	| { type: "welcome" }
@@ -1096,7 +1111,7 @@ function TranscriptMinimap({
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
-type SettingsSectionId = "runtime" | "shell" | "providers" | "mcp" | "search" | "permissions" | "skills";
+type SettingsSectionId = "runtime" | "shell" | "providers" | "llama" | "mcp" | "search" | "permissions" | "skills";
 
 const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: string; icon: AppIconName }[] }[] = [
 	{
@@ -1110,6 +1125,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 		label: "集成",
 		items: [
 			{ id: "providers", label: "Provider 与模型", icon: "globe" },
+			{ id: "llama", label: "llama.cpp", icon: "hard-drive" },
 			{ id: "mcp", label: "MCP 服务", icon: "plug" },
 			{ id: "search", label: "Tavily Search", icon: "search" },
 		],
@@ -1240,6 +1256,7 @@ const demoAgentCommands: AgentCommandOption[] = [
 	},
 	{ name: "export", command: "/export", description: "Export session", argumentHint: "[path]", source: "builtin" },
 	{ name: "copy", command: "/copy", description: "Copy last agent message to clipboard", source: "builtin" },
+	{ name: "llama", command: "/llama", description: "Manage llama.cpp router models", source: "builtin" },
 	{
 		name: "name",
 		command: "/name",
@@ -3094,6 +3111,11 @@ export function App() {
 				setError(`Pi 当前没有 /${name} 命令。请重新打开命令菜单或执行 /reload。`);
 				return;
 			}
+			if (name === "llama") {
+				setDrafts((current) => ({ ...current, [agentId]: "" }));
+				await openSettings("llama");
+				return;
+			}
 			if (command.source === "builtin") {
 				if (name === "mcp") {
 					setDrafts((current) => ({ ...current, [agentId]: "" }));
@@ -4652,6 +4674,11 @@ export function App() {
 						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "mcp"}>
 							<McpSettings projectRoot={project?.rootPath ?? null} activeAgent={activeAgentLocator} />
+						</div>
+						<div className="settings-section-slot" hidden={settingsSection !== "llama"}>
+							<Suspense fallback={<div className="provider-empty">正在加载 llama.cpp 设置…</div>}>
+								<LlamaCppSettings activeAgent={activeAgentLocator ?? lastActiveAgentLocatorRef.current} />
+							</Suspense>
 						</div>
 					</div>
 				</div>

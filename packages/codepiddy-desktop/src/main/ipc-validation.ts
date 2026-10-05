@@ -11,6 +11,7 @@ import type {
 	ForkAgentSessionInput,
 	InvokeAgentBuiltinCommandInput,
 	LaneKind,
+	LlamaCppAction,
 	McpActionInput,
 	McpClientRegistration,
 	McpExposure,
@@ -25,6 +26,8 @@ import type {
 	ProviderModelSummary,
 	RenameWorkItemInput,
 	ResetAgentInput,
+	RunLlamaCppActionInput,
+	SaveLlamaCppConfigInput,
 	SendAgentPromptInput,
 	SetAgentModelInput,
 	SetAgentModelScopeInput,
@@ -521,6 +524,31 @@ export function parseProviderInput(value: unknown): ProviderInput {
 		api: input.api,
 		...(input.apiKey === undefined ? {} : { apiKey: text(input.apiKey, "API Key", 1000, true) }),
 		models,
+	};
+}
+
+export function parseSaveLlamaCppConfigInput(value: unknown): SaveLlamaCppConfigInput {
+	const input = record(value, "llama.cpp Config");
+	if (input.clearApiKey !== undefined && typeof input.clearApiKey !== "boolean") {
+		throw new Error("清除 llama.cpp API Key 必须是布尔值");
+	}
+	return {
+		serverUrl: text(input.serverUrl, "llama.cpp 地址", 2000),
+		...(input.apiKey === undefined ? {} : { apiKey: text(input.apiKey, "llama.cpp API Key", 4000, true) }),
+		...(input.clearApiKey === undefined ? {} : { clearApiKey: input.clearApiKey }),
+	};
+}
+
+export function parseRunLlamaCppActionInput(value: unknown): RunLlamaCppActionInput {
+	const input = record(value, "llama.cpp Action");
+	const action: LlamaCppAction | null =
+		input.action === "refresh" || input.action === "load" || input.action === "unload" || input.action === "download"
+			? input.action
+			: null;
+	if (!action) throw new Error("llama.cpp 操作无效");
+	return {
+		action,
+		...(input.modelId === undefined ? {} : { modelId: text(input.modelId, "llama.cpp 模型 ID", 2000) }),
 	};
 }
 
