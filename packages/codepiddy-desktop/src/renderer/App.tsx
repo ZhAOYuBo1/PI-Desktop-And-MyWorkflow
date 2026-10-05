@@ -34,6 +34,7 @@ import { Check, Eye, EyeOff, Trash2 } from "lucide-react";
 import {
 	type CSSProperties,
 	lazy,
+	type MutableRefObject,
 	memo,
 	Suspense,
 	useCallback,
@@ -74,6 +75,7 @@ import {
 	splitTurnEntries,
 	turnElapsedMs,
 } from "./components/turn-group.ts";
+import { useTranscriptScroll } from "./components/use-transcript-scroll.ts";
 import { WorkPanel } from "./components/WorkPanel.tsx";
 import { demoProject } from "./demo-project.ts";
 import { permissionChoicePresentation } from "./permission-choices.ts";
@@ -451,6 +453,30 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 	return items;
 }
 
+/**
+ * 历史事件是会话的权威快照，但流式中的 assistant 消息要到 message_end 才会
+ * 进入 AgentMessage 列表，因此 get_messages 里看不到它。直接替换会把用户
+ * 正在看的回复抹掉，随后 message_update 又从零拼一段。这里把仍在流式的
+ * 本地条目接回历史尾部，流式增量才能继续追加而不是重建。
+ */
+function beginTranscriptHistoryMerge(
+	current: TranscriptItem[],
+	history: TranscriptItem[],
+	activeAssistantId: string | undefined,
+): TranscriptItem[] {
+	if (!activeAssistantId) return history;
+	const active = current.find((item) => item.id === activeAssistantId);
+	if (!active || active.type !== "assistant") return history;
+	if (history.some((item) => item.type === "assistant" && item.status === "streaming")) return history;
+	const lastHistoryAssistant = [...history].reverse().find((item) => item.type === "assistant");
+	const activeStartedAt = active.createdAt ? Date.parse(active.createdAt) : Number.NaN;
+	const historyCompletedAt = lastHistoryAssistant?.createdAt ? Date.parse(lastHistoryAssistant.createdAt) : Number.NaN;
+	const historyIsStale =
+		Number.isFinite(activeStartedAt) && Number.isFinite(historyCompletedAt) && historyCompletedAt >= activeStartedAt;
+	if (historyIsStale) return history;
+	return [...history, active];
+}
+
 /** 统计行只保留一条：该 assistant 消息之后是否还有更新的 assistant 消息。 */
 function hasLaterAssistant(items: TranscriptItem[], index: number): boolean {
 	for (let i = index + 1; i < items.length; i += 1) if (items[i]?.type === "assistant") return true;
@@ -461,7 +487,14 @@ function formatMessageTime(value: string | undefined): string | null {
 	if (!value) return null;
 	const date = new Date(value);
 	if (Number.isNaN(date.getTime())) return null;
-	return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date);
+	// 会话可能跨天，只有时分无法判断是哪一次；统一显示年月日时分。
+	return new Intl.DateTimeFormat(undefined, {
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+	}).format(date);
 }
 
 function normalizeMessageForkText(value: string): string {
@@ -770,18 +803,6 @@ function clientErrorMessage(caught: unknown, fallback: string): string {
 	return message || fallback;
 }
 
-function readStoredScrollPositions(): Record<string, number> {
-	try {
-		const value = JSON.parse(localStorage.getItem("codepiddy:agent-scroll-positions") ?? "{}") as unknown;
-		if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
-		return Object.fromEntries(
-			Object.entries(value).filter((entry): entry is [string, number] => typeof entry[1] === "number"),
-		);
-	} catch {
-		return {};
-	}
-}
-
 function Chevron({ expanded }: { expanded: boolean }) {
 	return <AppIcon name="chevron" size={15} className={`chevron ${expanded ? "expanded" : ""}`} />;
 }
@@ -966,13 +987,11 @@ function ContextGauge({ snapshot, onClick }: { snapshot?: AgentSessionSnapshot; 
 	);
 }
 
-interface TranscriptTurn {
+interface TranscriptMarker {
 	id: string;
-	startIndex: number;
-	endIndex: number;
-	request: string;
-	response: string;
-	hasError: boolean;
+	preview: string;
+	index: number;
+	turn: number;
 }
 
 function compactTranscriptText(value: string, maximum: number): string {
@@ -980,36 +999,21 @@ function compactTranscriptText(value: string, maximum: number): string {
 	return normalized.length > maximum ? `${normalized.slice(0, maximum)}…` : normalized;
 }
 
-function buildTranscriptTurns(items: TranscriptItem[]): TranscriptTurn[] {
-	const turns: TranscriptTurn[] = [];
-	let current: TranscriptTurn | null = null;
+/** 定位条只标记用户消息：用户要的是"我发过什么"，不是回复。 */
+function buildTranscriptMarkers(items: TranscriptItem[]): TranscriptMarker[] {
+	const markers: TranscriptMarker[] = [];
+	let turn = 0;
 	for (const [index, item] of items.entries()) {
-		if (item.type === "user") {
-			if (current) turns.push(current);
-			current = {
-				id: item.id,
-				startIndex: index,
-				endIndex: index,
-				request: compactTranscriptText(item.text, 80) || "图片消息",
-				response: "",
-				hasError: false,
-			};
-			continue;
-		}
-		if (!current) continue;
-		current.endIndex = index;
-		if (!current.response) {
-			if (item.type === "tool") {
-				current.response = `工具：${item.name}${item.isError ? "（失败）" : ""}`;
-			} else {
-				current.response = compactTranscriptText(item.text, 92);
-			}
-		}
-		if (item.type === "tool" && item.isError) current.hasError = true;
-		if (item.type === "assistant" && item.status === "error") current.hasError = true;
+		if (item.type !== "user") continue;
+		turn += 1;
+		markers.push({
+			id: item.id,
+			preview: compactTranscriptText(item.text, 140) || "图片消息",
+			index,
+			turn,
+		});
 	}
-	if (current) turns.push(current);
-	return turns;
+	return markers;
 }
 
 const MINIMAP_MAGNIFY_RADIUS = 46;
@@ -1024,9 +1028,9 @@ function TranscriptMinimap({
 	items: TranscriptItem[];
 	activeIndex: number;
 	onJump(index: number): void;
-	scrollRef: { current: HTMLDivElement | null };
+	scrollRef: MutableRefObject<HTMLDivElement | null>;
 }) {
-	const turns = buildTranscriptTurns(items);
+	const markers = buildTranscriptMarkers(items);
 	const tickRefs = useRef<(HTMLButtonElement | null)[]>([]);
 	const railRef = useRef<HTMLElement | null>(null);
 	const frameRef = useRef(0);
@@ -1048,17 +1052,18 @@ function TranscriptMinimap({
 		};
 	}, [scrollRef]);
 
-	if (turns.length < 2 || !overflowing) return null;
-	const activeTurnIndex = Math.max(
-		0,
-		turns.findIndex((turn) => activeIndex >= turn.startIndex && activeIndex <= turn.endIndex),
-	);
-	const maximumVisibleTurns = 20;
+	if (markers.length < 2 || !overflowing) return null;
+	// 当前视口中心落在哪条 marker：取最后一个 index 不大于 activeIndex 的。
+	let activeMarkerIndex = 0;
+	for (const [i, marker] of markers.entries()) {
+		if (marker.index <= activeIndex) activeMarkerIndex = i;
+	}
+	const maximumVisibleMarkers = 20;
 	const visibleStart = Math.max(
 		0,
-		Math.min(turns.length - maximumVisibleTurns, activeTurnIndex - Math.floor(maximumVisibleTurns / 2)),
+		Math.min(markers.length - maximumVisibleMarkers, activeMarkerIndex - Math.floor(maximumVisibleMarkers / 2)),
 	);
-	const visibleTurns = turns.slice(visibleStart, visibleStart + maximumVisibleTurns);
+	const visibleMarkers = markers.slice(visibleStart, visibleStart + maximumVisibleMarkers);
 
 	function applyMagnify(clientY: number): void {
 		const rail = railRef.current;
@@ -1090,26 +1095,26 @@ function TranscriptMinimap({
 			onMouseMove={(event) => applyMagnify(event.clientY)}
 			onMouseLeave={resetMagnify}
 		>
-			{visibleTurns.map((turn, visibleIndex) => {
-				const turnIndex = visibleStart + visibleIndex;
-				const offset = visibleIndex - (visibleTurns.length - 1) / 2;
-				const label = `第 ${turnIndex + 1} 轮：${turn.request}`;
+			{visibleMarkers.map((marker, visibleIndex) => {
+				const markerIndex = visibleStart + visibleIndex;
+				const offset = visibleIndex - (visibleMarkers.length - 1) / 2;
+				const label = `第 ${marker.turn} 轮：${marker.preview}`;
 				return (
 					<button
-						key={turn.id}
+						key={marker.id}
 						type="button"
 						ref={(element) => {
 							tickRefs.current[visibleIndex] = element;
 						}}
-						className={`transcript-minimap-tick ${turn.hasError ? "tick-error" : ""} ${turnIndex === activeTurnIndex ? "active" : ""}`}
+						className={`transcript-minimap-tick tick-user ${markerIndex === activeMarkerIndex ? "active" : ""}`}
 						style={{ top: `calc(50% + ${offset * 20}px)` }}
-						onClick={() => onJump(turn.startIndex)}
+						onClick={() => onJump(marker.index)}
 						aria-label={label}
 					>
 						<span className="transcript-minimap-preview" role="tooltip">
-							<strong>第 {turnIndex + 1} 轮</strong>
-							<span>{turn.request}</span>
-							<small>{turn.response || "Pi 正在处理这一轮"}</small>
+							<strong>第 {marker.turn} 轮 · 你的消息</strong>
+							<span>{marker.preview}</span>
+							<small>点击跳到这条消息</small>
 						</span>
 					</button>
 				);
@@ -1324,6 +1329,130 @@ const demoModelSelection: AgentModelSelection = {
 	],
 };
 
+/**
+ * 一个常驻会话面板。DOM 归它自己所有，切换 Agent 只是显隐其它面板，
+ * 不会把这个滚动容器重指到别的会话数据，所以滚动位置天然保留。
+ * 这是参考项目 PI-Desktop `SessionPane` 的做法。
+ */
+const TranscriptPane = memo(function TranscriptPane({
+	agentId,
+	displayName,
+	kickoffPrompt,
+	items,
+	activity,
+	assistantModel,
+	running,
+	visible,
+	resetKey,
+	collapsedRounds,
+	onToggleRound,
+	forkEntryIds,
+	forkingEntryId,
+	onFork,
+	initialOffset,
+	onScrollPosition,
+	onActiveIndexChange,
+	onElement,
+	onShowJumpChange,
+	onController,
+	onUseKickoff,
+}: {
+	agentId: string;
+	displayName: string;
+	kickoffPrompt?: string;
+	items: TranscriptItem[];
+	activity?: AgentActivity;
+	assistantModel?: string;
+	running: boolean;
+	visible: boolean;
+	/** 会话切换时变化，用于把滚动重置为贴底。 */
+	resetKey: string;
+	collapsedRounds: Record<string, boolean>;
+	onToggleRound(id: string, collapsed: boolean): void;
+	forkEntryIds: Map<string, string>;
+	forkingEntryId: string | null;
+	onFork(entryId: string): void;
+	initialOffset: number | null;
+	onScrollPosition(offset: number): void;
+	onActiveIndexChange(index: number): void;
+	onElement(agentId: string, element: HTMLDivElement | null): void;
+	onShowJumpChange(showJump: boolean): void;
+	onController(controller: { runJump: (position: () => void) => void; jumpToLatest: () => void } | null): void;
+	onUseKickoff(): void;
+}) {
+	const scroll = useTranscriptScroll({
+		initialOffset,
+		isRunning: running,
+		contentLength: items.length,
+		visible,
+		resetKey,
+		onScrollPosition,
+		onActiveIndexChange,
+	});
+	useEffect(() => {
+		onElement(agentId, scroll.scrollRef.current);
+		return () => onElement(agentId, null);
+	}, [agentId, onElement, scroll.scrollRef]);
+	useEffect(() => {
+		onShowJumpChange(scroll.showJump);
+	}, [onShowJumpChange, scroll.showJump]);
+	useEffect(() => {
+		onController({ runJump: scroll.runJump, jumpToLatest: scroll.jumpToLatest });
+		return () => onController(null);
+	}, [onController, scroll.runJump, scroll.jumpToLatest]);
+
+	return (
+		<div
+			className="transcript-pane"
+			data-visible={visible ? "true" : "false"}
+			aria-hidden={visible ? undefined : true}
+			inert={visible ? undefined : true}
+		>
+			<div className="transcript" ref={scroll.scrollRef} onScroll={scroll.handleScroll}>
+				{items.length === 0 ? (
+					<div className="transcript-placeholder compact">
+						<div className="state-mark state-mark-conversation">
+							<AppIcon name="message-question" size={18} />
+						</div>
+						<h2>{displayName}</h2>
+						<p>发送一条消息开始工作。Agent 会检查当前工作目录中实际存在的材料。</p>
+						{kickoffPrompt ? (
+							<button className="quick-start-button" type="button" onClick={onUseKickoff}>
+								使用默认交接提示
+							</button>
+						) : null}
+					</div>
+				) : (
+					<TranscriptTurns
+						items={items}
+						assistantModel={assistantModel}
+						idPrefix={agentId}
+						running={running}
+						collapsedRounds={collapsedRounds}
+						onToggleRound={onToggleRound}
+						forkEntryIds={forkEntryIds}
+						forkingEntryId={forkingEntryId}
+						onFork={onFork}
+					/>
+				)}
+				{activity ? (
+					<div className="transcript-runtime-status">
+						<output className={`agent-activity activity-${activity.kind}`} aria-live="polite">
+							<span className="activity-dots" aria-hidden="true">
+								<span />
+								<span />
+								<span />
+							</span>
+							<span className="activity-label">{activity.label}</span>
+							{activity.queued > 0 ? <small>{activity.queued} 条排队</small> : null}
+						</output>
+					</div>
+				) : null}
+			</div>
+		</div>
+	);
+});
+
 export function App() {
 	const [project, setProject] = useState<ProjectSummary | null>(demoMode ? demoProject : null);
 	const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
@@ -1501,7 +1630,6 @@ export function App() {
 	const activatedAgentKey = useRef<string | null>(null);
 	const lastActiveAgentLocatorRef = useRef<AgentInstanceLocator | null>(null);
 	const projectRef = useRef<ProjectSummary | null>(project);
-	const transcriptRef = useRef<HTMLDivElement | null>(null);
 	const imageInputRef = useRef<HTMLInputElement | null>(null);
 	const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
 	const modelSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -1510,14 +1638,61 @@ export function App() {
 	const modelPickerInitializedRef = useRef<string | null>(null);
 	const modelPickerKeyboardScrollRef = useRef(false);
 	const modelPickerSelectedIndexRef = useRef(0);
-	const scrollPositions = useRef<Record<string, number>>(readStoredScrollPositions());
+	const scrollPositions = useRef<Record<string, number | undefined>>({});
 	const restoredProjectUiRoots = useRef(new Set<string>());
 	const restoringProjectUiRoots = useRef(new Set<string>());
 	const restoredAgentUiIds = useRef(new Set<string>());
 	const restoringAgentUiIds = useRef(new Set<string>());
 	const agentUiSaveTimers = useRef(new Map<string, number>());
-	const [showJumpToLatest, setShowJumpToLatest] = useState(false);
-	const [activeTranscriptIndex, setActiveTranscriptIndex] = useState(0);
+	const showJumpByAgentRef = useRef<Record<string, boolean>>({});
+	const unreadCountsRef = useRef<Record<string, number>>({});
+	const paneElementsRef = useRef(new Map<string, HTMLDivElement>());
+	const activeTranscriptRef = useRef<HTMLDivElement | null>(null);
+	const [retainedAgentIds, setRetainedAgentIds] = useState<string[]>([]);
+
+	const selectedWorkItem = useMemo(() => {
+		if (
+			!project ||
+			selection.type === "welcome" ||
+			selection.type === "project" ||
+			selection.type === "lane" ||
+			selection.type === "settings"
+		)
+			return null;
+		return (
+			project.lanes
+				.find((lane) => lane.kind === selection.lane)
+				?.workItems.find((item) => item.id === selection.workItemId) ?? null
+		);
+	}, [project, selection]);
+
+	const activeAgentId = useMemo(() => {
+		if (!selectedWorkItem || selection.type !== "agent") return null;
+		return selectedWorkItem.agentSlots.find((slot) => slot.role === selection.role)?.currentInstanceId ?? null;
+	}, [selectedWorkItem, selection]);
+
+	// 常驻 pane 可能属于别的 Work Item，需要从项目树反查它的展示信息。
+	const agentSlotIndex = useMemo(() => {
+		const index = new Map<
+			string,
+			{ displayName: string; kickoffPrompt?: string; role: AgentSlotSummary["role"]; workItemId: string }
+		>();
+		if (!project) return index;
+		for (const lane of project.lanes) {
+			for (const item of lane.workItems) {
+				for (const slot of item.agentSlots) {
+					if (!slot.currentInstanceId) continue;
+					index.set(slot.currentInstanceId, {
+						displayName: slot.displayName,
+						...(slot.kickoffPrompt ? { kickoffPrompt: slot.kickoffPrompt } : {}),
+						role: slot.role,
+						workItemId: item.id,
+					});
+				}
+			}
+		}
+		return index;
+	}, [project]);
 
 	const loadAgentCommands = useCallback(async (locator: AgentInstanceLocator): Promise<AgentCommandOption[]> => {
 		const existing = agentCommandLoads.current.get(locator.agentInstanceId);
@@ -1537,27 +1712,54 @@ export function App() {
 		}
 	}, []);
 
-	const updateTranscriptViewport = useCallback((): void => {
-		const element = transcriptRef.current;
-		if (!element) {
-			setActiveTranscriptIndex(0);
+	const activeAgentIdRef = useRef<string | null>(null);
+	activeAgentIdRef.current = activeAgentId;
+	const [activeTranscriptIndex, setActiveTranscriptIndex] = useState(0);
+	const [activeShowJump, setActiveShowJump] = useState(false);
+
+	// 每个访问过的 Agent 保留一个常驻 pane；切换只是显隐，滚动位置由该 pane
+	// 自己的 DOM 保留，这是与参考项目 SessionPane 相同的做法。
+	useEffect(() => {
+		if (!activeAgentId) {
+			activeTranscriptRef.current = null;
 			return;
 		}
-		const entries = [...element.querySelectorAll<HTMLElement>("[data-transcript-index]")];
-		const viewportCenter = element.scrollTop + element.clientHeight / 2;
-		let activeIndex = 0;
-		let nearestDistance = Number.POSITIVE_INFINITY;
-		for (const entry of entries) {
-			const index = Number.parseInt(entry.dataset.transcriptIndex ?? "0", 10);
-			const center = entry.offsetTop + entry.offsetHeight / 2;
-			const distance = Math.abs(center - viewportCenter);
-			if (distance < nearestDistance) {
-				nearestDistance = distance;
-				activeIndex = index;
-			}
-		}
-		setActiveTranscriptIndex((current) => (current === activeIndex ? current : activeIndex));
+		setRetainedAgentIds((current) =>
+			current.includes(activeAgentId) ? current : [...current, activeAgentId].slice(-8),
+		);
+		activeTranscriptRef.current = paneElementsRef.current.get(activeAgentId) ?? null;
+		setActiveTranscriptIndex(0);
+	}, [activeAgentId]);
+
+	const rememberScrollPosition = useCallback((agentId: string, offset: number): void => {
+		scrollPositions.current[agentId] = offset;
 	}, []);
+	const handlePaneElement = useCallback((agentId: string, element: HTMLDivElement | null): void => {
+		if (element) paneElementsRef.current.set(agentId, element);
+		else paneElementsRef.current.delete(agentId);
+		if (agentId === activeAgentIdRef.current) activeTranscriptRef.current = element;
+	}, []);
+	const handleActiveIndexChange = useCallback((agentId: string, index: number): void => {
+		if (agentId === activeAgentIdRef.current) setActiveTranscriptIndex(index);
+	}, []);
+	const paneControllersRef = useRef(
+		new Map<string, { runJump: (position: () => void) => void; jumpToLatest: () => void }>(),
+	);
+	const handlePaneController = useCallback(
+		(
+			agentId: string,
+			controller: { runJump: (position: () => void) => void; jumpToLatest: () => void } | null,
+		): void => {
+			if (controller) paneControllersRef.current.set(agentId, controller);
+			else paneControllersRef.current.delete(agentId);
+		},
+		[],
+	);
+	const handleShowJumpChange = useCallback((agentId: string, showJump: boolean): void => {
+		showJumpByAgentRef.current[agentId] = showJump;
+		if (agentId === activeAgentIdRef.current) setActiveShowJump(showJump);
+	}, []);
+	unreadCountsRef.current = unreadCounts;
 
 	useEffect(() => {
 		projectRef.current = project;
@@ -1603,27 +1805,6 @@ export function App() {
 		}, 200);
 		return () => window.clearTimeout(timer);
 	}, [expanded, project, selection]);
-
-	const selectedWorkItem = useMemo(() => {
-		if (
-			!project ||
-			selection.type === "welcome" ||
-			selection.type === "project" ||
-			selection.type === "lane" ||
-			selection.type === "settings"
-		)
-			return null;
-		return (
-			project.lanes
-				.find((lane) => lane.kind === selection.lane)
-				?.workItems.find((item) => item.id === selection.workItemId) ?? null
-		);
-	}, [project, selection]);
-
-	const activeAgentId = useMemo(() => {
-		if (!selectedWorkItem || selection.type !== "agent") return null;
-		return selectedWorkItem.agentSlots.find((slot) => slot.role === selection.role)?.currentInstanceId ?? null;
-	}, [selectedWorkItem, selection]);
 
 	const activeAgentLocator = useMemo<AgentInstanceLocator | null>(() => {
 		if (!project || !selectedWorkItem || selection.type !== "agent" || !activeAgentId) return null;
@@ -1707,6 +1888,7 @@ export function App() {
 				if (!state) return;
 				setDrafts((current) => ({ ...current, [activeAgentId]: state.draft }));
 				setUnreadCounts((current) => ({ ...current, [activeAgentId]: state.unreadCount }));
+				unreadCountsRef.current = { ...unreadCountsRef.current, [activeAgentId]: state.unreadCount };
 				scrollPositions.current[activeAgentId] = state.scrollTop;
 			})
 			.catch(() => undefined)
@@ -1735,11 +1917,11 @@ export function App() {
 	}, [activeAgentId, drafts, unreadCounts]);
 
 	useEffect(() => {
-		if (!activeAgentId || showJumpToLatest) return;
+		if (!activeAgentId || activeShowJump) return;
 		setUnreadCounts((current) =>
 			(current[activeAgentId] ?? 0) === 0 ? current : { ...current, [activeAgentId]: 0 },
 		);
-	}, [activeAgentId, showJumpToLatest]);
+	}, [activeAgentId, activeShowJump]);
 
 	const activeDraftStartsWithSlash = Boolean(
 		activeAgentId && (drafts[activeAgentId] ?? "").trimStart().startsWith("/"),
@@ -1845,10 +2027,14 @@ export function App() {
 
 	const markAgentUnread = useCallback(
 		(agentId: string): void => {
-			if (agentId === activeAgentId && !showJumpToLatest) return;
+			if (agentId === activeAgentId && !showJumpByAgentRef.current[agentId]) return;
+			unreadCountsRef.current = {
+				...unreadCountsRef.current,
+				[agentId]: (unreadCountsRef.current[agentId] ?? 0) + 1,
+			};
 			setUnreadCounts((current) => ({ ...current, [agentId]: (current[agentId] ?? 0) + 1 }));
 		},
-		[activeAgentId, showJumpToLatest],
+		[activeAgentId],
 	);
 
 	const handleAgentEvent = useCallback(
@@ -1983,10 +2169,14 @@ export function App() {
 				return;
 			}
 			if (type === "agent_history" && Array.isArray(event.messages)) {
-				activeAssistantIds.current.delete(agentInstanceId);
+				// 保留仍在流式的本地 assistant 条目，避免历史快照把回复抹掉。
 				setTranscripts((current) => ({
 					...current,
-					[agentInstanceId]: normalizeHistory(event.messages as unknown[]),
+					[agentInstanceId]: beginTranscriptHistoryMerge(
+						current[agentInstanceId] ?? [],
+						normalizeHistory(event.messages as unknown[]),
+						activeAssistantIds.current.get(agentInstanceId),
+					),
 				}));
 				return;
 			}
@@ -2537,101 +2727,31 @@ export function App() {
 		return off;
 	}, [authDialogMode, authRequestId, refreshAfterAuthChange]);
 
-	useEffect(() => {
-		const element = transcriptRef.current;
-		if (!element || !activeAgentId) {
-			setShowJumpToLatest(false);
-			return;
-		}
-		const frame = requestAnimationFrame(() => {
-			const stored = scrollPositions.current[activeAgentId];
-			element.scrollTop = stored ?? element.scrollHeight;
-			setShowJumpToLatest(element.scrollHeight - element.scrollTop - element.clientHeight > 160);
-			updateTranscriptViewport();
-		});
-		return () => cancelAnimationFrame(frame);
-	}, [activeAgentId, updateTranscriptViewport]);
-
-	useEffect(() => {
-		const element = transcriptRef.current;
-		if (!element || !activeAgentId || showJumpToLatest) return;
-		const scrollToBottom = (): void => {
-			const frame = requestAnimationFrame(() => {
-				element.scrollTop = element.scrollHeight;
-				scrollPositions.current[activeAgentId] = element.scrollTop;
-				updateTranscriptViewport();
-			});
-			requestAnimationFrame(() => cancelAnimationFrame(frame));
-		};
-		scrollToBottom();
-		const observer = new MutationObserver(scrollToBottom);
-		observer.observe(element, { childList: true, subtree: true, characterData: true });
-		return () => observer.disconnect();
-	}, [activeAgentId, showJumpToLatest, updateTranscriptViewport]);
-
-	useEffect(() => {
-		const element = transcriptRef.current;
-		if (!element || !activeAgentId) return;
-		let frame = 0;
-		const scheduleUpdate = (): void => {
-			cancelAnimationFrame(frame);
-			frame = requestAnimationFrame(updateTranscriptViewport);
-		};
-		const mutationObserver = new MutationObserver(scheduleUpdate);
-		const resizeObserver = new ResizeObserver(scheduleUpdate);
-		mutationObserver.observe(element, { childList: true, subtree: true, characterData: true });
-		resizeObserver.observe(element);
-		scheduleUpdate();
-		return () => {
-			cancelAnimationFrame(frame);
-			mutationObserver.disconnect();
-			resizeObserver.disconnect();
-		};
-	}, [activeAgentId, updateTranscriptViewport]);
-
-	function handleTranscriptScroll(): void {
-		const element = transcriptRef.current;
-		if (!element || !activeAgentId) return;
-		scrollPositions.current[activeAgentId] = element.scrollTop;
-		localStorage.setItem("codepiddy:agent-scroll-positions", JSON.stringify(scrollPositions.current));
-		if ("codepiddy" in window) {
-			const existing = agentUiSaveTimers.current.get(activeAgentId);
-			if (existing) window.clearTimeout(existing);
-			const timer = window.setTimeout(() => {
-				void window.codepiddy.saveAgentUiState({
-					agentInstanceId: activeAgentId,
-					draft: drafts[activeAgentId] ?? "",
-					scrollTop: scrollPositions.current[activeAgentId] ?? 0,
-					unreadCount: unreadCounts[activeAgentId] ?? 0,
-				});
-				agentUiSaveTimers.current.delete(activeAgentId);
-			}, 200);
-			agentUiSaveTimers.current.set(activeAgentId, timer);
-		}
-		const awayFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight > 160;
-		setShowJumpToLatest(awayFromBottom);
-		updateTranscriptViewport();
-		if (!awayFromBottom) {
-			setUnreadCounts((current) =>
-				(current[activeAgentId] ?? 0) === 0 ? current : { ...current, [activeAgentId]: 0 },
-			);
-		}
-	}
-
 	function jumpToTranscriptItem(index: number): void {
-		const element = transcriptRef.current;
-		const entry = element?.querySelector<HTMLElement>(`[data-transcript-index="${index}"]`);
-		if (!element || !entry) return;
-		const top = Math.max(0, entry.offsetTop - Math.max(24, element.clientHeight * 0.28));
-		element.scrollTo({ top, behavior: "smooth" });
-	}
-
-	function jumpToLatest(): void {
-		const element = transcriptRef.current;
-		if (!element) return;
-		element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
-		setShowJumpToLatest(false);
-		if (activeAgentId) setUnreadCounts((current) => ({ ...current, [activeAgentId]: 0 }));
+		const agentId = activeAgentId;
+		const element = activeTranscriptRef.current;
+		if (!agentId || !element) return;
+		// 目标可能位于折叠的“过程”段里。先展开所在轮次，再滚动，否则
+		// querySelector 找不到节点，点击定位条会毫无反应。
+		const turns = groupTranscriptIntoTurns(transcripts[agentId] ?? []);
+		const turn = turns.find((candidate) => candidate.entries.some((entry) => entry.index === index));
+		if (turn) {
+			const key = `${agentId}:${turn.id}`;
+			const inMiddle = splitTurnEntries(turn).middle.some((entry) => entry.index === index);
+			if (inMiddle && collapsedRounds[key] !== false) {
+				setCollapsedRounds((current) => ({ ...current, [key]: false }));
+			}
+		}
+		const scrollToTarget = (): void => {
+			const entry = element.querySelector<HTMLElement>(`[data-transcript-index="${index}"]`);
+			if (!entry) return;
+			const top = Math.max(0, entry.offsetTop - Math.max(24, element.clientHeight * 0.28));
+			element.scrollTo({ top, behavior: "smooth" });
+		};
+		// 先解除贴底，避免程序滚动后被 follow 逻辑拉回底部。
+		const controller = paneControllersRef.current.get(agentId);
+		if (controller) controller.runJump(scrollToTarget);
+		else requestAnimationFrame(scrollToTarget);
 	}
 
 	async function openProject(): Promise<void> {
@@ -4811,7 +4931,6 @@ export function App() {
 			const activity = agentId ? agentActivities[agentId] : undefined;
 			const toolRecoveryOffer = agentId ? toolRecoveryOffers[agentId] : undefined;
 			const sessionSnapshot = agentId ? agentSessionSnapshots[agentId] : undefined;
-			const forkEntryIds = buildTurnForkEntryMap(items, sessionSnapshot);
 			const canAbort = Boolean(agentId && (activity || slot.status === "running" || slot.status === "waiting"));
 			const latestTurn = groupTranscriptIntoTurns(items).at(-1);
 			const latestTurnToolItems =
@@ -4903,68 +5022,68 @@ export function App() {
 								items={items}
 								activeIndex={activeTranscriptIndex}
 								onJump={jumpToTranscriptItem}
-								scrollRef={transcriptRef}
+								scrollRef={activeTranscriptRef}
 							/>
 							<div className="conversation-column">
-								<div className="transcript" ref={transcriptRef} onScroll={handleTranscriptScroll}>
-									{items.length === 0 ? (
-										<div className="transcript-placeholder compact">
-											<div className="state-mark state-mark-conversation">
-												<AppIcon name="message-question" size={18} />
-											</div>
-											<h2>{slot.displayName}</h2>
-											<p>发送一条消息开始工作。Agent 会检查当前工作目录中实际存在的材料。</p>
-											{slot.kickoffPrompt ? (
-												<button
-													className="quick-start-button"
-													type="button"
-													onClick={() =>
-														setDrafts((current) => ({ ...current, [agentId]: slot.kickoffPrompt! }))
-													}
-												>
-													使用默认交接提示
-												</button>
-											) : null}
-										</div>
-									) : (
-										<TranscriptTurns
-											items={items}
-											assistantModel={modelSelections[agentId]?.model.name}
-											idPrefix={agentId}
-											running={Boolean(activity)}
-											collapsedRounds={collapsedRounds}
-											onToggleRound={(id, collapsed) =>
-												setCollapsedRounds((current) => ({ ...current, [id]: collapsed }))
-											}
-											forkEntryIds={forkEntryIds}
-											forkingEntryId={forkingEntryId}
-											onFork={(entryId) =>
-												void forkAgentSession(entryId, {
-													agentInstanceId: agentId,
-													projectId: project.id,
-													workItemId: selectedWorkItem.id,
-													role: slot.role,
-												})
-											}
-										/>
-									)}
-									{activity ? (
-										<div className="transcript-runtime-status">
-											<output className={`agent-activity activity-${activity.kind}`} aria-live="polite">
-												<span className="activity-dots" aria-hidden="true">
-													<span />
-													<span />
-													<span />
-												</span>
-												<span className="activity-label">{activity.label}</span>
-												{activity.queued > 0 ? <small>{activity.queued} 条排队</small> : null}
-											</output>
-										</div>
-									) : null}
+								<div className="transcript-panes">
+									{retainedAgentIds.map((paneAgentId) => {
+										const paneSlot = agentSlotIndex.get(paneAgentId);
+										const paneActivity = agentActivities[paneAgentId];
+										const paneSnapshot = agentSessionSnapshots[paneAgentId];
+										return (
+											<TranscriptPane
+												key={paneAgentId}
+												agentId={paneAgentId}
+												displayName={paneSlot?.displayName ?? "Agent"}
+												kickoffPrompt={paneSlot?.kickoffPrompt}
+												items={transcripts[paneAgentId] ?? []}
+												activity={paneActivity}
+												assistantModel={modelSelections[paneAgentId]?.model.name}
+												running={Boolean(paneActivity)}
+												visible={paneAgentId === agentId}
+												resetKey={paneSnapshot?.sessionId ?? "pending"}
+												collapsedRounds={collapsedRounds}
+												onToggleRound={(id, collapsed) =>
+													setCollapsedRounds((current) => ({ ...current, [id]: collapsed }))
+												}
+												forkEntryIds={buildTurnForkEntryMap(transcripts[paneAgentId] ?? [], paneSnapshot)}
+												forkingEntryId={forkingEntryId}
+												onFork={(entryId) => {
+													if (!paneSlot) return;
+													void forkAgentSession(entryId, {
+														agentInstanceId: paneAgentId,
+														projectId: project.id,
+														workItemId: paneSlot.workItemId,
+														role: paneSlot.role,
+													});
+												}}
+												initialOffset={scrollPositions.current[paneAgentId] ?? null}
+												onScrollPosition={(offset) => rememberScrollPosition(paneAgentId, offset)}
+												onActiveIndexChange={(index) => handleActiveIndexChange(paneAgentId, index)}
+												onElement={handlePaneElement}
+												onShowJumpChange={(show) => handleShowJumpChange(paneAgentId, show)}
+												onController={(controller) => handlePaneController(paneAgentId, controller)}
+												onUseKickoff={() =>
+													setDrafts((current) => ({
+														...current,
+														[paneAgentId]: paneSlot?.kickoffPrompt ?? "",
+													}))
+												}
+											/>
+										);
+									})}
 								</div>
 								<div className="composer-shell">
-									{showJumpToLatest ? (
-										<button className="jump-to-latest" type="button" onClick={jumpToLatest}>
+									{activeShowJump ? (
+										<button
+											className="jump-to-latest"
+											type="button"
+											onClick={() => {
+												if (!agentId) return;
+												paneControllersRef.current.get(agentId)?.jumpToLatest();
+												setUnreadCounts((current) => ({ ...current, [agentId]: 0 }));
+											}}
+										>
 											{activeAgentId && (unreadCounts[activeAgentId] ?? 0) > 0
 												? `${unreadCounts[activeAgentId]} 条新消息`
 												: "跳到最新消息"}

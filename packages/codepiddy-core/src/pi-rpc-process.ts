@@ -220,6 +220,19 @@ export class PiRpcProcess {
 		return Array.isArray(record.messages) ? record.messages : [];
 	}
 
+	/**
+	 * 完整会话条目（SessionManager.getEntries），包含压缩前的历史。
+	 * getMessages 返回的是压缩后的 LLM 上下文，压缩后前缀会消失，不能用于
+	 * 界面历史展示。参考项目 PI-Desktop 用的也是 SessionManager 条目。
+	 */
+	async getEntries(): Promise<unknown[]> {
+		const response = await this.send({ type: "get_entries" });
+		const data = response.data;
+		if (typeof data !== "object" || data === null || Array.isArray(data)) return [];
+		const record = data as Record<string, unknown>;
+		return Array.isArray(record.entries) ? record.entries : [];
+	}
+
 	async getSessionStats(): Promise<Record<string, unknown>> {
 		const response = await this.send({ type: "get_session_stats" });
 		const data = response.data;

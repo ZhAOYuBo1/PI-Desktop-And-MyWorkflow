@@ -1082,9 +1082,31 @@ class AgentManager {
 		return this.getModelSelection(input);
 	}
 
+	/**
+	 * 界面历史必须用完整会话条目（get_entries），不能用 get_messages：
+	 * 后者返回压缩后的 LLM 上下文，会话 compact 后前缀消息会消失。Pi 的
+	 * RPC 已提供 get_entries，这里只做 message 条目的提取。
+	 */
+	private async historyMessages(process: PiRpcProcess): Promise<unknown[]> {
+		const entries = await process.getEntries();
+		return entries.flatMap((entry) => {
+			if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return [];
+			const record = entry as Record<string, unknown>;
+			if (record.type !== "message" || record.message === undefined) return [];
+			return [record.message];
+		});
+	}
+
 	async activate(input: AgentInstanceLocator): Promise<void> {
 		const agent = await this.resolve(input);
 		const process = await this.ensureProcess(agent);
+		this.broadcast({
+			agentInstanceId: agent.id,
+			projectId: agent.projectId,
+			workItemId: agent.workItemId,
+			role: agent.role,
+			event: { type: "agent_history", messages: await this.historyMessages(process) },
+		});
 		const pendingPermission = this.pendingPermissions.get(agent.id);
 		if (pendingPermission) {
 			if (agent.status !== "waiting") await this.registry.setStatus(agent, "waiting");
@@ -1119,7 +1141,7 @@ class AgentManager {
 			projectId: agent.projectId,
 			workItemId: agent.workItemId,
 			role: agent.role,
-			event: { type: "agent_history", messages: await process.getMessages() },
+			event: { type: "agent_history", messages: await this.historyMessages(process) },
 		});
 	}
 
@@ -1209,7 +1231,7 @@ class AgentManager {
 				projectId: agent.projectId,
 				workItemId: agent.workItemId,
 				role: agent.role,
-				event: { type: "agent_history", messages: await process.getMessages() },
+				event: { type: "agent_history", messages: await this.historyMessages(process) },
 			});
 		}
 		return this.sessionSwitchResult(process, agent);
@@ -1227,7 +1249,7 @@ class AgentManager {
 				projectId: agent.projectId,
 				workItemId: agent.workItemId,
 				role: agent.role,
-				event: { type: "agent_history", messages: await process.getMessages() },
+				event: { type: "agent_history", messages: await this.historyMessages(process) },
 			});
 		}
 		return this.sessionSwitchResult(process, agent);
@@ -1264,7 +1286,7 @@ class AgentManager {
 				projectId: agent.projectId,
 				workItemId: agent.workItemId,
 				role: agent.role,
-				event: { type: "agent_history", messages: await process.getMessages() },
+				event: { type: "agent_history", messages: await this.historyMessages(process) },
 			});
 			return this.sessionSwitchResult(process, agent);
 		} catch (error) {
@@ -1333,7 +1355,7 @@ class AgentManager {
 				projectId: agent.projectId,
 				workItemId: agent.workItemId,
 				role: agent.role,
-				event: { type: "agent_history", messages: await process.getMessages() },
+				event: { type: "agent_history", messages: await this.historyMessages(process) },
 			});
 		}
 		return {
@@ -1538,7 +1560,7 @@ class AgentManager {
 				projectId: agent.projectId,
 				workItemId: agent.workItemId,
 				role: agent.role,
-				event: { type: "agent_history", messages: await process.getMessages() },
+				event: { type: "agent_history", messages: await this.historyMessages(process) },
 			});
 		};
 		if (input.name === "compact") {
@@ -1831,7 +1853,7 @@ class AgentManager {
 			handshakeComplete = true;
 			this.processes.set(agent.id, rpc);
 			this.processAgents.set(agent.id, agent);
-			const messages = await rpc.getMessages();
+			const messages = await this.historyMessages(rpc);
 			this.broadcast({
 				agentInstanceId: agent.id,
 				projectId: agent.projectId,

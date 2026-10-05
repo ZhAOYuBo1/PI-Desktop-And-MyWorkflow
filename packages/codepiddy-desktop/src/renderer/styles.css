@@ -2926,6 +2926,12 @@ textarea:focus-visible,
 .transcript-stage { position: relative; min-height: 0; flex: 1; display: flex; }
 .conversation-column { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; }
 .conversation-column > .transcript { height: auto; padding-bottom: var(--cp-space-xl); flex: 1; min-width: 0; min-height: 0; }
+/* 每个 Agent 一个常驻 pane。隐藏时保留布局盒，滚动位置因此保留；
+   display:none 会丢盒子并把内部滚动重置，这正是之前位置乱飘的原因。 */
+.transcript-panes { position: relative; flex: 1; min-height: 0; min-width: 0; }
+.transcript-pane { position: absolute; inset: 0; display: flex; }
+.transcript-pane[data-visible="false"] { visibility: hidden; content-visibility: hidden; pointer-events: none; }
+.transcript-pane > .transcript { height: auto; padding-bottom: var(--cp-space-xl); flex: 1; min-width: 0; min-height: 0; }
 .transcript-entry { position: relative; }
 /* 定位条是转录流的独立左列，不是覆盖层。原先 position:absolute + left:12px/width:28px
    会压在正文上：转录视口窄于 760+56=816px 时 .message 铺满、左边缘固定在 x=28，
@@ -2967,6 +2973,8 @@ textarea:focus-visible,
   transition: background 140ms ease-out, box-shadow 140ms ease-out;
 }
 .transcript-minimap-tick.tick-error::after { background: var(--cp-danger); }
+.transcript-minimap-tick.tick-user::after { background: var(--cp-accent); }
+.transcript-minimap-tick.tick-assistant::after { background: var(--cp-ink-faint); }
 .transcript-minimap-tick.active::after { background: var(--cp-ink-secondary); }
 .transcript-minimap-tick:hover::after,
 .transcript-minimap-tick:focus-visible::after {
