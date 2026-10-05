@@ -27,6 +27,7 @@ import type {
 	RecentProject,
 	RoleSkillAssignments,
 	SettingsStatus,
+	ShareAgentSessionResult,
 	WorkItemSummary,
 } from "@codepiddy/shared";
 import { Check, Eye, EyeOff, Trash2 } from "lucide-react";
@@ -50,7 +51,9 @@ import { MessageContent } from "./components/message-content.tsx";
 import { ProjectTrustSettings } from "./components/ProjectTrustSettings.tsx";
 import { ProviderSettings } from "./components/ProviderSettings.tsx";
 import { ProviderIcon } from "./components/provider-icon.tsx";
+import { SessionShareDialog } from "./components/SessionShareDialog.tsx";
 import { SessionStatsDialog } from "./components/SessionStatsDialog.tsx";
+import { ShareSettings } from "./components/ShareSettings.tsx";
 import { SlashCommandMenu } from "./components/SlashCommandMenu.tsx";
 import { StreamStats } from "./components/StreamStats.tsx";
 import { SelectMenu } from "./components/select-menu.tsx";
@@ -153,6 +156,14 @@ interface SessionPanelState {
 interface SessionStatsDialogState {
 	locator: AgentInstanceLocator;
 	displayName: string;
+}
+
+interface SessionShareDialogState {
+	locator: AgentInstanceLocator;
+	displayName: string;
+	sessionName: string | null;
+	result: ShareAgentSessionResult | null;
+	error: string | null;
 }
 
 interface ExtensionDialogState {
@@ -1111,7 +1122,16 @@ function TranscriptMinimap({
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
-type SettingsSectionId = "runtime" | "shell" | "providers" | "llama" | "mcp" | "search" | "permissions" | "skills";
+type SettingsSectionId =
+	| "runtime"
+	| "shell"
+	| "providers"
+	| "llama"
+	| "mcp"
+	| "search"
+	| "share"
+	| "permissions"
+	| "skills";
 
 const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: string; icon: AppIconName }[] }[] = [
 	{
@@ -1128,6 +1148,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 			{ id: "llama", label: "llama.cpp", icon: "hard-drive" },
 			{ id: "mcp", label: "MCP 服务", icon: "plug" },
 			{ id: "search", label: "Tavily Search", icon: "search" },
+			{ id: "share", label: "分享", icon: "share" },
 		],
 	},
 	{
@@ -1255,6 +1276,7 @@ const demoAgentCommands: AgentCommandOption[] = [
 		source: "builtin",
 	},
 	{ name: "export", command: "/export", description: "Export session", argumentHint: "[path]", source: "builtin" },
+	{ name: "share", command: "/share", description: "Share session as a secret GitHub gist", source: "builtin" },
 	{ name: "copy", command: "/copy", description: "Copy last agent message to clipboard", source: "builtin" },
 	{ name: "llama", command: "/llama", description: "Manage llama.cpp router models", source: "builtin" },
 	{
@@ -1322,6 +1344,8 @@ export function App() {
 	const [sessionStatsDialog, setSessionStatsDialog] = useState<SessionStatsDialogState | null>(null);
 	const [sessionStats, setSessionStats] = useState<AgentSessionStats | null>(null);
 	const [sessionStatsLoading, setSessionStatsLoading] = useState(false);
+	const [sessionShareDialog, setSessionShareDialog] = useState<SessionShareDialogState | null>(null);
+	const [sessionShareBusy, setSessionShareBusy] = useState(false);
 	const [forkingEntryId, setForkingEntryId] = useState<string | null>(null);
 	const [authDialogMode, setAuthDialogMode] = useState<"login" | "logout" | null>(null);
 	const [authProviders, setAuthProviders] = useState<AuthProviderSummary[]>([]);
@@ -3167,6 +3191,11 @@ export function App() {
 					await openSessionStats(locator, slot.displayName);
 					return;
 				}
+				if (name === "share") {
+					setDrafts((current) => ({ ...current, [agentId]: "" }));
+					await openSessionShare(locator, slot.displayName);
+					return;
+				}
 				if (name === "fork" || name === "tree") {
 					setDrafts((current) => ({ ...current, [agentId]: "" }));
 					await openSessionPanel(slot);
@@ -3408,6 +3437,59 @@ export function App() {
 		}
 	}
 
+	async function openSessionShare(
+		locator: AgentInstanceLocator,
+		displayName: string,
+		sessionName?: string | null,
+	): Promise<void> {
+		setSessionShareDialog({
+			locator,
+			displayName,
+			sessionName: sessionName ?? agentSessionSnapshots[locator.agentInstanceId]?.sessionName ?? null,
+			result: null,
+			error: null,
+		});
+	}
+
+	async function shareAgentSession(): Promise<void> {
+		if (!sessionShareDialog || sessionShareBusy) return;
+		const dialog = sessionShareDialog;
+		setSessionShareBusy(true);
+		setSessionShareDialog({ ...dialog, error: null, result: null });
+		try {
+			if (demoMode || !("codepiddy" in window)) {
+				setSessionShareDialog({
+					...dialog,
+					result: {
+						provider: "github",
+						viewerUrl: "https://pi.dev/session/#demo-share-gist",
+						gistUrl: "https://gist.github.com/demo/demo-share-gist",
+					},
+				});
+				showSettingsToast("分享链接已生成。", "success");
+				return;
+			}
+			const result = await window.codepiddy.shareAgentSession(dialog.locator);
+			setSessionShareDialog({ ...dialog, result, error: null });
+			showSettingsToast("分享链接已生成。", "success");
+		} catch (caught) {
+			const message = caught instanceof Error ? caught.message : "分享会话失败";
+			setSessionShareDialog({ ...dialog, result: null, error: message });
+		} finally {
+			setSessionShareBusy(false);
+		}
+	}
+
+	function openExternalLink(url: string): void {
+		if (demoMode || !("codepiddy" in window)) {
+			window.open(url, "_blank", "noopener,noreferrer");
+			return;
+		}
+		void window.codepiddy.openExternalUrl(url).catch((caught: unknown) => {
+			setError(caught instanceof Error ? caught.message : "打开链接失败");
+		});
+	}
+
 	async function importAgentSession(): Promise<void> {
 		if (!sessionPanel) return;
 		if (demoMode) {
@@ -3521,7 +3603,11 @@ export function App() {
 		setAuthError(null);
 	}
 
-	async function openAuthDialog(mode: "login" | "logout", providerArg?: string): Promise<void> {
+	async function openAuthDialog(
+		mode: "login" | "logout",
+		providerArg?: string,
+		scope: "all" | "provider" | "share" = "all",
+	): Promise<void> {
 		if (demoMode || !("codepiddy" in window)) {
 			setError("Provider 登录只在桌面客户端中可用。");
 			return;
@@ -3534,7 +3620,13 @@ export function App() {
 		setAuthPromptValue("");
 		setAuthRequestId(null);
 		try {
-			const providers = await window.codepiddy.listAuthProviders();
+			const allProviders = await window.codepiddy.listAuthProviders();
+			const providers =
+				scope === "share"
+					? allProviders.filter((provider) => provider.id === "radius")
+					: scope === "provider"
+						? allProviders.filter((provider) => provider.id !== "radius")
+						: allProviders;
 			const candidates =
 				mode === "logout"
 					? providers.filter((provider) => provider.configured && provider.source === "stored")
@@ -3945,6 +4037,8 @@ export function App() {
 				setSessionRenameDialog(null);
 			} else if (sessionStatsDialog) {
 				setSessionStatsDialog(null);
+			} else if (sessionShareDialog) {
+				if (!sessionShareBusy) setSessionShareDialog(null);
 			} else if (projectTrustPromptOpen) {
 				setProjectTrustPromptOpen(false);
 			} else if (modelPickerAgentId) {
@@ -3986,6 +4080,8 @@ export function App() {
 		sessionPanel,
 		sessionRenameDialog,
 		sessionStatsDialog,
+		sessionShareDialog,
+		sessionShareBusy,
 		shellRestartDialog,
 		writeLeaseDialog,
 		abortAgent,
@@ -4665,7 +4761,7 @@ export function App() {
 						<div className="settings-section-slot" hidden={settingsSection !== "providers"}>
 							<ProviderSettings
 								refreshToken={providerSettingsRefreshToken}
-								onOpenAuth={(mode, providerId) => void openAuthDialog(mode, providerId)}
+								onOpenAuth={(mode, providerId) => void openAuthDialog(mode, providerId, "provider")}
 							/>
 							<ModelScopeSettings
 								activeAgent={activeAgentLocator ?? lastActiveAgentLocatorRef.current}
@@ -4679,6 +4775,13 @@ export function App() {
 							<Suspense fallback={<div className="provider-empty">正在加载 llama.cpp 设置…</div>}>
 								<LlamaCppSettings activeAgent={activeAgentLocator ?? lastActiveAgentLocatorRef.current} />
 							</Suspense>
+						</div>
+						<div className="settings-section-slot" hidden={settingsSection !== "share"}>
+							<ShareSettings
+								refreshToken={providerSettingsRefreshToken}
+								onOpenAuth={(mode, providerId) => void openAuthDialog(mode, providerId, "share")}
+								onOpenUrl={openExternalLink}
+							/>
 						</div>
 					</div>
 				</div>
@@ -5406,6 +5509,25 @@ export function App() {
 										type="button"
 										disabled={sessionPanelLoading}
 										onClick={() =>
+											void openSessionShare(
+												{
+													agentInstanceId: sessionPanel.agentInstanceId,
+													projectId: sessionPanel.projectId,
+													workItemId: sessionPanel.workItemId,
+													role: sessionPanel.role,
+												},
+												sessionPanel.displayName,
+												sessionPanel.snapshot.sessionName ?? null,
+											)
+										}
+									>
+										<AppIcon name="share" size={13} /> 分享
+									</button>
+									<button
+										className="secondary-button"
+										type="button"
+										disabled={sessionPanelLoading}
+										onClick={() =>
 											setSessionRenameDialog({
 												locator: {
 													agentInstanceId: sessionPanel.agentInstanceId,
@@ -5635,6 +5757,31 @@ export function App() {
 						stats={sessionStats}
 						loading={sessionStatsLoading}
 						onClose={() => setSessionStatsDialog(null)}
+					/>
+				</div>
+			) : null}
+			{sessionShareDialog ? (
+				<div className="modal-backdrop" role="presentation">
+					<button
+						className="modal-backdrop-dismiss"
+						type="button"
+						aria-label="取消分享会话"
+						disabled={sessionShareBusy}
+						onClick={() => {
+							if (!sessionShareBusy) setSessionShareDialog(null);
+						}}
+					/>
+					<SessionShareDialog
+						displayName={sessionShareDialog.displayName}
+						sessionName={sessionShareDialog.sessionName}
+						busy={sessionShareBusy}
+						result={sessionShareDialog.result}
+						error={sessionShareDialog.error}
+						onConfirm={() => void shareAgentSession()}
+						onClose={() => {
+							if (!sessionShareBusy) setSessionShareDialog(null);
+						}}
+						onOpenUrl={openExternalLink}
 					/>
 				</div>
 			) : null}

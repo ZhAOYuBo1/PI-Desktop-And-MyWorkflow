@@ -15,6 +15,7 @@ const DESKTOP_BUILTINS = new Set([
 	"tree",
 	"thinking",
 	"export",
+	"share",
 	"copy",
 	"name",
 	"session",

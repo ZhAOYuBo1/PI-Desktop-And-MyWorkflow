@@ -1,7 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -53,12 +54,15 @@ import type {
 	SetAgentModelInput,
 	SetAgentModelScopeInput,
 	SetAgentThinkingInput,
+	ShareAgentSessionResult,
+	ShareSettingsStatus,
 	SwitchAgentSessionInput,
 	TerminalClientEvent,
 	TerminalSessionInfo,
 } from "@codepiddy/shared";
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, webContents } from "electron";
 import pty, { type IPty } from "node-pty";
+import { getGitHubCliStatus } from "./github-cli.ts";
 import {
 	assertPathInside,
 	parseAgentLocator,
@@ -68,6 +72,7 @@ import {
 	parseCreateAgentInput,
 	parseCreateWorkItemInput,
 	parseExtensionUiResponseInput,
+	parseExternalUrl,
 	parseForkAgentSessionInput,
 	parseInvokeAgentBuiltinCommandInput,
 	parseMcpActionInput,
@@ -114,6 +119,7 @@ const channels = {
 	cloneAgentSession: "codepiddy:agent:session:clone",
 	getAgentSessionSnapshot: "codepiddy:agent:session:get",
 	forkAgentSession: "codepiddy:agent:session:fork",
+	shareAgentSession: "codepiddy:agent:session:share",
 	listAgentSessions: "codepiddy:agent:session:list",
 	newAgentSession: "codepiddy:agent:session:new",
 	switchAgentSession: "codepiddy:agent:session:switch",
@@ -168,6 +174,10 @@ const channels = {
 	settingsOpenPermissionPolicy: "codepiddy:settings:permission-policy:open",
 	settingsOpenProjectSkills: "codepiddy:settings:project-skills:open",
 	settingsOpenBuiltinSkills: "codepiddy:settings:builtin-skills:open",
+	settingsShareGet: "codepiddy:settings:share:get",
+	settingsShareChooseGitHubCli: "codepiddy:settings:share:github-cli:choose",
+	settingsShareSetGitHubCliPath: "codepiddy:settings:share:github-cli:set",
+	openExternalUrl: "codepiddy:app:open-external-url",
 	settingsGetPermissions: "codepiddy:settings:permissions:get",
 	settingsSetPermissions: "codepiddy:settings:permissions:set",
 	settingsSaveTavily: "codepiddy:settings:tavily:save",
@@ -1283,6 +1293,92 @@ class AgentManager {
 		};
 	}
 
+	async shareSession(input: AgentInstanceLocator): Promise<ShareAgentSessionResult> {
+		const agent = await this.resolve(input);
+		const rpcProcess = await this.ensureProcess(agent);
+		const stateResponse = await rpcProcess.getState();
+		const state = isRecord(stateResponse.data) ? stateResponse.data : {};
+		const sessionFile = typeof state.sessionFile === "string" ? state.sessionFile : "";
+		if (!sessionFile) throw new Error("当前 Session 没有可分享的 JSONL 文件");
+
+		const tempDir = await mkdtemp(path.join(tmpdir(), "codepiddy-share-"));
+		try {
+			const htmlFile = path.join(tempDir, "session.html");
+			await rpcProcess.exportHtml(htmlFile);
+			const packageDir =
+				this.piRuntimeUpdater.getLaunchRuntime()?.packageDir ??
+				(app.isPackaged
+					? path.join(this.repositoryRoot, "coding-agent-package")
+					: path.join(this.repositoryRoot, "packages", "coding-agent-runtime"));
+			const helperPath = app.isPackaged
+				? path.join(this.repositoryRoot, "extensions", "pi-share-helper.mjs")
+				: path.join(app.getAppPath(), "dist", "runtime-extensions", "pi-share-helper.mjs");
+			const nodeExecutable = process.env.CODEPIDDY_NODE_EXECUTABLE ?? (app.isPackaged ? process.execPath : "node");
+			const githubCliPath = await this.settingsStore.getGitHubCliPath();
+			const args = [
+				helperPath,
+				"--package-dir",
+				packageDir,
+				"--agent-dir",
+				resolvePiAgentDir(),
+				"--session-file",
+				sessionFile,
+				"--html-file",
+				htmlFile,
+				"--cwd",
+				agent.projectRoot,
+				...(githubCliPath ? ["--gh-path", githubCliPath] : []),
+			];
+			return await new Promise<ShareAgentSessionResult>((resolve, reject) => {
+				const child = spawn(nodeExecutable, args, {
+					cwd: this.repositoryRoot,
+					env: {
+						...process.env,
+						ELECTRON_RUN_AS_NODE: "1",
+						PI_PACKAGE_DIR: packageDir,
+					},
+					stdio: ["ignore", "pipe", "pipe"],
+					windowsHide: true,
+				});
+				let stdout = "";
+				let stderr = "";
+				child.stdout.on("data", (chunk: Buffer) => {
+					stdout = `${stdout}${chunk.toString("utf8")}`.slice(-128 * 1024);
+				});
+				child.stderr.on("data", (chunk: Buffer) => {
+					stderr = `${stderr}${chunk.toString("utf8")}`.slice(-128 * 1024);
+				});
+				child.once("error", reject);
+				child.once("exit", (code) => {
+					const lastLine = stdout
+						.split(/\r?\n/)
+						.map((line) => line.trim())
+						.filter(Boolean)
+						.at(-1);
+					if (code !== 0) {
+						reject(new Error(stderr.trim() || "分享会话失败"));
+						return;
+					}
+					try {
+						const parsed = JSON.parse(lastLine ?? "") as ShareAgentSessionResult;
+						if (
+							(parsed.provider !== "radius" && parsed.provider !== "github") ||
+							typeof parsed.viewerUrl !== "string" ||
+							!parsed.viewerUrl
+						) {
+							throw new Error("分享服务返回的数据无效");
+						}
+						resolve(parsed);
+					} catch (error) {
+						reject(error instanceof Error ? error : new Error("分享服务返回的数据无效"));
+					}
+				});
+			});
+		} finally {
+			await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+		}
+	}
+
 	async reset(input: ResetAgentInput): Promise<ProjectSummary> {
 		const agent = await this.resolve(input);
 		if (path.resolve(agent.projectRoot) !== path.resolve(input.projectRoot)) throw new Error("项目路径不匹配");
@@ -1922,6 +2018,13 @@ function registerIpcHandlers(
 		if (!openedProjects.has(rootKey(projectRoot))) throw new Error("项目尚未在 CodePIddy 中打开");
 		return projectRoot;
 	};
+	const shareSettingsStatus = async (): Promise<ShareSettingsStatus> => {
+		const providers = await piAuthManager.listProviders();
+		return {
+			radius: providers.find((provider) => provider.id === "radius") ?? null,
+			githubCli: getGitHubCliStatus(await settingsStore.getGitHubCliPath()),
+		};
+	};
 	const validateWorkItemInput = (raw: unknown): ArchiveWorkItemInput => {
 		const input = parseArchiveWorkItemInput(raw);
 		return { ...input, projectRoot: requireOpenProjectRoot(input.projectRoot) };
@@ -2077,6 +2180,9 @@ function registerIpcHandlers(
 	);
 	ipcMain.handle(channels.forkAgentSession, (_event, raw: unknown) =>
 		agentManager.forkSession(parseForkAgentSessionInput(raw)),
+	);
+	ipcMain.handle(channels.shareAgentSession, (_event, raw: unknown) =>
+		agentManager.shareSession(parseAgentLocator(raw)),
 	);
 	ipcMain.handle(channels.listAuthProviders, () => piAuthManager.listProviders());
 	ipcMain.handle(channels.startAuthLogin, (_event, raw: unknown) => {
@@ -2338,6 +2444,23 @@ function registerIpcHandlers(
 		if (!directory) throw new Error("未找到内置 Skill 目录");
 		const error = await shell.openPath(directory);
 		if (error) throw new Error(error);
+	});
+	ipcMain.handle(channels.settingsShareGet, () => shareSettingsStatus());
+	ipcMain.handle(channels.settingsShareChooseGitHubCli, async () => {
+		const selected = await dialog.showOpenDialog({
+			title: "选择 GitHub CLI",
+			properties: ["openFile"],
+			...(process.platform === "win32" ? { filters: [{ name: "GitHub CLI", extensions: ["exe"] }] } : {}),
+		});
+		return selected.canceled ? null : (selected.filePaths[0] ?? null);
+	});
+	ipcMain.handle(channels.settingsShareSetGitHubCliPath, async (_event, rawPath: unknown) => {
+		const githubCliPath = parseBoundedText(rawPath, "GitHub CLI 路径", 2048, true);
+		await settingsStore.setGitHubCliPath(githubCliPath || null);
+		return shareSettingsStatus();
+	});
+	ipcMain.handle(channels.openExternalUrl, async (_event, rawUrl: unknown) => {
+		await shell.openExternal(parseExternalUrl(rawUrl));
 	});
 	ipcMain.handle(channels.openWorkItemFolder, async (_event, raw: unknown) => {
 		const input = validateWorkItemInput(raw);

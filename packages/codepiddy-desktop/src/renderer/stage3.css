@@ -21,6 +21,174 @@
   color: var(--cp-success);
 }
 
+.settings-status.is-warning {
+  background: color-mix(in oklab, var(--cp-warning) 10%, transparent);
+  color: var(--cp-warning);
+}
+
+.share-settings-list {
+  display: grid;
+  margin-top: var(--cp-space-lg);
+}
+
+.share-setting-section {
+  display: grid;
+  gap: var(--cp-space-md);
+  padding: var(--cp-space-lg) 0;
+  border-top: 0.5px solid var(--cp-line-subtle);
+}
+
+.share-setting-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.share-setting-section:last-child {
+  padding-bottom: 0;
+}
+
+.share-setting-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--cp-space-md);
+}
+
+.share-setting-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+  color: var(--cp-ink-secondary);
+}
+
+.share-setting-brand-icon {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.share-setting-heading h3 {
+  margin: 0 0 var(--cp-space-micro);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.share-setting-heading p {
+  margin: 0;
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.share-setting-details {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+  padding-left: 42px;
+}
+
+.share-setting-details span {
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+}
+
+.share-setting-details strong {
+  font-size: 11.5px;
+  font-weight: 560;
+}
+
+.share-setting-path {
+  display: block;
+  overflow: hidden;
+  padding-left: 42px;
+  color: var(--cp-ink-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-setting-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-sm) var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+  color: var(--cp-ink-secondary);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.share-setting-note.is-error {
+  background: color-mix(in oklab, var(--cp-danger) 9%, transparent);
+  color: var(--cp-danger);
+}
+
+.share-login-command {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-xs) var(--cp-space-xs) var(--cp-space-xs) var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-inset);
+}
+
+.share-login-command code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--cp-ink-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-login-command button {
+  display: inline-flex;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  gap: var(--cp-space-xs);
+  padding: 0 var(--cp-space-sm);
+  border: 0;
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-surface);
+  color: var(--cp-ink-secondary);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.share-login-command button:hover {
+  color: var(--cp-ink);
+  box-shadow: var(--cp-elevation-raised);
+}
+
+.share-path-field {
+  margin-left: 42px;
+}
+
+.share-setting-section > .settings-actions {
+  padding-left: 42px;
+}
+
+.share-settings-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--cp-space-sm);
+  margin-top: var(--cp-space-lg);
+  padding-top: var(--cp-space-md);
+  border-top: 0.5px solid var(--cp-line-subtle);
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
 .llama-connection-card {
   display: grid;
   gap: var(--cp-space-md);
@@ -787,6 +955,185 @@
   font-weight: 560;
 }
 
+.session-share-modal {
+  width: min(520px, calc(100vw - var(--cp-space-2xl)));
+  padding: 0;
+}
+
+.session-share-privacy,
+.session-share-loading,
+.session-share-success,
+.session-share-error {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: flex-start;
+  gap: var(--cp-space-md);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-lg);
+}
+
+.session-share-privacy {
+  margin: 0 var(--cp-space-xl);
+  background: color-mix(in oklab, var(--cp-warning) 9%, transparent);
+  color: var(--cp-warning);
+}
+
+.session-share-privacy strong,
+.session-share-loading strong,
+.session-share-success strong,
+.session-share-error strong {
+  display: block;
+  margin-bottom: var(--cp-space-micro);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.session-share-privacy p,
+.session-share-loading p,
+.session-share-success p,
+.session-share-error p {
+  margin: 0;
+  color: var(--cp-ink-secondary);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.session-share-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+  margin: var(--cp-space-lg) var(--cp-space-xl) 0;
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-secondary);
+}
+
+.session-share-summary span {
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+}
+
+.session-share-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-share-loading {
+  margin: var(--cp-space-lg) var(--cp-space-xl) 0;
+  background: var(--cp-surface-secondary);
+}
+
+.session-share-spinner {
+  color: var(--cp-accent);
+  animation: session-share-spin 850ms linear infinite;
+}
+
+.session-share-error {
+  margin: var(--cp-space-md) var(--cp-space-xl) 0;
+  background: color-mix(in oklab, var(--cp-danger) 9%, transparent);
+  color: var(--cp-danger);
+}
+
+.session-share-result {
+  display: grid;
+  gap: var(--cp-space-md);
+  margin: var(--cp-space-lg) var(--cp-space-xl) 0;
+}
+
+.session-share-modal .session-share-loading,
+.session-share-modal .session-share-result {
+  margin-bottom: var(--cp-space-xl);
+}
+
+.session-share-modal .modal-actions {
+  margin-bottom: var(--cp-space-xl);
+}
+
+.session-share-success {
+  background: color-mix(in oklab, var(--cp-success) 9%, transparent);
+  color: var(--cp-success);
+}
+
+.session-share-success-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: var(--cp-radius-full);
+  background: var(--cp-surface);
+}
+
+.session-share-link {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-xs) var(--cp-space-xs) var(--cp-space-xs) var(--cp-space-md);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface-inset);
+}
+
+.session-share-link code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--cp-ink-secondary);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-share-link button {
+  display: inline-flex;
+  height: 28px;
+  flex: none;
+  align-items: center;
+  gap: var(--cp-space-xs);
+  padding: 0 var(--cp-space-sm);
+  border: 0;
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-surface);
+  color: var(--cp-ink-secondary);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.session-share-link button:hover {
+  color: var(--cp-ink);
+  box-shadow: var(--cp-elevation-raised);
+}
+
+.session-share-link button:focus-visible,
+.session-share-result-actions button:focus-visible {
+  outline: 2px solid var(--cp-accent-ring);
+  outline-offset: 2px;
+}
+
+.session-share-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--cp-space-sm);
+}
+
+@keyframes session-share-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-share-spinner {
+    animation: none;
+  }
+}
+
 @media (max-width: 700px) {
   .model-scope-toolbar,
   .session-picker-heading {
@@ -801,5 +1148,27 @@
   .session-stats-grid,
   .session-stats-tokens {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .session-share-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .share-setting-heading {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .share-setting-heading .settings-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .share-setting-details,
+  .share-setting-path,
+  .share-path-field,
+  .share-setting-section > .settings-actions {
+    padding-left: 0;
+    margin-left: 0;
   }
 }

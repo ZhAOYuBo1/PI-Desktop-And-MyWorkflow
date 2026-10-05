@@ -186,17 +186,21 @@ export function ProviderSettings({
 		void refresh();
 	}, [refresh, refreshToken]);
 
-	const configuredAuthProviders = useMemo(
-		() => (authProviders ?? []).filter((provider) => provider.configured),
+	const providerPageAuthProviders = useMemo(
+		() => (authProviders ?? []).filter((provider) => provider.id !== "radius"),
 		[authProviders],
+	);
+	const configuredAuthProviders = useMemo(
+		() => providerPageAuthProviders.filter((provider) => provider.configured),
+		[providerPageAuthProviders],
 	);
 	const customProviderIds = useMemo(() => new Set((providers ?? []).map((provider) => provider.id)), [providers]);
 	const visibleAuthProviders = useMemo(() => {
-		const sorted = [...(authProviders ?? [])].sort(
+		const sorted = [...providerPageAuthProviders].sort(
 			(left, right) => Number(right.configured) - Number(left.configured) || left.name.localeCompare(right.name),
 		);
 		return showAllAuthProviders ? sorted : sorted.filter((provider) => provider.configured);
-	}, [authProviders, showAllAuthProviders]);
+	}, [providerPageAuthProviders, showAllAuthProviders]);
 
 	useEffect(() => {
 		if (!notice) return;
@@ -289,7 +293,7 @@ export function ProviderSettings({
 					<h2>Provider 与模型</h2>
 					<p>
 						官方 Provider 用账户登录写入 <code>auth.json</code>；自定义接口和模型列表写入 <code>models.json</code>
-						。API Key 由系统加密保存，不落明文。
+						。API Key 由系统加密保存，不落明文。Radius 登录已移到“设置 &gt; 分享”。
 					</p>
 				</div>
 				<div className="skill-settings-actions">
@@ -317,8 +321,8 @@ export function ProviderSettings({
 						<div>
 							<strong>Provider 凭据状态</strong>
 							<small>
-								{configuredAuthProviders.length} / {authProviders?.length ?? 0} 已配置 · auth.json / models.json
-								/ 环境变量
+								{configuredAuthProviders.length} / {providerPageAuthProviders.length} 已配置 · auth.json /
+								models.json / 环境变量
 							</small>
 						</div>
 					</div>
@@ -403,13 +407,13 @@ export function ProviderSettings({
 						<p className="provider-auth-empty">还没有通过 Pi 配置的 Provider。</p>
 					) : null}
 				</div>
-				{(authProviders?.length ?? 0) > configuredAuthProviders.length ? (
+				{providerPageAuthProviders.length > configuredAuthProviders.length ? (
 					<button
 						className="provider-auth-toggle"
 						type="button"
 						onClick={() => setShowAllAuthProviders((current) => !current)}
 					>
-						{showAllAuthProviders ? "只看已配置" : `显示全部 ${authProviders?.length ?? 0} 个 Provider`}
+						{showAllAuthProviders ? "只看已配置" : `显示全部 ${providerPageAuthProviders.length} 个 Provider`}
 					</button>
 				) : null}
 			</div>

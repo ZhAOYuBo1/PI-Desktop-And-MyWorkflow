@@ -105,6 +105,18 @@ export function parseProjectRoot(value: unknown): string {
 	return projectRoot(value);
 }
 
+export function parseExternalUrl(value: unknown): string {
+	const result = text(value, "外部链接", 2048);
+	let url: URL;
+	try {
+		url = new URL(result);
+	} catch {
+		throw new Error("外部链接格式无效");
+	}
+	if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("只允许打开 HTTP 或 HTTPS 链接");
+	return url.toString();
+}
+
 export function parseCreateWorkItemInput(value: unknown): CreateWorkItemInput {
 	const input = record(value, "Create Work Item");
 	return {

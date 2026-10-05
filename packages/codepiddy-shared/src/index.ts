@@ -235,6 +235,29 @@ export interface ForkAgentSessionResult {
 	snapshot: AgentSessionSnapshot;
 }
 
+export interface ShareAgentSessionResult {
+	provider: "radius" | "github";
+	viewerUrl: string;
+	gistUrl?: string;
+	artifactUrl?: string;
+}
+
+export type GitHubCliSource = "configured" | "environment" | "path" | "common" | "none";
+
+export interface GitHubCliStatus {
+	path: string | null;
+	source: GitHubCliSource;
+	authenticated: boolean;
+	version: string | null;
+	loginCommand: string | null;
+	error: string | null;
+}
+
+export interface ShareSettingsStatus {
+	radius: AuthProviderSummary | null;
+	githubCli: GitHubCliStatus;
+}
+
 export type AuthMethodType = "api_key" | "oauth";
 
 export type CredentialSource =
@@ -319,6 +342,10 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	importAgentSession(input: AgentInstanceLocator): Promise<AgentSessionSwitchResult | null>;
 	getAgentSessionStats(input: AgentInstanceLocator): Promise<AgentSessionStats>;
 	forkAgentSession(input: ForkAgentSessionInput): Promise<ForkAgentSessionResult>;
+	shareAgentSession(input: AgentInstanceLocator): Promise<ShareAgentSessionResult>;
+	getShareSettings(): Promise<ShareSettingsStatus>;
+	chooseGitHubCliPath(): Promise<string | null>;
+	setGitHubCliPath(path: string | null): Promise<ShareSettingsStatus>;
 	listAuthProviders(): Promise<AuthProviderSummary[]>;
 	startAuthLogin(input: { providerId: string; authType: AuthMethodType }): Promise<string>;
 	respondAuthPrompt(input: {
@@ -369,6 +396,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	openPermissionPolicyFolder(): Promise<void>;
 	openProjectSkillsFolder(projectRoot: string): Promise<void>;
 	openBuiltinSkillsFolder(): Promise<void>;
+	openExternalUrl(url: string): Promise<void>;
 	getAgentModelSelection(input: AgentInstanceLocator): Promise<AgentModelSelection>;
 	getAgentModelScope(input: AgentInstanceLocator): Promise<AgentModelScope>;
 	getAgentCommands(input: AgentInstanceLocator): Promise<AgentCommandOption[]>;

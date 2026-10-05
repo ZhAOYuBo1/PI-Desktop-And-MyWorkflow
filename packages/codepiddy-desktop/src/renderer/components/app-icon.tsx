@@ -26,6 +26,7 @@ import {
 	Plus,
 	Search,
 	Settings,
+	Share2,
 	Shield,
 	Sparkles,
 	Square,
@@ -57,6 +58,7 @@ export type AppIconName =
 	| "search"
 	| "stop"
 	| "settings"
+	| "share"
 	| "warning"
 	| "eye"
 	| "terminal"
@@ -93,6 +95,7 @@ const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	search: Search,
 	stop: Square,
 	settings: Settings,
+	share: Share2,
 	warning: TriangleAlert,
 	eye: Eye,
 	terminal: Terminal,

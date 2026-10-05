@@ -28,6 +28,8 @@ import type {
 	SetAgentThinkingInput,
 	SetProjectTrustInput,
 	SetRoleSkillAssignmentsInput,
+	ShareAgentSessionResult,
+	ShareSettingsStatus,
 	SwitchAgentSessionInput,
 	TerminalClientEvent,
 	TerminalResizeInput,
@@ -44,6 +46,7 @@ const channels = {
 	cloneAgentSession: "codepiddy:agent:session:clone",
 	getAgentSessionSnapshot: "codepiddy:agent:session:get",
 	forkAgentSession: "codepiddy:agent:session:fork",
+	shareAgentSession: "codepiddy:agent:session:share",
 	listAgentSessions: "codepiddy:agent:session:list",
 	newAgentSession: "codepiddy:agent:session:new",
 	switchAgentSession: "codepiddy:agent:session:switch",
@@ -98,6 +101,10 @@ const channels = {
 	settingsOpenPermissionPolicy: "codepiddy:settings:permission-policy:open",
 	settingsOpenProjectSkills: "codepiddy:settings:project-skills:open",
 	settingsOpenBuiltinSkills: "codepiddy:settings:builtin-skills:open",
+	settingsShareGet: "codepiddy:settings:share:get",
+	settingsShareChooseGitHubCli: "codepiddy:settings:share:github-cli:choose",
+	settingsShareSetGitHubCliPath: "codepiddy:settings:share:github-cli:set",
+	openExternalUrl: "codepiddy:app:open-external-url",
 	settingsGetPermissions: "codepiddy:settings:permissions:get",
 	settingsSetPermissions: "codepiddy:settings:permissions:set",
 	settingsSaveTavily: "codepiddy:settings:tavily:save",
@@ -185,6 +192,12 @@ const api: CodePIddyClientApi = {
 	importAgentSession: (input: AgentInstanceLocator) => ipcRenderer.invoke(channels.importAgentSession, input),
 	getAgentSessionStats: (input: AgentInstanceLocator) => ipcRenderer.invoke(channels.getAgentSessionStats, input),
 	forkAgentSession: (input: ForkAgentSessionInput) => ipcRenderer.invoke(channels.forkAgentSession, input),
+	shareAgentSession: (input: AgentInstanceLocator): Promise<ShareAgentSessionResult> =>
+		ipcRenderer.invoke(channels.shareAgentSession, input),
+	getShareSettings: (): Promise<ShareSettingsStatus> => ipcRenderer.invoke(channels.settingsShareGet),
+	chooseGitHubCliPath: (): Promise<string | null> => ipcRenderer.invoke(channels.settingsShareChooseGitHubCli),
+	setGitHubCliPath: (path: string | null): Promise<ShareSettingsStatus> =>
+		ipcRenderer.invoke(channels.settingsShareSetGitHubCliPath, path),
 	listAuthProviders: (): Promise<AuthProviderSummary[]> => ipcRenderer.invoke(channels.listAuthProviders),
 	startAuthLogin: (input: { providerId: string; authType: AuthMethodType }): Promise<string> =>
 		ipcRenderer.invoke(channels.startAuthLogin, input),
@@ -260,6 +273,7 @@ const api: CodePIddyClientApi = {
 	openProjectSkillsFolder: (projectRoot: string) =>
 		ipcRenderer.invoke(channels.settingsOpenProjectSkills, projectRoot),
 	openBuiltinSkillsFolder: () => ipcRenderer.invoke(channels.settingsOpenBuiltinSkills),
+	openExternalUrl: (url: string) => ipcRenderer.invoke(channels.openExternalUrl, url),
 	onAgentEvent: (listener) => {
 		const handler = (_event: Electron.IpcRendererEvent, event: AgentClientEvent) => listener(event);
 		ipcRenderer.on(channels.agentEvent, handler);

@@ -71,4 +71,8 @@ await Promise.all([
     path.join(path.dirname(fileURLToPath(import.meta.url)), "pi-trust-helper.mjs"),
     path.join("dist", "runtime-extensions", "pi-trust-helper.mjs"),
   ),
+  cp(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "pi-share-helper.mjs"),
+    path.join("dist", "runtime-extensions", "pi-share-helper.mjs"),
+  ),
 ]);

@@ -241,6 +241,7 @@ export class AppSettingsStore {
 	private readonly permissionDefaultsPath: string;
 	private readonly permissionPolicyPath: string;
 	private readonly shellPathFile: string;
+	private readonly shareSettingsPath: string;
 	private readonly piSettingsPath: string;
 	private readonly mcpConfigPath: string;
 	private readonly modelsConfigPath: string;
@@ -253,6 +254,7 @@ export class AppSettingsStore {
 		this.permissionDefaultsPath = path.join(settingsDirectory, "permission-defaults.json");
 		this.permissionPolicyPath = path.join(userDataPath, "permissions", "policy", "pi-permissions.jsonc");
 		this.shellPathFile = path.join(settingsDirectory, "shell.json");
+		this.shareSettingsPath = path.join(settingsDirectory, "share.json");
 		this.piSettingsPath = path.join(resolvePiAgentDir(), "settings.json");
 		this.mcpConfigPath = path.join(resolvePiAgentDir(), "mcp.json");
 		this.modelsConfigPath = path.join(resolvePiAgentDir(), "models.json");
@@ -377,6 +379,34 @@ export class AppSettingsStore {
 		}
 		await this.syncPiShellPath(shellPath || null);
 		return this.status();
+	}
+
+	async getGitHubCliPath(): Promise<string | null> {
+		const settings = await this.readJsonRecord(this.shareSettingsPath);
+		return typeof settings.githubCliPath === "string" && settings.githubCliPath.trim()
+			? settings.githubCliPath.trim()
+			: null;
+	}
+
+	async setGitHubCliPath(value: string | null): Promise<void> {
+		const settings = await this.readJsonRecord(this.shareSettingsPath);
+		const next = { ...settings };
+		if (value?.trim()) {
+			const githubCliPath = path.resolve(value.trim());
+			if (!existsSync(githubCliPath)) throw new Error(`GitHub CLI 路径不存在：${githubCliPath}`);
+			next.githubCliPath = githubCliPath;
+		} else {
+			delete next.githubCliPath;
+		}
+		if (Object.keys(next).length === 0) {
+			try {
+				await unlink(this.shareSettingsPath);
+			} catch (error) {
+				if (!isNotFound(error)) throw error;
+			}
+			return;
+		}
+		await this.writeJsonRecord(this.shareSettingsPath, next);
 	}
 
 	async getPermissionDefaults(): Promise<PermissionDefaults> {

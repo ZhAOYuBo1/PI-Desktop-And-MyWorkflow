@@ -305,12 +305,13 @@ components:
 
 ### Settings
 
-设置页是左侧分类导航 + 右侧内容，一次只显示一个分类：`常规`（Pi 运行时、Shell）、`集成`（Provider 与模型、MCP 服务、Tavily Search）、`Agent`（默认权限、Agent Skills）。导航是 208px 的次级底色列，选中项白底抬起；不再把所有设置堆在同一页。
+设置页是左侧分类导航 + 右侧内容，一次只显示一个分类：`常规`（Pi 运行时、Shell）、`集成`（Provider 与模型、MCP 服务、Tavily Search、分享）、`Agent`（默认权限、Agent Skills）。导航是 208px 的次级底色列，选中项白底抬起；不再把所有设置堆在同一页。
 
 - **Provider 与模型**：读写 Pi 原生 `~/.pi/agent/models.json`。API Key 用 Electron safeStorage 加密保存在本机，models.json 里只写 `$ENV` 引用，启动 Agent 时通过环境变量注入，不落明文。下方“常用模型范围”把选中的模型写入 Pi 原生 `settings.json` 的 `enabledModels`；模型选择器优先显示“常用模型 · provider”，部分选择时再显示“其他模型”，明确清空常用列表时才显示“全部模型”。
 - **Pi 运行时 / 项目信任**：读取 Pi 原生 `~/.pi/agent/trust.json`。只有项目存在需要信任的本地资源且没有已保存或继承决定时才弹窗；可选择信任当前项目、信任父目录、不信任或稍后。Agent 不再无条件使用 `--approve`，项目资源是否加载由 trust 决定。
 - **Session 统计**：会话树和输入区上下文圆环可打开统计面板，显示 Session ID / 文件、消息数、工具调用与结果、Token、费用和上下文占用；只读 RPC `get_session_stats`，不改 Session 文件。
 - **MCP 服务**：读写 Pi 原生 `~/.pi/agent/mcp.json`，并支持项目级 `.pi/mcp.json` 覆盖 `enabled` / `exposure` / `toolExposure`。全局编辑器覆盖 stdio / HTTP、参数、环境变量、Headers、描述、超时、工具级 exposure、OAuth 和 `auth.provider`。OAuth client secret 使用 safeStorage，配置只写环境变量引用；登录 / 退出调用 Pi 原生 `mcp` 子命令，重连复用当前 Agent 进程重启。`/mcp` 在客户端命令菜单中打开 MCP 管理页，运行状态由 `pi mcp list --json` 包装读取。内置 `web_search`（Tavily MCP）由客户端维护为原生 MCP 条目，Key 只在 Tavily Search 里配置并注入 `TAVILY_API_KEY`；实际工具名是 `mcp__web_search__web_search`，工具卡显示短名 `web_search`。
+- **分享**：Radius 登录 / 退出复用 Pi Provider 认证和 `auth.json`，但入口与 Provider 页面分离。GitHub CLI 只做路径、版本和登录状态检测，用户手动选择 `gh.exe` 后保存到 CodePIddy `share.json`，不保存 GitHub Token。检测顺序是手动路径、`CODEPIDDY_GH_PATH`、PATH、官方安装器标准目录；不包含机器特定盘符。Radius 与 GitHub CLI 使用 `codepiddy-icons/radius.svg` 和 `codepiddy-icons/github-cli.svg` 品牌图标。
 - **设置反馈**：MCP、Provider 和权限设置统一使用右下角 `SettingsToast` 消息栈。成功和错误提示自动消失、可手动关闭；多条消息纵向堆叠，不互相覆盖。Tavily Key 使用掩码密码字段，眼睛按钮按需解密显示。
 - 两类配置都只影响新启动或重置后的 Agent；正在运行的 Agent 不受影响。
 
@@ -324,7 +325,7 @@ Agent 工具调用的卡片是整个客户端最有辨识度的元素。它有�
 
 ### Stream Stats Glyph
 
-Token 速率前的流星不能依赖字体字符。`codepiddy-icons/meteor.svg` 是用户提供的正式源文件，渲染层通过 Vite 资源 URL 缩到 12px，保留原始 viewBox 与多彩配色，并标记为装饰性内容。这样不会因 Monaspace / Maple 缺少符号而出现豆腐块，也保留图标自身的识别度。
+Token 速率前的流星不能依赖字体字符。`codepiddy-icons/meteor.svg` 是用户提供的正式源文件，渲染层通过 Vite 资源 URL 缩到 12px，保留原始 viewBox 与多彩配色，并标记为装饰性内容。分享设置中的 `codepiddy-icons/radius.svg` 和 `codepiddy-icons/github-cli.svg` 同样作为品牌矢量例外，使用 Vite `?url` 导入，不重绘、不重着色。这样不会因 Monaspace / Maple 缺少符号而出现豆腐块，也保留图标自身的识别度。
 
 ## 7. Do's and Don'ts
 

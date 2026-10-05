@@ -163,7 +163,7 @@
 | --- | --- | --- |
 | `/copy` | 已覆盖 | 复制最后 Assistant 消息 |
 | `/export` | 已覆盖 | HTML / JSONL |
-| `/share` | 缺失 | 没有上传 Session、返回 viewer link |
+| `/share` | 已覆盖 | 客户端原生分享弹窗、独立分享设置、品牌图标、Radius / GitHub CLI 回退、viewer link 和复制入口已实现并验收；Provider 页已排除 Radius 登录入口，GitHub CLI 检测无机器特定路径 |
 | `/bug` | 缺失 | 没有 Pi bug report / zip 导出 |
 | `/changelog` | 已覆盖 | 客户端自定义输出 |
 | `/hotkeys` | 已覆盖 | 客户端自定义输出 |
@@ -244,10 +244,10 @@
 19. [x] `/session` 完整统计信息：批次 48 已接入 RPC `get_session_stats` 和客户端统计面板。
 20. [x] `/name`：批次 49 已完成无参查询、会话树名称展示和客户端重命名。
 21. [x] `/llama`：批次 50 已完成客户端原生 router 管理、Hugging Face 下载和 mock 验证；真实 router 端到端测试待后续环境。
-22. `/share`
+22. [x] `/share`：批次 51-53 已实现并验收客户端原生分享、隐私确认、独立分享设置、品牌图标、Radius / GitHub CLI 回退和 viewer link。
 23. `/bug`
 
-批次 50 已完成第 21 项 `/llama`。阶段 3 下一步从第 22 项 `/share` 开始。
+批次 53 已完成并验收第 22 项 `/share`。阶段 3 下一步从第 23 项 `/bug` 开始。
 
 ### 阶段 4：高级运行时能力
 
