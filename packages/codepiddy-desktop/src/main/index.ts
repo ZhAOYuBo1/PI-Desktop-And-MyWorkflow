@@ -1397,7 +1397,14 @@ class AgentManager {
 			return { copiedText, message: "已复制最后一条 Assistant 消息。" };
 		}
 		if (input.name === "name") {
-			if (!args) throw new Error("用法：/name <session name>");
+			if (!args) {
+				const stateResponse = await process.getState();
+				const state = isRecord(stateResponse.data) ? stateResponse.data : {};
+				const sessionName = typeof state.sessionName === "string" ? state.sessionName.trim() : "";
+				return {
+					message: sessionName ? `当前 Session 名称：${sessionName}` : "当前 Session 尚未命名。",
+				};
+			}
 			await process.setSessionName(args);
 			return { message: `Session 已命名为：${args}` };
 		}

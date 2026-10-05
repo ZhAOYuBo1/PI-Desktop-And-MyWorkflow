@@ -5,6 +5,13 @@
   gap: var(--cp-space-xs);
 }
 
+.session-rename-modal p {
+  margin: 0;
+  color: var(--cp-ink-muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
 .model-scope-card,
 .project-trust-card {
   gap: var(--cp-space-lg);

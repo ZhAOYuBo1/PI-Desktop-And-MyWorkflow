@@ -109,6 +109,12 @@ interface RenameDialogState {
 	title: string;
 }
 
+interface SessionRenameDialogState {
+	locator: AgentInstanceLocator;
+	displayName: string;
+	name: string;
+}
+
 interface DeleteDialogState {
 	lane: LaneKind;
 	item: WorkItemSummary;
@@ -1237,8 +1243,8 @@ const demoAgentCommands: AgentCommandOption[] = [
 	{
 		name: "name",
 		command: "/name",
-		description: "Set session display name",
-		argumentHint: "<name>",
+		description: "Query or set the current session display name",
+		argumentHint: "[name]",
 		source: "builtin",
 	},
 	{ name: "session", command: "/session", description: "Show session info and stats", source: "builtin" },
@@ -1289,6 +1295,7 @@ export function App() {
 	const [archiveToast, setArchiveToast] = useState<ArchiveToast | null>(null);
 	const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 	const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
+	const [sessionRenameDialog, setSessionRenameDialog] = useState<SessionRenameDialogState | null>(null);
 	const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
 	const [resetAgentDialog, setResetAgentDialog] = useState<ResetAgentDialogState | null>(null);
 	const [shellRestartDialog, setShellRestartDialog] = useState(false);
@@ -3431,6 +3438,57 @@ export function App() {
 		}
 	}
 
+	async function renameAgentSession(): Promise<void> {
+		if (!sessionRenameDialog) return;
+		const name = sessionRenameDialog.name.trim();
+		if (!name) return;
+		const locator = sessionRenameDialog.locator;
+		setSessionPanelLoading(true);
+		setError(null);
+		try {
+			if (demoMode) {
+				setSessionPanel((current) =>
+					current
+						? {
+								...current,
+								snapshot: { ...current.snapshot, sessionName: name },
+								sessions: current.sessions.map((session) =>
+									session.sessionId === current.snapshot.sessionId ? { ...session, name } : session,
+								),
+							}
+						: current,
+				);
+				setAgentSessionSnapshots((current) => {
+					const snapshot = current[locator.agentInstanceId];
+					return snapshot
+						? { ...current, [locator.agentInstanceId]: { ...snapshot, sessionName: name } }
+						: current;
+				});
+				setSessionRenameDialog(null);
+				setSessionNotice(`Session 已重命名为：${name}`);
+				return;
+			}
+			if (!("codepiddy" in window)) return;
+			await window.codepiddy.invokeAgentBuiltinCommand({ ...locator, name: "name", args: name });
+			const [snapshot, sessions] = await Promise.all([
+				window.codepiddy.getAgentSessionSnapshot(locator),
+				window.codepiddy.listAgentSessions(locator),
+			]);
+			setSessionPanel((current) =>
+				current && current.agentInstanceId === locator.agentInstanceId
+					? { ...current, snapshot, sessions }
+					: current,
+			);
+			setAgentSessionSnapshots((current) => ({ ...current, [locator.agentInstanceId]: snapshot }));
+			setSessionRenameDialog(null);
+			setSessionNotice(`Session 已重命名为：${name}`);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "重命名会话失败");
+		} finally {
+			setSessionPanelLoading(false);
+		}
+	}
+
 	function closeAuthDialog(): void {
 		if (authRequestId && "codepiddy" in window) void window.codepiddy.cancelAuthLogin(authRequestId);
 		setAuthDialogMode(null);
@@ -3861,7 +3919,9 @@ export function App() {
 		const handleKeyDown = (event: KeyboardEvent): void => {
 			if (event.key !== "Escape" || event.defaultPrevented) return;
 			if (extensionDialog) return;
-			if (sessionStatsDialog) {
+			if (sessionRenameDialog) {
+				setSessionRenameDialog(null);
+			} else if (sessionStatsDialog) {
 				setSessionStatsDialog(null);
 			} else if (projectTrustPromptOpen) {
 				setProjectTrustPromptOpen(false);
@@ -3902,6 +3962,7 @@ export function App() {
 		selectedWorkItem,
 		selection,
 		sessionPanel,
+		sessionRenameDialog,
 		sessionStatsDialog,
 		shellRestartDialog,
 		writeLeaseDialog,
@@ -5300,7 +5361,10 @@ export function App() {
 						<div className="session-tree-heading">
 							<div>
 								<h2>{sessionPanel.displayName} 会话树</h2>
-								<p>点用户消息右侧的 Fork 从此处创建分支；原消息会填回输入框，原会话不会被修改。</p>
+								<p>
+									当前会话：{sessionPanel.snapshot.sessionName || "未命名会话"}。点用户消息右侧的 Fork
+									从此处创建分支； 原消息会填回输入框，原会话不会被修改。
+								</p>
 							</div>
 							<IconButton label="关闭会话树" onClick={() => setSessionPanel(null)}>
 								<AppIcon name="close" />
@@ -5310,6 +5374,25 @@ export function App() {
 							<div className="session-picker-heading">
 								<strong>会话</strong>
 								<div className="session-picker-actions">
+									<button
+										className="secondary-button"
+										type="button"
+										disabled={sessionPanelLoading}
+										onClick={() =>
+											setSessionRenameDialog({
+												locator: {
+													agentInstanceId: sessionPanel.agentInstanceId,
+													projectId: sessionPanel.projectId,
+													workItemId: sessionPanel.workItemId,
+													role: sessionPanel.role,
+												},
+												displayName: sessionPanel.displayName,
+												name: sessionPanel.snapshot.sessionName ?? "",
+											})
+										}
+									>
+										<AppIcon name="edit" size={13} /> 重命名
+									</button>
 									<button
 										className="secondary-button"
 										type="button"
@@ -5359,7 +5442,7 @@ export function App() {
 											onClick={() => void switchAgentSession(session.sessionId)}
 										>
 											<span className="session-picker-copy">
-												<strong>{session.name || session.preview || "新会话"}</strong>
+												<strong>{session.name || "未命名会话"}</strong>
 												<small>
 													{session.messageCount} 条消息 ·{" "}
 													{session.updatedAt ? new Date(session.updatedAt).toLocaleString() : "—"}
@@ -5456,12 +5539,60 @@ export function App() {
 							)}
 						</div>
 						<div className="session-tree-footer">
-							<code>{sessionPanel.snapshot.sessionName || sessionPanel.snapshot.sessionId}</code>
+							<code>
+								{sessionPanel.snapshot.sessionName || `未命名会话 · ${sessionPanel.snapshot.sessionId}`}
+							</code>
 							<button className="secondary-button" type="button" onClick={() => setSessionPanel(null)}>
 								关闭
 							</button>
 						</div>
 					</div>
+				</div>
+			) : null}
+			{sessionRenameDialog ? (
+				<div className="modal-backdrop" role="presentation">
+					<button
+						className="modal-backdrop-dismiss"
+						type="button"
+						aria-label="取消重命名会话"
+						onClick={() => setSessionRenameDialog(null)}
+					/>
+					<form
+						className="modal session-rename-modal"
+						onSubmit={(event) => {
+							event.preventDefault();
+							void renameAgentSession();
+						}}
+					>
+						<h2>重命名会话</h2>
+						<p>为 {sessionRenameDialog.displayName} 的当前会话设置一个便于识别的名称。留空不会清除名称。</p>
+						<label>
+							会话名称
+							<input
+								maxLength={200}
+								placeholder="未命名会话"
+								value={sessionRenameDialog.name}
+								onChange={(event) =>
+									setSessionRenameDialog({
+										...sessionRenameDialog,
+										name: event.target.value,
+									})
+								}
+							/>
+						</label>
+						<div className="modal-actions">
+							<button type="button" onClick={() => setSessionRenameDialog(null)}>
+								取消
+							</button>
+							<button
+								className="primary-button"
+								type="submit"
+								disabled={!sessionRenameDialog.name.trim() || sessionPanelLoading}
+							>
+								{sessionPanelLoading ? "保存中…" : "保存"}
+							</button>
+						</div>
+					</form>
 				</div>
 			) : null}
 			{sessionStatsDialog ? (

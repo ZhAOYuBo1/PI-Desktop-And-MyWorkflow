@@ -125,7 +125,7 @@
 | --- | --- | --- |
 | `/new` | 已覆盖 | 新建 Session |
 | `/resume` | 已覆盖 | 文件选择恢复 JSONL |
-| `/name` | 部分覆盖 | 客户端要求传参，不能像 Pi 一样仅查询当前名称 |
+| `/name` | 已覆盖 | 无参数查询当前名称；客户端会话树支持显示名称和重命名 |
 | `/session` | 部分覆盖 | 当前主要打开会话树，不是完整 stats 面板 |
 | `/tree` | 已覆盖 | 会话树弹窗 |
 | `/fork` | 已覆盖 | 会话树 Fork 和消息级 Fork |
@@ -242,12 +242,12 @@
 17. [x] `/import`：批次 48 已改为会话树原生导入入口，文件选择器 + JSONL 校验、复制、切换和持久化。
 18. [x] `/trust` 持久化：批次 48 已接入 Pi `ProjectTrustStore` helper、信任弹窗、设置页状态和 `trust.json` 持久化。
 19. [x] `/session` 完整统计信息：批次 48 已接入 RPC `get_session_stats` 和客户端统计面板。
-20. `/name` 无参查询
+20. [x] `/name`：批次 49 已完成无参查询、会话树名称展示和客户端重命名。
 21. `/llama`
 22. `/share`
 23. `/bug`
 
-批次 48 的代码提交为 `d402e6a7e feat(desktop): add stage 3 client workflows`。阶段 3 下一步从第 20 项 `/name` 无参查询开始。
+批次 49 已完成第 20 项 `/name`。阶段 3 下一步从第 21 项 `/llama` 开始。
 
 ### 阶段 4：高级运行时能力
 
