@@ -180,13 +180,6 @@ button { color: inherit; }
 .modal input:focus, .modal textarea:focus { border-color: var(--cp-ink-faint); box-shadow: 0 0 0 3px rgb(23 24 26 / 8%); }
 .modal-actions { display: flex; justify-content: flex-end; gap: var(--cp-space-sm); margin-top: var(--cp-space-xl); }
 .modal-actions > button:not(.primary-button) { padding: 0 var(--cp-space-md); border: 0; background: transparent; cursor: pointer; }
-.toast { position: fixed; z-index: 30; bottom: var(--cp-space-xl); left: 50%; display: flex; align-items: center; gap: var(--cp-space-lg); padding: var(--cp-space-md) var(--cp-space-md); border: 1px solid var(--cp-surface-inset); border-radius: var(--cp-radius-md); background: var(--cp-ink); color: #fff; box-shadow: 0 10px 35px rgb(0 0 0 / 18%); transform: translateX(-50%); }
-.toast button { border: 0; background: transparent; color: #fff; font-weight: 650; cursor: pointer; }
-.toast button:last-child { display: grid; width: 22px; height: 22px; flex: none; place-items: center; margin-left: auto; padding: 0; border-radius: var(--cp-radius-sm); }
-.toast button:last-child:hover,
-.toast button:last-child:focus-visible { background: rgb(255 255 255 / 12%); }
-.error-banner { position: absolute; z-index: 50; top: var(--cp-space-md); left: 50%; display: flex; width: min(520px, calc(100% - 48px)); align-items: flex-start; justify-content: space-between; gap: var(--cp-space-md); padding: var(--cp-space-md) var(--cp-space-md); border-radius: var(--cp-radius-md); background: var(--cp-danger); color: #fff; transform: translateX(-50%); overflow-wrap: anywhere; }
-.error-banner button { flex: 0 0 24px; border: 0; background: transparent; color: #fff; cursor: pointer; }
 
 @media (max-width: 940px) {
   .sidebar { width: 240px; flex-basis: 240px; }
@@ -952,7 +945,6 @@ button { color: inherit; }
 .chevron.expanded { transform: rotate(90deg); }
 .folder-glyph { width: 17px; height: 17px; }
 .sidebar-footer button { align-items: center; }
-.error-banner button { display: grid; width: 24px; height: 24px; place-items: center; border-radius: var(--cp-radius-sm); }
 .session-tree-modal {
   display: flex;
   width: min(780px, calc(100vw - 32px));
@@ -960,28 +952,6 @@ button { color: inherit; }
   flex-direction: column;
   padding: 0;
   overflow: hidden;
-}
-
-.session-tree-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--cp-space-lg);
-  padding: var(--cp-space-xl) var(--cp-space-xl) var(--cp-space-md);
-}
-
-.session-tree-heading h2 {
-  margin: 0 0 var(--cp-space-xxs);
-  font-size: 15px;
-  font-weight: 560;
-}
-
-.session-tree-heading p {
-  max-width: 58ch;
-  margin: 0;
-  color: var(--cp-ink-muted);
-  font-size: 12.5px;
-  line-height: 1.5;
 }
 
 .auth-modal {
@@ -1427,10 +1397,6 @@ button { color: inherit; }
   .session-tree-modal {
     width: calc(100vw - 48px);
     max-height: calc(100vh - 48px);
-  }
-
-  .session-tree-heading {
-    padding: var(--cp-space-lg) var(--cp-space-lg) var(--cp-space-sm);
   }
 
   .session-summary {
@@ -1918,16 +1884,8 @@ button { color: inherit; }
   outline-offset: -2px;
   background: var(--cp-surface-secondary);
 }
-.toast {
-  animation: codepiddy-toast-in 180ms cubic-bezier(.2, .8, .2, 1) both;
-}
-@keyframes codepiddy-toast-in {
-  from { opacity: 0; transform: translate(-50%, 8px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
-}
 @media (prefers-reduced-motion: reduce) {
   .system-output-fold summary::before { transition: none; }
-  .toast { animation: none; }
 }
 .model-picker-footer .model-picker-status { margin-right: 0; }
 @media (max-width: 720px) {
@@ -2934,15 +2892,6 @@ textarea:focus-visible,
   scrollbar-width: thin;
 }
 
-.terminal-error {
-  margin: 0;
-  padding: var(--cp-space-xs) var(--cp-space-md);
-  background: color-mix(in oklab, var(--cp-danger) 9%, transparent);
-  color: var(--cp-danger);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
 .work-panel-empty {
   display: flex;
   min-height: 180px;
@@ -3482,8 +3431,6 @@ textarea:focus-visible,
 .permission-picker-list,
 .context-gauge-tooltip,
 .transcript-minimap-preview,
-.toast,
-.error-banner,
 .agent-choice-list > button {
   border: 0;
   background: var(--cp-surface);
@@ -3509,11 +3456,6 @@ textarea:focus-visible,
   background: var(--cp-surface-secondary);
   box-shadow: var(--cp-elevation-raised);
   transform: none;
-}
-
-.toast,
-.error-banner {
-  color: var(--cp-ink);
 }
 
 .modal-backdrop {
@@ -3919,31 +3861,6 @@ textarea:focus-visible,
   background: var(--cp-accent);
   content: "";
   animation: codepiddy-state-pulse 1.2s ease-in-out infinite;
-}
-
-.error-banner {
-  align-items: center;
-  gap: var(--cp-space-sm);
-  padding: var(--cp-space-sm) var(--cp-space-md);
-  background: color-mix(in oklab, var(--cp-danger) 9%, var(--cp-surface));
-  color: var(--cp-danger);
-  box-shadow: var(--cp-elevation-float), inset 0 0 0 0.5px color-mix(in oklab, var(--cp-danger) 22%, transparent);
-  backdrop-filter: none;
-}
-
-.error-banner .app-svg-icon {
-  flex: none;
-}
-
-.error-banner > span {
-  min-width: 0;
-  flex: 1;
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.error-banner button {
-  color: var(--cp-danger);
 }
 
 .message-streaming-placeholder {
@@ -5166,13 +5083,6 @@ body {
 
 .mcp-runtime-state.is-needs-auth {
   color: var(--cp-warning);
-}
-
-.mcp-runtime-error {
-  grid-column: 2 / -1;
-  color: var(--cp-danger);
-  font-size: 11px;
-  line-height: 1.45;
 }
 
 .mcp-editor {
