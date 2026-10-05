@@ -112,7 +112,7 @@
 | 环境变量 Key | 部分覆盖 | 启动 Agent 时已有 Provider env 注入基础 |
 | 凭据来源显示 | 已覆盖 | 汇总显示 `auth.json`、`models.json`、环境变量和运行时来源；`models.json` 覆盖会单独标记 |
 | `!command` Key | 缺失 | Pi 原生支持命令型 Key，客户端没有配置入口 |
-| `/scoped-models` | 缺失 | 交互式模型循环范围配置 |
+| `/scoped-models` | 已覆盖 | 客户端“常用模型范围”写入 `enabledModels`，模型选择器按常用/其他分组 |
 | `/llama` | 部分覆盖 | 客户端原生 router 连接、模型管理、HF 下载和量化选择已实现；真实 router 端到端测试待后续环境 |
 | 自定义 Provider | 部分覆盖 | `models.json` 支持基础 Provider，没有 Provider extension 管理 |
 | 虚拟模型 | 缺失 | 没有虚拟模型注册和路由状态 UI |
@@ -126,12 +126,12 @@
 | `/new` | 已覆盖 | 新建 Session |
 | `/resume` | 已覆盖 | 文件选择恢复 JSONL |
 | `/name` | 已覆盖 | 无参数查询当前名称；客户端会话树支持显示名称和重命名 |
-| `/session` | 部分覆盖 | 当前主要打开会话树，不是完整 stats 面板 |
+| `/session` | 已覆盖 | 客户端会话统计面板读取 RPC `get_session_stats` |
 | `/tree` | 已覆盖 | 会话树弹窗 |
 | `/fork` | 已覆盖 | 会话树 Fork 和消息级 Fork |
 | `/clone` | 已覆盖 | 克隆当前 Session |
 | `/compact` | 已覆盖 | 手动压缩 |
-| `/import` | 缺失 | 没有独立导入命令，只有 `/resume` 文件选择 |
+| `/import` | 已覆盖 | 会话树提供 JSONL 导入、校验、复制、切换和持久化 |
 | 自动压缩设置 | 部分覆盖 | 有 compact 操作，没有完整设置 UI |
 | 分支摘要设置 | 缺失 | Pi 1.0.1 有 branch summary 配置 |
 | Per-model compaction overrides | 缺失 | `compaction.modelOverrides` 无 UI |
