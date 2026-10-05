@@ -370,7 +370,7 @@
 
 .modal-shell-body {
   min-height: 0;
-  padding: 0 var(--cp-space-xl);
+  padding: 0 var(--cp-space-xl) var(--cp-space-sm);
   overflow-y: auto;
 }
 
