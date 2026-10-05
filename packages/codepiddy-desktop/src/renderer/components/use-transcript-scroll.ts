@@ -43,8 +43,6 @@ interface UseTranscriptScrollOptions {
 	visible: boolean;
 	/** 真实用户滚动后回调当前偏移，用于持久化。 */
 	onScrollPosition?: (offset: number) => void;
-	/** 滚动或内容变化后回调当前视口中心最近的条目下标。 */
-	onActiveIndexChange?: (index: number) => void;
 }
 
 export interface TranscriptScrollController {
@@ -63,7 +61,6 @@ export function useTranscriptScroll({
 	resetKey,
 	visible,
 	onScrollPosition,
-	onActiveIndexChange,
 }: UseTranscriptScrollOptions): TranscriptScrollController {
 	const nodeRef = useRef<HTMLDivElement | null>(null);
 	const pinnedRef = useRef(initialOffset === null);
@@ -81,49 +78,23 @@ export function useTranscriptScroll({
 	reportRef.current = onScrollPosition;
 	const report = useCallback((offset: number) => reportRef.current?.(offset), []);
 
-	const activeIndexRef = useRef(onActiveIndexChange);
-	activeIndexRef.current = onActiveIndexChange;
-	const reportActiveIndex = useCallback((element: HTMLDivElement) => {
-		const callback = activeIndexRef.current;
-		if (!callback) return;
-		const entries = element.querySelectorAll<HTMLElement>("[data-transcript-index]");
-		if (entries.length === 0) return;
-		const viewportCenter = element.scrollTop + element.clientHeight / 2;
-		let activeIndex = 0;
-		let nearest = Number.POSITIVE_INFINITY;
-		for (const entry of entries) {
-			const index = Number.parseInt(entry.dataset.transcriptIndex ?? "0", 10);
-			const center = entry.offsetTop + entry.offsetHeight / 2;
-			const distance = Math.abs(center - viewportCenter);
-			if (distance < nearest) {
-				nearest = distance;
-				activeIndex = index;
-			}
+	const applyPosition = useCallback((element: HTMLDivElement): void => {
+		const pending = pendingRestoreRef.current;
+		if (pending !== null) {
+			element.scrollTop = pending;
+			pinnedRef.current = false;
+			// 内容还未挂载完时浏览器会把 scrollTop 夹到较小的最大值。只有真正
+			// 落到目标才结束恢复，否则保持目标继续重试，避免夹取值变成新目标。
+			if (Math.abs(element.scrollTop - pending) < 0.5) pendingRestoreRef.current = null;
+		} else if (pinnedRef.current) {
+			element.scrollTop = element.scrollHeight;
 		}
-		callback(activeIndex);
+		lastOffsetRef.current = element.scrollTop;
+		lastLaidOutOffsetRef.current = element.scrollTop;
+		const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+		setShowJump(distanceToBottom > SHOW_JUMP_THRESHOLD_PX);
+		return;
 	}, []);
-
-	const applyPosition = useCallback(
-		(element: HTMLDivElement): void => {
-			const pending = pendingRestoreRef.current;
-			if (pending !== null) {
-				element.scrollTop = pending;
-				pinnedRef.current = false;
-				// 内容还未挂载完时浏览器会把 scrollTop 夹到较小的最大值。只有真正
-				// 落到目标才结束恢复，否则保持目标继续重试，避免夹取值变成新目标。
-				if (Math.abs(element.scrollTop - pending) < 0.5) pendingRestoreRef.current = null;
-			} else if (pinnedRef.current) {
-				element.scrollTop = element.scrollHeight;
-			}
-			lastOffsetRef.current = element.scrollTop;
-			lastLaidOutOffsetRef.current = element.scrollTop;
-			const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
-			setShowJump(distanceToBottom > SHOW_JUMP_THRESHOLD_PX);
-			reportActiveIndex(element);
-			return;
-		},
-		[reportActiveIndex],
-	);
 
 	// 首次挂载：恢复保存的位置，或贴底。
 	useLayoutEffect(() => {

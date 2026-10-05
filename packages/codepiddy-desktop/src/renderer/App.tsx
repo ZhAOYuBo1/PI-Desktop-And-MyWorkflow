@@ -737,7 +737,12 @@ const TranscriptTurns = memo(function TranscriptTurns({
 				});
 				const elapsed = turnElapsedMs(turn);
 				const renderEntry = (entry: TranscriptItem, index: number) => (
-					<div className={`transcript-entry entry-${entry.type}`} data-transcript-index={index} key={entry.id}>
+					<div
+						className={`transcript-entry entry-${entry.type}`}
+						data-transcript-index={index}
+						data-minimap-id={entry.id}
+						key={entry.id}
+					>
 						{entry.type === "tool" ? (
 							<ToolCallCard item={entry} />
 						) : (
@@ -990,7 +995,6 @@ function ContextGauge({ snapshot, onClick }: { snapshot?: AgentSessionSnapshot; 
 interface TranscriptMarker {
 	id: string;
 	preview: string;
-	index: number;
 	turn: number;
 }
 
@@ -1003,13 +1007,12 @@ function compactTranscriptText(value: string, maximum: number): string {
 function buildTranscriptMarkers(items: TranscriptItem[]): TranscriptMarker[] {
 	const markers: TranscriptMarker[] = [];
 	let turn = 0;
-	for (const [index, item] of items.entries()) {
+	for (const item of items) {
 		if (item.type !== "user") continue;
 		turn += 1;
 		markers.push({
 			id: item.id,
 			preview: compactTranscriptText(item.text, 140) || "图片消息",
-			index,
 			turn,
 		});
 	}
@@ -1018,52 +1021,161 @@ function buildTranscriptMarkers(items: TranscriptItem[]): TranscriptMarker[] {
 
 const MINIMAP_MAGNIFY_RADIUS = 46;
 const MINIMAP_MAGNIFY_BOOST = 1.35;
+/** 定位条一次最多显示多少条；超出后用滚轮上下翻窗口。 */
+const MINIMAP_VISIBLE_MAX = 20;
 
 function TranscriptMinimap({
 	items,
-	activeIndex,
 	onJump,
 	scrollRef,
 }: {
 	items: TranscriptItem[];
-	activeIndex: number;
-	onJump(index: number): void;
+	onJump(entryId: string): void;
 	scrollRef: MutableRefObject<HTMLDivElement | null>;
 }) {
-	const markers = buildTranscriptMarkers(items);
-	const tickRefs = useRef<(HTMLButtonElement | null)[]>([]);
+	const markers = useMemo(() => buildTranscriptMarkers(items), [items]);
+	const markerIdSet = useMemo(() => new Set(markers.map((marker) => marker.id)), [markers]);
+	const [activeId, setActiveId] = useState<string | null>(null);
+	const [overflows, setOverflows] = useState(false);
+	const [windowStart, setWindowStart] = useState(0);
+	const scrollable = markers.length > MINIMAP_VISIBLE_MAX;
 	const railRef = useRef<HTMLElement | null>(null);
+	const tickRefs = useRef(new Map<string, HTMLButtonElement>());
+	const cachedOffsetsRef = useRef<{ id: string; offset: number }[]>([]);
+	const activeIdRef = useRef<string | null>(null);
+	const overflowsRef = useRef(false);
 	const frameRef = useRef(0);
-	// 先显示再测量：测量失败时宁可多显示一条定位条，也不要整条消失。
-	const [overflowing, setOverflowing] = useState(true);
 
+	// 从 DOM 采样 marker 的绝对偏移；marker 锚定 user 消息节点，一定已渲染。
+	const recomputeOffsets = useCallback(() => {
+		const element = scrollRef.current;
+		if (!element) {
+			cachedOffsetsRef.current = [];
+			return;
+		}
+		const baseTop = element.getBoundingClientRect().top;
+		const offsets: { id: string; offset: number }[] = [];
+		element.querySelectorAll<HTMLElement>("[data-minimap-id]").forEach((node) => {
+			const id = node.dataset.minimapId ?? "";
+			if (!markerIdSet.has(id)) return;
+			offsets.push({ id, offset: node.getBoundingClientRect().top - baseTop + element.scrollTop });
+		});
+		cachedOffsetsRef.current = offsets;
+	}, [markerIdSet, scrollRef]);
+
+	// 缓存偏移 + 二分查找当前 marker，视口上方 30% 作为锚点（参考项目做法）。
+	const updateActive = useCallback(() => {
+		const element = scrollRef.current;
+		if (!element) return;
+		const offsets = cachedOffsetsRef.current;
+		if (offsets.length === 0) {
+			if (activeIdRef.current !== null) {
+				activeIdRef.current = null;
+				setActiveId(null);
+			}
+			return;
+		}
+		const anchor = element.scrollTop + element.clientHeight * 0.3;
+		let low = 0;
+		let high = offsets.length - 1;
+		while (low < high) {
+			const mid = (low + high + 1) >>> 1;
+			if (offsets[mid].offset <= anchor) low = mid;
+			else high = mid - 1;
+		}
+		const id = offsets[low].id;
+		if (id !== activeIdRef.current) {
+			activeIdRef.current = id;
+			setActiveId(id);
+		}
+	}, [scrollRef]);
+
+	const updateOverflow = useCallback(() => {
+		const element = scrollRef.current;
+		if (!element) {
+			if (overflowsRef.current) {
+				overflowsRef.current = false;
+				setOverflows(false);
+			}
+			return;
+		}
+		const next = element.scrollHeight - element.clientHeight > 1;
+		if (next !== overflowsRef.current) {
+			overflowsRef.current = next;
+			setOverflows(next);
+		}
+	}, [scrollRef]);
+
+	useEffect(() => {
+		recomputeOffsets();
+		updateActive();
+		updateOverflow();
+	}, [recomputeOffsets, updateActive, updateOverflow]);
+
+	// 滚动、内容高度与视口变化都会移动 marker 与 active，按帧合并。
 	useEffect(() => {
 		const element = scrollRef.current;
 		if (!element) return;
-		const update = (): void => setOverflowing(element.scrollHeight - element.clientHeight > 1);
-		update();
-		const resizeObserver = new ResizeObserver(update);
-		const mutationObserver = new MutationObserver(update);
-		resizeObserver.observe(element);
-		mutationObserver.observe(element, { childList: true, subtree: true, characterData: true });
-		return () => {
-			resizeObserver.disconnect();
-			mutationObserver.disconnect();
+		let scrollFrame = 0;
+		let resizeFrame = 0;
+		const scheduleScroll = (): void => {
+			cancelAnimationFrame(scrollFrame);
+			scrollFrame = requestAnimationFrame(() => {
+				updateActive();
+				updateOverflow();
+			});
 		};
-	}, [scrollRef]);
+		const scheduleResize = (): void => {
+			cancelAnimationFrame(resizeFrame);
+			resizeFrame = requestAnimationFrame(() => {
+				recomputeOffsets();
+				updateActive();
+				updateOverflow();
+			});
+		};
+		recomputeOffsets();
+		element.addEventListener("scroll", scheduleScroll, { passive: true });
+		const content = element.firstElementChild;
+		const observer = content && typeof ResizeObserver !== "undefined" ? new ResizeObserver(scheduleResize) : null;
+		if (observer && content) observer.observe(content);
+		window.addEventListener("resize", scheduleResize);
+		return () => {
+			element.removeEventListener("scroll", scheduleScroll);
+			observer?.disconnect();
+			cancelAnimationFrame(scrollFrame);
+			cancelAnimationFrame(resizeFrame);
+			window.removeEventListener("resize", scheduleResize);
+		};
+	}, [recomputeOffsets, scrollRef, updateActive, updateOverflow]);
 
-	if (markers.length < 2 || !overflowing) return null;
-	// 当前视口中心落在哪条 marker：取最后一个 index 不大于 activeIndex 的。
-	let activeMarkerIndex = 0;
-	for (const [i, marker] of markers.entries()) {
-		if (marker.index <= activeIndex) activeMarkerIndex = i;
-	}
-	const maximumVisibleMarkers = 20;
-	const visibleStart = Math.max(
-		0,
-		Math.min(markers.length - maximumVisibleMarkers, activeMarkerIndex - Math.floor(maximumVisibleMarkers / 2)),
-	);
-	const visibleMarkers = markers.slice(visibleStart, visibleStart + maximumVisibleMarkers);
+	// active 跑出窗口时把窗口移到它附近，保证高亮始终可见。
+	useEffect(() => {
+		if (markers.length <= MINIMAP_VISIBLE_MAX) return;
+		const index = markers.findIndex((marker) => marker.id === activeId);
+		if (index < 0) return;
+		setWindowStart((current) => {
+			if (index >= current && index < current + MINIMAP_VISIBLE_MAX) return current;
+			const maxStart = markers.length - MINIMAP_VISIBLE_MAX;
+			return Math.min(Math.max(index - Math.floor(MINIMAP_VISIBLE_MAX / 2), 0), maxStart);
+		});
+	}, [activeId, markers]);
+
+	// 滚轮上下翻定位条窗口。非 passive 监听，避免和转录区滚动争抢。
+	useEffect(() => {
+		// rail 只有 overflows 时才挂载，因此这个值必须参与依赖以重挂监听。
+		void overflows;
+		const rail = railRef.current;
+		if (!rail || markers.length <= MINIMAP_VISIBLE_MAX) return;
+		const maxStart = markers.length - MINIMAP_VISIBLE_MAX;
+		const onWheel = (event: WheelEvent): void => {
+			if (event.deltaY === 0) return;
+			event.preventDefault();
+			const step = event.deltaY > 0 ? 1 : -1;
+			setWindowStart((current) => Math.min(Math.max(current + step, 0), maxStart));
+		};
+		rail.addEventListener("wheel", onWheel, { passive: false });
+		return () => rail.removeEventListener("wheel", onWheel);
+	}, [markers.length, overflows]);
 
 	function applyMagnify(clientY: number): void {
 		const rail = railRef.current;
@@ -1071,8 +1183,7 @@ function TranscriptMinimap({
 		const y = clientY - rail.getBoundingClientRect().top;
 		cancelAnimationFrame(frameRef.current);
 		frameRef.current = requestAnimationFrame(() => {
-			for (const tick of tickRefs.current) {
-				if (!tick) continue;
+			for (const tick of tickRefs.current.values()) {
 				const center = tick.offsetTop + tick.offsetHeight / 2;
 				const distance = Math.abs(y - center);
 				const falloff =
@@ -1084,19 +1195,26 @@ function TranscriptMinimap({
 
 	function resetMagnify(): void {
 		cancelAnimationFrame(frameRef.current);
-		for (const tick of tickRefs.current) tick?.style.setProperty("--minimap-magnify", "1");
+		for (const tick of tickRefs.current.values()) tick.style.setProperty("--minimap-magnify", "1");
 	}
 
+	useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
+
+	if (markers.length < 2 || !overflows) return null;
+	const maxStart = Math.max(0, markers.length - MINIMAP_VISIBLE_MAX);
+	const visibleStart = Math.min(windowStart, maxStart);
+	const visibleMarkers = markers.slice(visibleStart, visibleStart + MINIMAP_VISIBLE_MAX);
 	return (
 		<nav
 			className="transcript-minimap"
 			aria-label="对话快速定位"
 			ref={railRef}
+			style={{ "--transcript-marker-count": markers.length } as CSSProperties}
+			data-scrollable={scrollable ? "true" : "false"}
 			onMouseMove={(event) => applyMagnify(event.clientY)}
 			onMouseLeave={resetMagnify}
 		>
 			{visibleMarkers.map((marker, visibleIndex) => {
-				const markerIndex = visibleStart + visibleIndex;
 				const offset = visibleIndex - (visibleMarkers.length - 1) / 2;
 				const label = `第 ${marker.turn} 轮：${marker.preview}`;
 				return (
@@ -1104,11 +1222,12 @@ function TranscriptMinimap({
 						key={marker.id}
 						type="button"
 						ref={(element) => {
-							tickRefs.current[visibleIndex] = element;
+							if (element) tickRefs.current.set(marker.id, element);
+							else tickRefs.current.delete(marker.id);
 						}}
-						className={`transcript-minimap-tick tick-user ${markerIndex === activeMarkerIndex ? "active" : ""}`}
+						className={`transcript-minimap-tick tick-user ${marker.id === activeId ? "active" : ""}`}
 						style={{ top: `calc(50% + ${offset * 20}px)` }}
-						onClick={() => onJump(marker.index)}
+						onClick={() => onJump(marker.id)}
 						aria-label={label}
 					>
 						<span className="transcript-minimap-preview" role="tooltip">
@@ -1351,7 +1470,6 @@ const TranscriptPane = memo(function TranscriptPane({
 	onFork,
 	initialOffset,
 	onScrollPosition,
-	onActiveIndexChange,
 	onElement,
 	onShowJumpChange,
 	onController,
@@ -1374,7 +1492,6 @@ const TranscriptPane = memo(function TranscriptPane({
 	onFork(entryId: string): void;
 	initialOffset: number | null;
 	onScrollPosition(offset: number): void;
-	onActiveIndexChange(index: number): void;
 	onElement(agentId: string, element: HTMLDivElement | null): void;
 	onShowJumpChange(showJump: boolean): void;
 	onController(controller: { runJump: (position: () => void) => void; jumpToLatest: () => void } | null): void;
@@ -1387,7 +1504,6 @@ const TranscriptPane = memo(function TranscriptPane({
 		visible,
 		resetKey,
 		onScrollPosition,
-		onActiveIndexChange,
 	});
 	useEffect(() => {
 		onElement(agentId, scroll.scrollRef.current);
@@ -1714,7 +1830,6 @@ export function App() {
 
 	const activeAgentIdRef = useRef<string | null>(null);
 	activeAgentIdRef.current = activeAgentId;
-	const [activeTranscriptIndex, setActiveTranscriptIndex] = useState(0);
 	const [activeShowJump, setActiveShowJump] = useState(false);
 
 	// 每个访问过的 Agent 保留一个常驻 pane；切换只是显隐，滚动位置由该 pane
@@ -1728,7 +1843,6 @@ export function App() {
 			current.includes(activeAgentId) ? current : [...current, activeAgentId].slice(-8),
 		);
 		activeTranscriptRef.current = paneElementsRef.current.get(activeAgentId) ?? null;
-		setActiveTranscriptIndex(0);
 	}, [activeAgentId]);
 
 	const rememberScrollPosition = useCallback((agentId: string, offset: number): void => {
@@ -1738,9 +1852,6 @@ export function App() {
 		if (element) paneElementsRef.current.set(agentId, element);
 		else paneElementsRef.current.delete(agentId);
 		if (agentId === activeAgentIdRef.current) activeTranscriptRef.current = element;
-	}, []);
-	const handleActiveIndexChange = useCallback((agentId: string, index: number): void => {
-		if (agentId === activeAgentIdRef.current) setActiveTranscriptIndex(index);
 	}, []);
 	const paneControllersRef = useRef(
 		new Map<string, { runJump: (position: () => void) => void; jumpToLatest: () => void }>(),
@@ -2727,25 +2838,17 @@ export function App() {
 		return off;
 	}, [authDialogMode, authRequestId, refreshAfterAuthChange]);
 
-	function jumpToTranscriptItem(index: number): void {
+	// 按条目 id 跳转：定位条 marker 锚定的是 user 消息节点，节点一定已渲染。
+	function jumpToTranscriptMarker(entryId: string): void {
 		const agentId = activeAgentId;
 		const element = activeTranscriptRef.current;
 		if (!agentId || !element) return;
-		// 目标可能位于折叠的“过程”段里。先展开所在轮次，再滚动，否则
-		// querySelector 找不到节点，点击定位条会毫无反应。
-		const turns = groupTranscriptIntoTurns(transcripts[agentId] ?? []);
-		const turn = turns.find((candidate) => candidate.entries.some((entry) => entry.index === index));
-		if (turn) {
-			const key = `${agentId}:${turn.id}`;
-			const inMiddle = splitTurnEntries(turn).middle.some((entry) => entry.index === index);
-			if (inMiddle && collapsedRounds[key] !== false) {
-				setCollapsedRounds((current) => ({ ...current, [key]: false }));
-			}
-		}
 		const scrollToTarget = (): void => {
-			const entry = element.querySelector<HTMLElement>(`[data-transcript-index="${index}"]`);
+			const entry = element.querySelector<HTMLElement>(`[data-minimap-id="${CSS.escape(entryId)}"]`);
 			if (!entry) return;
-			const top = Math.max(0, entry.offsetTop - Math.max(24, element.clientHeight * 0.28));
+			const baseTop = element.getBoundingClientRect().top;
+			const offset = entry.getBoundingClientRect().top - baseTop + element.scrollTop;
+			const top = Math.max(0, offset - 24);
 			element.scrollTo({ top, behavior: "smooth" });
 		};
 		// 先解除贴底，避免程序滚动后被 follow 逻辑拉回底部。
@@ -5018,12 +5121,7 @@ export function App() {
 					</header>
 					{agentId ? (
 						<div className="transcript-stage">
-							<TranscriptMinimap
-								items={items}
-								activeIndex={activeTranscriptIndex}
-								onJump={jumpToTranscriptItem}
-								scrollRef={activeTranscriptRef}
-							/>
+							<TranscriptMinimap items={items} onJump={jumpToTranscriptMarker} scrollRef={activeTranscriptRef} />
 							<div className="conversation-column">
 								<div className="transcript-panes">
 									{retainedAgentIds.map((paneAgentId) => {
@@ -5059,7 +5157,6 @@ export function App() {
 												}}
 												initialOffset={scrollPositions.current[paneAgentId] ?? null}
 												onScrollPosition={(offset) => rememberScrollPosition(paneAgentId, offset)}
-												onActiveIndexChange={(index) => handleActiveIndexChange(paneAgentId, index)}
 												onElement={handlePaneElement}
 												onShowJumpChange={(show) => handleShowJumpChange(paneAgentId, show)}
 												onController={(controller) => handlePaneController(paneAgentId, controller)}

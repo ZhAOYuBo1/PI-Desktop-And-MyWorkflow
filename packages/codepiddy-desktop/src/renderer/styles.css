@@ -2941,12 +2941,13 @@ textarea:focus-visible,
   position: relative;
   flex: 0 0 40px;
   align-self: stretch;
-  /* 原 top/bottom:20px 的等效写法，给刻度留出上下呼吸空间 */
   margin: var(--cp-space-xl) 0;
   border: 0;
   /* 保留穿透：这 40px 原本被正文覆盖，点击要能选中文本，只有刻度可点 */
   pointer-events: none;
 }
+/* marker 超过窗口上限时，rail 接收滚轮来上下翻窗口。 */
+.transcript-minimap[data-scrollable="true"] { pointer-events: auto; }
 .transcript-minimap-tick {
   position: absolute;
   z-index: 2;
