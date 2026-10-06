@@ -7,6 +7,7 @@ import {
 	CircleCheck,
 	CircleX,
 	Clock,
+	Cloud,
 	Copy,
 	Ellipsis,
 	Eye,
@@ -35,7 +36,6 @@ import {
 	TextSearch,
 	TriangleAlert,
 	X,
-	Zap,
 } from "lucide-react";
 
 /**
@@ -80,7 +80,7 @@ export type AppIconName =
 	| "x-circle"
 	| "caret"
 	| "shield"
-	| "zap";
+	| "cloud";
 
 const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	archive: Archive,
@@ -119,7 +119,7 @@ const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	"x-circle": CircleX,
 	caret: ChevronRight,
 	shield: Shield,
-	zap: Zap,
+	cloud: Cloud,
 };
 
 export function AppIcon({ name, size = 16, className = "" }: { name: AppIconName; size?: number; className?: string }) {

@@ -1265,7 +1265,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 		items: [
 			{ id: "runtime", label: "Pi 运行时", icon: "settings" },
 			{ id: "shell", label: "Shell", icon: "terminal" },
-			{ id: "cache-warming", label: "缓存预热", icon: "zap" },
+			{ id: "cache-warming", label: "缓存预热", icon: "cloud" },
 			{ id: "diagnostics", label: "诊断", icon: "bug" },
 		],
 	},

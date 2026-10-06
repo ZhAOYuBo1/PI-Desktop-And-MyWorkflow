@@ -1,5 +1,5 @@
 import type { AgentSessionStats } from "@codepiddy/shared";
-import { Coins, FileText, Gauge, MessageSquare, Wrench, Zap } from "lucide-react";
+import { Cloud, Coins, FileText, Gauge, MessageSquare, Wrench } from "lucide-react";
 import { ModalShell } from "./modal-shell.tsx";
 import { StateBlock } from "./state-block.tsx";
 
@@ -126,7 +126,7 @@ export function SessionStatsDialog({
 						<div className="session-stats-cache-warming">
 							<div className="session-stats-cache-warming-head">
 								<span className="session-stats-icon">
-									<Zap size={16} strokeWidth={2} />
+									<Cloud size={16} strokeWidth={2} />
 								</span>
 								<div>
 									<strong>缓存预热</strong>
@@ -161,7 +161,7 @@ export function SessionStatsDialog({
 									</div>
 								</div>
 							) : (
-								<StateBlock compact tone="neutral" icon="zap" title="尚无预热决策">
+								<StateBlock compact tone="neutral" icon="cloud" title="尚无预热决策">
 									Provider 不支持 prompt caching，或本会话还没有触发第一次决策。
 								</StateBlock>
 							)}

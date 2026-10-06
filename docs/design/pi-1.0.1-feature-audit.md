@@ -247,11 +247,11 @@
 22. [x] `/share`：批次 51-53 已实现并验收客户端原生分享、隐私确认、独立分享设置、品牌图标、Radius / GitHub CLI 回退和 viewer link。
 23. [x] `/bug` / 客户端诊断包：批次 54 已完成客户端原生诊断导出，收集版本、平台、Agent / Session / Provider / MCP / trust 状态、最近错误、日志路径和可选脱敏 Session JSONL，导出本地 ZIP，不上传。Pi 1.0.1 仍没有原生 `/bug`。
 
-批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成，阶段 4 第 24 项 Cache Warming 已由批次 58 实现，下一步进入第 25 项自动压缩 / 分支摘要 / per-model compaction overrides。
+批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成，阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，下一步进入第 25 项自动压缩 / 分支摘要 / per-model compaction overrides。
 
 ### 阶段 4：高级运行时能力
 
-24. [x] Cache Warming 设置和状态：批次 58 已实现。设置写 Pi 原生 `settings.json`（`cacheWarming` / `showCacheMissNotices`）；会话统计面板显示模式、cache miss penalty、refresh cost、expected savings 和最近决策。Pi 1.0.1 的 RPC 不返回 `session.cacheWarmingStatus`，实时 state / nextWarmAt 无法读取，客户端用 `@codepiddy/cache-warming-extension` 订阅 `cache_warming_decision`，把最近一次决策写入状态文件；没有决策时显示“尚无预热决策”。
+24. [x] Cache Warming 设置和状态：批次 58 已实现并提交 `c17b64abf`。设置写 Pi 原生 `settings.json`（`cacheWarming` / `showCacheMissNotices`）；会话统计面板显示模式、cache miss penalty、refresh cost、expected savings 和最近决策。Pi 1.0.1 的 RPC 不返回 `session.cacheWarmingStatus`，实时 state / nextWarmAt 无法读取，客户端用 `@codepiddy/cache-warming-extension` 订阅 `cache_warming_decision`，把最近一次决策写入状态文件；没有决策时显示“尚无预热决策”。
 25. 自动压缩、分支摘要、per-model compaction overrides
 26. Codemode 设置和运行结果视图
 27. Tool Search / Tool Exposure 设置
