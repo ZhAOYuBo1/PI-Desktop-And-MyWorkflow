@@ -22,7 +22,7 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-61 已提交到本地 `main`；当前 HEAD `ec4dde669`，工作树干净，本地 `main` 领先 `origin/main`，暂不推送。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-61 已提交到本地 `main`；批次 61 代码提交 `ec4dde669`，当前 HEAD 以 `git log -1` 为准，工作树干净，本地 `main` 领先 `origin/main`，暂不推送。
 批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`。
 批次 61 新增设置页「常规 > Codemode」：执行模式 `on / only`、工具目录内联预算 `inlineBudget`；合并写 Pi 原生 `settings.json`。转录流新增 Codemode 专用运行结果视图：脚本、工具调用、状态/耗时、错误、完整输出路径和结果。自定义 Provider 新增/删除后，空闲 Agent 自动重连并同步常用模型范围和模型选择器；运行中 Agent 不强制中断，只显示待重连。
 另一个 session 已提交 `b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
