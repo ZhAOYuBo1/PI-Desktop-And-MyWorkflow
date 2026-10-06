@@ -1055,6 +1055,8 @@ const MINIMAP_MAGNIFY_RADIUS = 46;
 const MINIMAP_MAGNIFY_BOOST = 1.35;
 /** 定位条一次最多显示多少条；超出后用滚轮上下翻窗口。 */
 const MINIMAP_VISIBLE_MAX = 20;
+/** 新滚进来的刻度先亮黄色，这段时间后回归蓝色。 */
+const MINIMAP_SCROLLED_IN_MS = 700;
 
 function TranscriptMinimap({
 	items,
@@ -1080,6 +1082,7 @@ function TranscriptMinimap({
 	const overflowsRef = useRef(false);
 	const frameRef = useRef(0);
 	const previousWindowIdsRef = useRef<Set<string>>(new Set());
+	const scrolledInTimerRef = useRef(0);
 
 	// 从 DOM 采样 marker 的绝对偏移；marker 锚定 user 消息节点，一定已渲染。
 	const recomputeOffsets = useCallback(() => {
@@ -1196,17 +1199,20 @@ function TranscriptMinimap({
 	}, [activeId, markers]);
 
 	/*
-	 * 只给「本次窗口变化新滚进来的刻度」上黄色：和上一次窗口的 id 做差集，
-	 * 差集就是滚进来的；上次已经在窗口里的保持蓝色。窗口本身始终是 20 条。
+	 * 和上一次窗口的 id 做差集，只给这次新滚进来的刻度亮黄色；700ms 后回归蓝色。
+	 * 上次已经在窗口里的始终是蓝色，窗口本身也始终是 20 条。
 	 */
 	useEffect(() => {
 		const start = Math.min(windowStart, Math.max(0, markers.length - MINIMAP_VISIBLE_MAX));
 		const current = new Set(markers.slice(start, start + MINIMAP_VISIBLE_MAX).map((marker) => marker.id));
 		const previous = previousWindowIdsRef.current;
-		if (previous.size > 0) {
-			setScrolledInIds(new Set([...current].filter((id) => !previous.has(id))));
-		}
 		previousWindowIdsRef.current = current;
+		if (previous.size === 0) return;
+		const added = [...current].filter((id) => !previous.has(id));
+		if (added.length === 0) return;
+		window.clearTimeout(scrolledInTimerRef.current);
+		setScrolledInIds(new Set(added));
+		scrolledInTimerRef.current = window.setTimeout(() => setScrolledInIds(new Set()), MINIMAP_SCROLLED_IN_MS);
 	}, [windowStart, markers]);
 
 	// 滚轮上下翻定位条窗口。非 passive 监听，避免和转录区滚动争抢。
@@ -1247,7 +1253,13 @@ function TranscriptMinimap({
 		for (const tick of tickRefs.current.values()) tick.style.setProperty("--minimap-magnify", "1");
 	}
 
-	useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
+	useEffect(
+		() => () => {
+			cancelAnimationFrame(frameRef.current);
+			window.clearTimeout(scrolledInTimerRef.current);
+		},
+		[],
+	);
 
 	if (markers.length < 2 || !overflows) return null;
 	const maxStart = Math.max(0, markers.length - MINIMAP_VISIBLE_MAX);
