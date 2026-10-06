@@ -35,30 +35,38 @@ export function ModelScopeSettings({
 	const [loading, setLoading] = useState(false);
 	const [saving, setSaving] = useState(false);
 
-	const load = useCallback(async (): Promise<void> => {
-		if (refreshToken < 0) return;
-		if (demoMode) {
-			const next = { enabledModelIds: null, availableModels: DEMO_MODELS, applyPending: false };
-			setScope(next);
-			setDraft(next.enabledModelIds);
-			return;
-		}
-		if (!activeAgent || !("codepiddy" in window)) {
-			setScope(null);
-			setDraft(null);
-			return;
-		}
-		setLoading(true);
-		try {
-			const next = await window.codepiddy.getAgentModelScope(activeAgent);
-			setScope(next);
-			setDraft(next.enabledModelIds);
-		} catch (caught) {
-			showSettingsToast(caught instanceof Error ? caught.message : "读取常用模型失败", "error");
-		} finally {
-			setLoading(false);
-		}
-	}, [activeAgent, refreshToken]);
+	/*
+	 * preserveDraft 用于「刷新常用模型」：只重新拉取可用模型列表，保留用户尚未
+	 * 保存的勾选和排序。Pi 原生 scoped-models-selector 的 updateModels 也是这个
+	 * 语义，刷新模型目录不应该清空用户正在编辑的选择。
+	 */
+	const load = useCallback(
+		async (options?: { preserveDraft?: boolean }): Promise<void> => {
+			if (refreshToken < 0) return;
+			if (demoMode) {
+				const next = { enabledModelIds: null, availableModels: DEMO_MODELS, applyPending: false };
+				setScope(next);
+				if (!options?.preserveDraft) setDraft(next.enabledModelIds);
+				return;
+			}
+			if (!activeAgent || !("codepiddy" in window)) {
+				setScope(null);
+				setDraft(null);
+				return;
+			}
+			setLoading(true);
+			try {
+				const next = await window.codepiddy.getAgentModelScope(activeAgent);
+				setScope(next);
+				if (!options?.preserveDraft) setDraft(next.enabledModelIds);
+			} catch (caught) {
+				showSettingsToast(caught instanceof Error ? caught.message : "读取常用模型失败", "error");
+			} finally {
+				setLoading(false);
+			}
+		},
+		[activeAgent, refreshToken],
+	);
 
 	useEffect(() => {
 		void load();
@@ -67,6 +75,11 @@ export function ModelScopeSettings({
 	const allIds = useMemo(() => (scope?.availableModels ?? []).map(modelId), [scope]);
 	const enabledIds = useMemo(() => (draft === null ? allIds : draft), [allIds, draft]);
 	const enabledSet = useMemo(() => new Set(enabledIds), [enabledIds]);
+	const dirty = useMemo(() => {
+		const saved = scope?.enabledModelIds ?? null;
+		if (draft === null || saved === null) return draft !== saved;
+		return draft.length !== saved.length || draft.some((id, index) => id !== saved[index]);
+	}, [draft, scope]);
 	const normalizedSearch = search.trim().toLowerCase();
 	const visibleModels = useMemo(
 		() =>
@@ -76,17 +89,6 @@ export function ModelScopeSettings({
 		[normalizedSearch, scope],
 	);
 	const visibleProviders = useMemo(() => [...new Set(visibleModels.map((model) => model.provider))], [visibleModels]);
-	const orderedVisibleModels = useMemo(() => {
-		const rank = new Map(enabledIds.map((id, index) => [id, index]));
-		return [...visibleModels].sort((left, right) => {
-			const leftEnabled = enabledSet.has(modelId(left));
-			const rightEnabled = enabledSet.has(modelId(right));
-			if (leftEnabled !== rightEnabled) return leftEnabled ? -1 : 1;
-			if (leftEnabled && rightEnabled) return (rank.get(modelId(left)) ?? 0) - (rank.get(modelId(right)) ?? 0);
-			return 0;
-		});
-	}, [enabledIds, enabledSet, visibleModels]);
-
 	function materializedSelection(): string[] {
 		return draft === null ? [...allIds] : [...draft];
 	}
@@ -166,16 +168,27 @@ export function ModelScopeSettings({
 					</p>
 				</div>
 				<div className="skill-settings-actions">
-					<div className="settings-status">
+					<div className={`settings-status${dirty ? " is-warning" : ""}`}>
 						{draft === null ? "全部常用" : `${enabledIds.length} / ${allIds.length} 常用`}
+						{dirty ? " · 未保存" : ""}
 					</div>
+					{dirty ? (
+						<button
+							className="secondary-button"
+							type="button"
+							disabled={loading || saving}
+							onClick={() => void load()}
+						>
+							撤销更改
+						</button>
+					) : null}
 					<button
 						className="work-panel-icon-button"
 						type="button"
 						aria-label="刷新常用模型"
 						title="刷新常用模型"
 						disabled={loading || saving}
-						onClick={() => void load()}
+						onClick={() => void load({ preserveDraft: true })}
 					>
 						<RefreshCw size={14} strokeWidth={2} />
 					</button>
@@ -204,7 +217,7 @@ export function ModelScopeSettings({
 
 			<div className="model-scope-list">
 				{visibleProviders.map((provider) => {
-					const providerModels = orderedVisibleModels.filter((model) => model.provider === provider);
+					const providerModels = visibleModels.filter((model) => model.provider === provider);
 					const providerIds = providerModels.map(modelId);
 					const providerEnabled = providerIds.length > 0 && providerIds.every((id) => enabledSet.has(id));
 					return (
@@ -228,6 +241,7 @@ export function ModelScopeSettings({
 								{providerModels.map((model) => {
 									const id = modelId(model);
 									const enabled = enabledSet.has(id);
+									const order = enabled ? enabledIds.indexOf(id) + 1 : 0;
 									return (
 										<div className={`model-scope-row${enabled ? " is-enabled" : ""}`} key={id}>
 											<SettingsCheckbox
@@ -240,6 +254,24 @@ export function ModelScopeSettings({
 													<small title={id}>{id}</small>
 												</span>
 											</SettingsCheckbox>
+											{enabled ? (
+												<span
+													title={`常用顺序 ${order}`}
+													style={{
+														flex: "none",
+														minWidth: 20,
+														padding: "1px 5px",
+														borderRadius: 999,
+														background: "var(--cp-accent-soft)",
+														color: "var(--cp-accent)",
+														fontSize: 10.5,
+														fontWeight: 600,
+														textAlign: "center",
+													}}
+												>
+													{order}
+												</span>
+											) : null}
 											<span className="model-scope-reorder">
 												<button
 													type="button"

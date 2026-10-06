@@ -28,7 +28,9 @@ export function SettingsCheckbox({
 	);
 
 	return (
-		<div className={`settings-checkbox-control ${className}`.trim()}>
+		/* 真实 input 是 absolute 的 1px 隐藏元素；control 必须是它的包含块，
+		   否则 input 会相对 .main-pane 定位并撑大其 scrollHeight，聚焦时整页跳动。 */
+		<div className={`settings-checkbox-control ${className}`.trim()} style={{ position: "relative" }}>
 			<input
 				id={id}
 				type="checkbox"
