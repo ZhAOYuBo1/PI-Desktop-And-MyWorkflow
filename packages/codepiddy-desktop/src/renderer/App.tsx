@@ -1053,11 +1053,8 @@ function buildTranscriptMarkers(items: TranscriptItem[]): TranscriptMarker[] {
 
 const MINIMAP_MAGNIFY_RADIUS = 46;
 const MINIMAP_MAGNIFY_BOOST = 1.35;
-/** 定位条蓝色窗口一次覆盖多少条；超出部分仍会画出来，用黄色区分。 */
+/** 定位条一次最多显示多少条；超出后用滚轮上下翻窗口。 */
 const MINIMAP_VISIBLE_MAX = 20;
-/** 窗口内刻度的标准间距；总数超出窗口时整体压缩到这个带宽内。 */
-const MINIMAP_TICK_SPACING = 20;
-const MINIMAP_BAND_MAX = MINIMAP_TICK_SPACING * MINIMAP_VISIBLE_MAX;
 
 function TranscriptMinimap({
 	items,
@@ -1073,6 +1070,8 @@ function TranscriptMinimap({
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [overflows, setOverflows] = useState(false);
 	const [windowStart, setWindowStart] = useState(0);
+	/** 本次窗口变化里新滚进来的刻度，用黄色区分；下次窗口变化时重新计算。 */
+	const [scrolledInIds, setScrolledInIds] = useState<Set<string>>(new Set());
 	const scrollable = markers.length > MINIMAP_VISIBLE_MAX;
 	const railRef = useRef<HTMLElement | null>(null);
 	const tickRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -1080,6 +1079,7 @@ function TranscriptMinimap({
 	const activeIdRef = useRef<string | null>(null);
 	const overflowsRef = useRef(false);
 	const frameRef = useRef(0);
+	const previousWindowIdsRef = useRef<Set<string>>(new Set());
 
 	// 从 DOM 采样 marker 的绝对偏移；marker 锚定 user 消息节点，一定已渲染。
 	const recomputeOffsets = useCallback(() => {
@@ -1195,6 +1195,20 @@ function TranscriptMinimap({
 		});
 	}, [activeId, markers]);
 
+	/*
+	 * 只给「本次窗口变化新滚进来的刻度」上黄色：和上一次窗口的 id 做差集，
+	 * 差集就是滚进来的；上次已经在窗口里的保持蓝色。窗口本身始终是 20 条。
+	 */
+	useEffect(() => {
+		const start = Math.min(windowStart, Math.max(0, markers.length - MINIMAP_VISIBLE_MAX));
+		const current = new Set(markers.slice(start, start + MINIMAP_VISIBLE_MAX).map((marker) => marker.id));
+		const previous = previousWindowIdsRef.current;
+		if (previous.size > 0) {
+			setScrolledInIds(new Set([...current].filter((id) => !previous.has(id))));
+		}
+		previousWindowIdsRef.current = current;
+	}, [windowStart, markers]);
+
 	// 滚轮上下翻定位条窗口。非 passive 监听，避免和转录区滚动争抢。
 	useEffect(() => {
 		// rail 只有 overflows 时才挂载，因此这个值必须参与依赖以重挂监听。
@@ -1238,10 +1252,7 @@ function TranscriptMinimap({
 	if (markers.length < 2 || !overflows) return null;
 	const maxStart = Math.max(0, markers.length - MINIMAP_VISIBLE_MAX);
 	const visibleStart = Math.min(windowStart, maxStart);
-	const windowEnd = visibleStart + MINIMAP_VISIBLE_MAX;
-	// 总数超过窗口时压缩间距，保证整段对话都能落在同一条 rail 上。
-	const spacing = Math.min(MINIMAP_TICK_SPACING, MINIMAP_BAND_MAX / markers.length);
-	const center = (markers.length - 1) / 2;
+	const visibleMarkers = markers.slice(visibleStart, visibleStart + MINIMAP_VISIBLE_MAX);
 	return (
 		<nav
 			className="transcript-minimap"
@@ -1252,8 +1263,8 @@ function TranscriptMinimap({
 			onMouseMove={(event) => applyMagnify(event.clientY)}
 			onMouseLeave={resetMagnify}
 		>
-			{markers.map((marker, index) => {
-				const inWindow = index >= visibleStart && index < windowEnd;
+			{visibleMarkers.map((marker, visibleIndex) => {
+				const offset = visibleIndex - (visibleMarkers.length - 1) / 2;
 				const label = `第 ${marker.turn} 轮：${marker.preview}`;
 				return (
 					<button
@@ -1263,10 +1274,10 @@ function TranscriptMinimap({
 							if (element) tickRefs.current.set(marker.id, element);
 							else tickRefs.current.delete(marker.id);
 						}}
-						className={`transcript-minimap-tick tick-user${inWindow ? "" : " tick-outside"}${
-							marker.id === activeId ? " active" : ""
-						}`}
-						style={{ top: `calc(50% + ${(index - center) * spacing}px)` }}
+						className={`transcript-minimap-tick tick-user${
+							scrolledInIds.has(marker.id) ? " tick-scrolled-in" : ""
+						}${marker.id === activeId ? " active" : ""}`}
+						style={{ top: `calc(50% + ${offset * 20}px)` }}
 						onClick={() => onJump(marker.id)}
 						aria-label={label}
 					>
