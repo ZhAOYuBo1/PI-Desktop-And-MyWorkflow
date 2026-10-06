@@ -22,7 +22,7 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-60 已提交到本地 `main`；当前 HEAD 以 `git log -1` 为准，本地 `main` 领先 `origin/main` 9 个提交，暂不推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-60 已提交到本地 `main`；当前 HEAD 以 `git log -1` 为准，本地 `main` 领先 `origin/main`，暂不推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`。
 批次 60 新增设置页「常规 > 上下文压缩」：自动压缩开关、全局 `reserveTokens` / `keepRecentTokens`、分支摘要 `reserveTokens` / `skipPrompt`、按精确 `provider/modelId` 的 `modelOverrides`；合并写 Pi 原生 `settings.json`，手动 `/compact` 保留。单模型覆盖搜索框使用统一 `SelectMenu`，空态使用 `StateBlock`；当前模型选择器选中项使用浅蓝底、蓝字、蓝色内描边，不要改成实心蓝。分支摘要当前只补配置，客户端会话树仍以 Fork 为主，实际触发由 Pi 分支流程决定。
 另一个 session 已提交 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix：常用模型设置刷新保留草稿并修复整页跳动、消息按实际模型显示并区分定位条窗口内外、定位条颜色区分刚滚入的刻度、滚入刻度亮黄后回归蓝色；不要重做。
 阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 完成，第 25 项上下文压缩已由批次 60 完成。下一步从阶段 4 第 26 项开始：Codemode 设置和运行结果视图。
@@ -61,7 +61,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-06 批次 60：上下文压缩设置，已提交；本地领先 origin/main 9 个提交，暂不推送）
+## 当前状态（2026-10-06 批次 60：上下文压缩设置，已提交；本地领先 origin/main，暂不推送）
 
 - 批次 60 提交：`db4e91195 feat(desktop): add context compaction settings`。设置页新增「常规 > 上下文压缩」，支持自动压缩开关、全局 `reserveTokens` / `keepRecentTokens`、分支摘要 `reserveTokens` / `skipPrompt`，以及按精确 `provider/modelId` 的 `modelOverrides`；写入 Pi 原生 `settings.json`，手动 `/compact` 保留。
 - 批次 60 的单模型覆盖是全局压缩参数的补充：未覆盖模型继续使用全局值；搜索框复用统一 `SelectMenu`，空态复用 `StateBlock`。当前模型选择器的选中项是浅蓝底、蓝字、蓝色内描边，不要改成实心蓝。
@@ -156,7 +156,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 已提交：批次 60 上下文压缩设置 `db4e91195`
 - 已提交：另一个 session 的定位条 / 常用模型 / 消息模型显示 bugfix：`fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`
 
-批次 1-60 已提交到本地 `main`；当前本地领先 `origin/main` 9 个提交，用户明确暂不推送。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
+批次 1-60 已提交到本地 `main`；当前本地领先 `origin/main`，用户明确暂不推送。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
 
 ### 下一步
 
@@ -1210,7 +1210,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ## 提交状态
 
-批次 55-57 已推送到 `origin/main`。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix。当前本地 `main` 领先 `origin/main` 9 个提交，用户明确暂不推送。提交哈希以 `git log -1` 为准。
+批次 55-57 已推送到 `origin/main`。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix。当前本地 `main` 领先 `origin/main`，用户明确暂不推送。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1269,4 +1269,4 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ## 待用户确认
 
-- 暂无，批次 1-60 已验收；本地领先 `origin/main` 9 个提交，暂不推送。
+- 暂无，批次 1-60 已验收；本地领先 `origin/main`，暂不推送。
