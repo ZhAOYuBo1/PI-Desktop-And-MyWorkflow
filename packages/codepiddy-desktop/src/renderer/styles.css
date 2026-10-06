@@ -2986,6 +2986,7 @@ textarea:focus-visible,
 }
 .transcript-minimap-tick.tick-error::after { background: var(--cp-danger); }
 .transcript-minimap-tick.tick-user::after { background: var(--cp-accent); }
+.transcript-minimap-tick.tick-outside::after { background: var(--cp-warning-vivid); }
 .transcript-minimap-tick.tick-assistant::after { background: var(--cp-ink-faint); }
 .transcript-minimap-tick.active::after { background: var(--cp-ink-secondary); }
 .transcript-minimap-tick:hover::after,

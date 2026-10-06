@@ -202,6 +202,9 @@ type TranscriptItem =
 			createdAt?: string;
 			streamStartedAt?: number;
 			streamStats?: FinalStreamStats;
+			/** 生成这条回复时实际使用的模型，用于逐条显示模型名。 */
+			modelProvider?: string;
+			modelId?: string;
 	  }
 	| { id: string; type: "system"; text: string; createdAt?: string }
 	| {
@@ -340,6 +343,22 @@ function assistantMessageStatus(value: unknown): Exclude<AssistantMessageStatus,
 	return "complete";
 }
 
+/** Pi 的 AssistantMessage 带 provider / model；存下来逐条展示，而不是回落到当前模型。 */
+function assistantModelRef(value: unknown): { modelProvider?: string; modelId?: string } {
+	if (!isRecord(value)) return {};
+	const provider = typeof value.provider === "string" && value.provider.trim() ? value.provider : undefined;
+	const modelId = typeof value.model === "string" && value.model.trim() ? value.model : undefined;
+	return {
+		...(provider ? { modelProvider: provider } : {}),
+		...(modelId ? { modelId } : {}),
+	};
+}
+
+function buildModelLabels(models: AgentModelSelection["availableModels"] | undefined): Map<string, string> | undefined {
+	if (!models || models.length === 0) return undefined;
+	return new Map(models.map((model) => [`${model.provider}/${model.id}`, model.name]));
+}
+
 function finalizeAssistantTranscript(
 	items: TranscriptItem[],
 	assistantId: string | undefined,
@@ -363,6 +382,7 @@ function finalizeAssistantTranscript(
 		return [
 			{
 				...item,
+				...assistantModelRef(messageRecord),
 				text:
 					text ||
 					(status === "aborted" ? "本轮已中断。" : status === "error" ? errorMessage || "本轮回复失败。" : ""),
@@ -441,6 +461,7 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 				status: assistantMessageStatus(message),
 				...(createdAt ? { createdAt } : {}),
 				...(historyTokens > 0 ? { streamStats: { tokens: historyTokens, estimated: historyUsage === null } } : {}),
+				...assistantModelRef(message),
 			});
 		} else {
 			items.push({
@@ -703,6 +724,7 @@ const TranscriptMessage = memo(function TranscriptMessage({
 const TranscriptTurns = memo(function TranscriptTurns({
 	items,
 	assistantModel,
+	modelLabels,
 	idPrefix,
 	running,
 	collapsedRounds,
@@ -713,6 +735,8 @@ const TranscriptTurns = memo(function TranscriptTurns({
 }: {
 	items: TranscriptItem[];
 	assistantModel?: string;
+	/** `${provider}/${id}` → 展示名；历史消息按各自实际使用的模型取名。 */
+	modelLabels?: Map<string, string>;
 	idPrefix: string;
 	/** 当前 Agent 是否在跑，决定最新一轮中间过程是否默认展开。 */
 	running: boolean;
@@ -738,35 +762,41 @@ const TranscriptTurns = memo(function TranscriptTurns({
 					running,
 				});
 				const elapsed = turnElapsedMs(turn);
-				const renderEntry = (entry: TranscriptItem, index: number) => (
-					<div
-						className={`transcript-entry entry-${entry.type}`}
-						data-transcript-index={index}
-						data-minimap-id={entry.id}
-						key={entry.id}
-					>
-						{entry.type === "tool" ? (
-							<ToolCallCard item={entry} />
-						) : (
-							<TranscriptMessage
-								item={entry}
-								assistantModel={assistantModel}
-								showStats={entry.type === "assistant" && !hasLaterAssistant(items, index)}
-								forkEntryId={
-									entry.type === "assistant" && finalAssistantIds.has(entry.id)
-										? forkEntryIds.get(entry.id)
-										: undefined
-								}
-								forkPending={
-									entry.type === "assistant" &&
-									finalAssistantIds.has(entry.id) &&
-									forkEntryIds.get(entry.id) === forkingEntryId
-								}
-								onFork={onFork}
-							/>
-						)}
-					</div>
-				);
+				const renderEntry = (entry: TranscriptItem, index: number) => {
+					const entryModel =
+						entry.type === "assistant" && entry.modelId
+							? (modelLabels?.get(`${entry.modelProvider ?? ""}/${entry.modelId}`) ?? entry.modelId)
+							: assistantModel;
+					return (
+						<div
+							className={`transcript-entry entry-${entry.type}`}
+							data-transcript-index={index}
+							data-minimap-id={entry.id}
+							key={entry.id}
+						>
+							{entry.type === "tool" ? (
+								<ToolCallCard item={entry} />
+							) : (
+								<TranscriptMessage
+									item={entry}
+									assistantModel={entryModel}
+									showStats={entry.type === "assistant" && !hasLaterAssistant(items, index)}
+									forkEntryId={
+										entry.type === "assistant" && finalAssistantIds.has(entry.id)
+											? forkEntryIds.get(entry.id)
+											: undefined
+									}
+									forkPending={
+										entry.type === "assistant" &&
+										finalAssistantIds.has(entry.id) &&
+										forkEntryIds.get(entry.id) === forkingEntryId
+									}
+									onFork={onFork}
+								/>
+							)}
+						</div>
+					);
+				};
 				return (
 					<section className="turn-group" key={turn.id}>
 						{head.map((entry) => renderEntry(entry.item, entry.index))}
@@ -1023,8 +1053,11 @@ function buildTranscriptMarkers(items: TranscriptItem[]): TranscriptMarker[] {
 
 const MINIMAP_MAGNIFY_RADIUS = 46;
 const MINIMAP_MAGNIFY_BOOST = 1.35;
-/** 定位条一次最多显示多少条；超出后用滚轮上下翻窗口。 */
+/** 定位条蓝色窗口一次覆盖多少条；超出部分仍会画出来，用黄色区分。 */
 const MINIMAP_VISIBLE_MAX = 20;
+/** 窗口内刻度的标准间距；总数超出窗口时整体压缩到这个带宽内。 */
+const MINIMAP_TICK_SPACING = 20;
+const MINIMAP_BAND_MAX = MINIMAP_TICK_SPACING * MINIMAP_VISIBLE_MAX;
 
 function TranscriptMinimap({
 	items,
@@ -1205,7 +1238,10 @@ function TranscriptMinimap({
 	if (markers.length < 2 || !overflows) return null;
 	const maxStart = Math.max(0, markers.length - MINIMAP_VISIBLE_MAX);
 	const visibleStart = Math.min(windowStart, maxStart);
-	const visibleMarkers = markers.slice(visibleStart, visibleStart + MINIMAP_VISIBLE_MAX);
+	const windowEnd = visibleStart + MINIMAP_VISIBLE_MAX;
+	// 总数超过窗口时压缩间距，保证整段对话都能落在同一条 rail 上。
+	const spacing = Math.min(MINIMAP_TICK_SPACING, MINIMAP_BAND_MAX / markers.length);
+	const center = (markers.length - 1) / 2;
 	return (
 		<nav
 			className="transcript-minimap"
@@ -1216,8 +1252,8 @@ function TranscriptMinimap({
 			onMouseMove={(event) => applyMagnify(event.clientY)}
 			onMouseLeave={resetMagnify}
 		>
-			{visibleMarkers.map((marker, visibleIndex) => {
-				const offset = visibleIndex - (visibleMarkers.length - 1) / 2;
+			{markers.map((marker, index) => {
+				const inWindow = index >= visibleStart && index < windowEnd;
 				const label = `第 ${marker.turn} 轮：${marker.preview}`;
 				return (
 					<button
@@ -1227,8 +1263,10 @@ function TranscriptMinimap({
 							if (element) tickRefs.current.set(marker.id, element);
 							else tickRefs.current.delete(marker.id);
 						}}
-						className={`transcript-minimap-tick tick-user ${marker.id === activeId ? "active" : ""}`}
-						style={{ top: `calc(50% + ${offset * 20}px)` }}
+						className={`transcript-minimap-tick tick-user${inWindow ? "" : " tick-outside"}${
+							marker.id === activeId ? " active" : ""
+						}`}
+						style={{ top: `calc(50% + ${(index - center) * spacing}px)` }}
 						onClick={() => onJump(marker.id)}
 						aria-label={label}
 					>
@@ -1476,6 +1514,7 @@ const TranscriptPane = memo(function TranscriptPane({
 	items,
 	activity,
 	assistantModel,
+	modelLabels,
 	running,
 	visible,
 	resetKey,
@@ -1497,6 +1536,7 @@ const TranscriptPane = memo(function TranscriptPane({
 	items: TranscriptItem[];
 	activity?: AgentActivity;
 	assistantModel?: string;
+	modelLabels?: Map<string, string>;
 	running: boolean;
 	visible: boolean;
 	/** 会话切换时变化，用于把滚动重置为贴底。 */
@@ -1558,6 +1598,7 @@ const TranscriptPane = memo(function TranscriptPane({
 					<TranscriptTurns
 						items={items}
 						assistantModel={assistantModel}
+						modelLabels={modelLabels}
 						idPrefix={agentId}
 						running={running}
 						collapsedRounds={collapsedRounds}
@@ -2324,6 +2365,7 @@ export function App() {
 							status: "streaming",
 							createdAt: new Date().toISOString(),
 							streamStartedAt: Date.now(),
+							...assistantModelRef(message),
 						},
 					]);
 				}
@@ -2357,6 +2399,7 @@ export function App() {
 										status: "streaming",
 										createdAt: new Date().toISOString(),
 										streamStartedAt: Date.now(),
+										...assistantModelRef(update.partial),
 									},
 								];
 							return items.map((item) =>
@@ -2366,6 +2409,7 @@ export function App() {
 											text: item.text + delta,
 											status: "streaming",
 											...(typeof item.streamStartedAt === "number" ? {} : { streamStartedAt: Date.now() }),
+											...(item.modelId ? {} : assistantModelRef(update.partial)),
 										}
 									: item,
 							);
@@ -2390,6 +2434,7 @@ export function App() {
 										status: "streaming",
 										createdAt: new Date().toISOString(),
 										streamStartedAt: Date.now(),
+										...assistantModelRef(update.partial),
 									},
 								];
 							return items.map((item) =>
@@ -2399,6 +2444,7 @@ export function App() {
 											thinking: (item.thinking ?? "") + delta,
 											status: "streaming",
 											...(typeof item.streamStartedAt === "number" ? {} : { streamStartedAt: Date.now() }),
+											...(item.modelId ? {} : assistantModelRef(update.partial)),
 										}
 									: item,
 							);
@@ -5220,6 +5266,7 @@ export function App() {
 												items={transcripts[paneAgentId] ?? []}
 												activity={paneActivity}
 												assistantModel={modelSelections[paneAgentId]?.model.name}
+												modelLabels={buildModelLabels(modelSelections[paneAgentId]?.availableModels)}
 												running={Boolean(paneActivity)}
 												visible={paneAgentId === agentId}
 												resetKey={paneSnapshot?.sessionId ?? "pending"}
