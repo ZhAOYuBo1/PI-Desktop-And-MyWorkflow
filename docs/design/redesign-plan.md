@@ -22,13 +22,14 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-58 已提交到本地 `main`；批次 58 的 Cache Warming 已验收并提交 `c17b64abf`。当前 HEAD 以 `git log -1` 为准，工作树按实际状态检查。批次 54 完成客户端诊断包导出、统一消息 / 状态块 / 复选框 / ModalShell。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-59 已提交到本地 `main`；批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`；本地领先 `origin/main` 2 个提交，待推送。当前 HEAD 以 `git log -1` 为准，工作树按实际状态检查。批次 54 完成客户端诊断包导出、统一消息 / 状态块 / 复选框 / ModalShell。
 批次 55 完成会话滚动定位与 compact 历史修复：每个访问过的 Agent 使用常驻独立转录面板，切换只显隐；界面历史改用 Pi `get_entries` 完整条目，不再用 compact 后的 `get_messages`；定位条只标记用户消息并显示完整时间。批次 55 已随本批推送 `origin/main`。
 批次 56 修复 ModalShell 输入框聚焦环下侧被裁切：modal body 补底部内边距，重命名会话等弹窗的蓝色焦点环完整显示。
 批次 57 将定位条改为最多渲染 20 条的用户消息窗口，支持滚轮上下翻窗口，当前高亮跑出窗口时自动平移；完整用户消息索引仍保留。
 批次 58 新增 Cache Warming 设置与决策状态：设置页「常规 > 缓存预热」写 Pi 原生 `settings.json` 的 `cacheWarming` / `showCacheMissNotices`；新增 `@codepiddy/cache-warming-extension` 订阅 `cache_warming_decision`，会话统计显示最近一次决策的 miss cost / refresh cost / expected savings。Pi 1.0.1 RPC 未暴露实时 `cacheWarmingStatus`，客户端不假装有实时 state。
+批次 59 把缓存预热的图标从 lucide `Zap` 换成 `Cloud`（导航和会话统计统一），并修复 Provider 登录弹窗的嵌套滚动条：`.auth-modal .select-menu-list` 改静态定位，弹窗随列表长高，列表自己滚动。
 批次 41-53 已提交：MCP 管理、Provider 凭据状态、登录后 Agent 刷新、Provider 搜索、LobeHub 厂商图标、组合框键盘操作、OpenRouter OAuth 验收、Git Bash 黑窗修复、Shell 重启弹窗、常用模型范围、JSONL 导入、项目信任持久化、Session 统计、Session 重命名、llama.cpp 客户端适配、`/share`、独立分享设置、品牌图标和通用路径检测。
-阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现：设置页「缓存预热」读写 Pi 原生 settings.json，会话统计显示最近一次预热决策的经济数据。下一步进入第 25 项：自动压缩、分支摘要、per-model compaction overrides。
+阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交，批次 59 收口云朵图标。下一步进入第 25 项：自动压缩、分支摘要、per-model compaction overrides。
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
@@ -64,8 +65,9 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-06 批次 58：Cache Warming 设置与决策状态，已提交）
+## 当前状态（2026-10-06 批次 59：Cache Warming 云朵图标收口，已提交；本地领先 origin/main 2 个提交）
 
+- 批次 59 提交：`6640bc795 fix(desktop): use cloud icon for cache warming`。缓存预热图标从 lucide `Zap` 换成 `Cloud`，设置导航和会话统计两处统一；同时修复 Provider 登录弹窗的嵌套滚动条，`.auth-modal .select-menu-list` 改为静态定位，避免外层滚动和列表底部被裁。
 - 批次 58 新增客户端 Cache Warming 设置：设置页「常规 > 缓存预热」读写 Pi 原生 `settings.json` 的 `cacheWarming`（`off / streaming / idle`）和 `showCacheMissNotices`。修改写入配置文件，对新启动或重置后的 Agent 生效。
 - 批次 58 新增 `@codepiddy/cache-warming-extension`：Pi 1.0.1 的 RPC 不返回 `session.cacheWarmingStatus`，扩展订阅 `cache_warming_decision`，把最近一次决策（warmCost / missCost / continuationProbability / expectedSavings / action）写入 `runtimeRoot/cache-warming/<agent>.json`。桌面端在会话统计里读取并显示模式、cache miss penalty、refresh cost、expected savings 和最近决策；没有决策时显示「尚无预热决策」。
 - 缓存预热的状态是 Agent 级、不是 Session 级；Pi 未暴露实时 state / nextWarmAt / reason，客户端只展示最近一次决策的经济数据，不假装有完整实时状态。
@@ -156,7 +158,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ### 下一步
 
-阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 25 项：
+阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态，批次 59 已收口云朵图标和 Provider 登录弹窗嵌套滚动条。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 25 项：
 
 1. 自动压缩、分支摘要和 per-model compaction overrides。
 2. Codemode 设置和运行结果视图。
@@ -1147,6 +1149,13 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 修复 Provider 登录弹窗的嵌套滚动条：`.auth-modal .select-menu-list` 从绝对定位改为静态定位，弹窗随列表长高，列表保留自己的 `max-height` 滚动；避免 `.modal-shell-body` 外层滚动和 `.modal-shell` 的 `overflow: hidden` 裁切列表底部。
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、设置读写单测 3 项、扩展状态文件单测 1 项、RPC smoke（加载 cache-warming 扩展）通过；demo `?demo=1` 截图检查设置卡片和会话统计面板；真实 Electron 已重启。
 
+### 2026-10-06 批次 59：缓存预热云朵图标与弹窗滚动条收口（已提交）
+
+- 提交：`6640bc795 fix(desktop): use cloud icon for cache warming`。
+- 缓存预热图标从 lucide `Zap` 换成 `Cloud`，设置页「常规 > 缓存预热」导航和会话统计「缓存预热」区块统一；`app-icon.tsx` 移除不再使用的 `zap` 映射。
+- Provider 登录弹窗的嵌套滚动条修复随本批提交：`.auth-modal .select-menu-list` 静态定位，弹窗随列表长高，列表自己滚动；修复前 `.modal-shell-body` 出现外层滚动条、列表底部被 `.modal-shell` 裁切。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy` 通过；demo `?demo=1` 截图检查云朵图标；真实 Electron 已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1184,10 +1193,11 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 33. [x] **Modal 输入框焦点环裁剪修复**：批次 56 给 `ModalShell` body 补底部内边距，重命名会话等弹窗的蓝色焦点环完整显示。
 34. [x] **定位条窗口式 20 条与滚轮翻页**：批次 57 保留完整用户消息索引，但限制单次渲染数量，并支持滚轮翻窗口和 active 自动平移。
 35. [x] **Cache Warming 设置与决策状态**：批次 58 已实现设置页「缓存预热」和会话统计的最近决策费用；已验收并提交 `c17b64abf`。
+36. [x] **缓存预热云朵图标与弹窗滚动条收口**：批次 59 已验收并提交 `6640bc795`。
 
 ## 提交状态
 
-批次 55 的会话滚动 / compact 历史修复、批次 56 的 Modal 焦点环修复和批次 57 的定位条窗口化已实现、验证并提交，已推送到 `origin/main`。批次 58 的 Cache Warming 设置与决策状态和 Provider 登录弹窗嵌套滚动条修复已实现、验证、验收并提交 `c17b64abf`；本地 `main` 领先 `origin/main`，待推送。提交哈希以 `git log -1` 为准。
+批次 55 的会话滚动 / compact 历史修复、批次 56 的 Modal 焦点环修复和批次 57 的定位条窗口化已实现、验证并提交，已推送到 `origin/main`。批次 58 的 Cache Warming 设置与决策状态提交 `c17b64abf`；批次 59 的云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`。本地 `main` 领先 `origin/main` 2 个提交，待推送。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1244,4 +1254,4 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ## 待用户确认
 
-- 暂无，批次 1-58 已验收；批次 58 待推送 `origin/main`。
+- 暂无，批次 1-59 已验收；本地领先 `origin/main` 2 个提交，待推送。
