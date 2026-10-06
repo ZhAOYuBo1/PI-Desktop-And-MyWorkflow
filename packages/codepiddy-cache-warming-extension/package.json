@@ -1,0 +1,25 @@
+{
+	"name": "@codepiddy/cache-warming-extension",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"main": "./index.ts",
+	"exports": {
+		".": "./index.ts"
+	},
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		]
+	},
+	"scripts": {
+		"typecheck": "tsgo -p tsconfig.json --noEmit",
+		"test": "vitest --run"
+	},
+	"dependencies": {
+		"@earendil-works/pi-coding-agent": "0.85.1"
+	},
+	"devDependencies": {
+		"vitest": "4.1.11"
+	}
+}

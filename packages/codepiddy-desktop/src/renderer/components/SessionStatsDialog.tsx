@@ -1,5 +1,5 @@
 import type { AgentSessionStats } from "@codepiddy/shared";
-import { Coins, FileText, Gauge, MessageSquare, Wrench } from "lucide-react";
+import { Coins, FileText, Gauge, MessageSquare, Wrench, Zap } from "lucide-react";
 import { ModalShell } from "./modal-shell.tsx";
 import { StateBlock } from "./state-block.tsx";
 
@@ -16,6 +16,12 @@ function formatCost(value: number): string {
 		currency: "USD",
 		maximumFractionDigits: value > 0 && value < 0.01 ? 4 : 2,
 	}).format(value);
+}
+
+function cacheWarmingModeLabel(mode: "off" | "streaming" | "idle"): string {
+	if (mode === "off") return "关闭";
+	if (mode === "idle") return "运行中 + 空闲";
+	return "仅运行中";
 }
 
 export function SessionStatsDialog({
@@ -116,6 +122,51 @@ export function SessionStatsDialog({
 							<strong>{formatNumber(stats.tokens.cacheWrite)}</strong>
 						</div>
 					</div>
+					{stats.cacheWarming ? (
+						<div className="session-stats-cache-warming">
+							<div className="session-stats-cache-warming-head">
+								<span className="session-stats-icon">
+									<Zap size={16} strokeWidth={2} />
+								</span>
+								<div>
+									<strong>缓存预热</strong>
+									<small>{cacheWarmingModeLabel(stats.cacheWarming.mode)}</small>
+								</div>
+							</div>
+							{stats.cacheWarming.decision ? (
+								<div className="session-stats-cache-warming-grid">
+									<div>
+										<span>未命中成本</span>
+										<strong>{formatCost(stats.cacheWarming.decision.missCost)}</strong>
+									</div>
+									<div>
+										<span>刷新成本</span>
+										<strong>{formatCost(stats.cacheWarming.decision.warmCost)}</strong>
+									</div>
+									<div>
+										<span>预期节省</span>
+										<strong
+											className={
+												stats.cacheWarming.decision.expectedSavings >= 0
+													? "cache-warming-savings"
+													: "cache-warming-cost"
+											}
+										>
+											{formatCost(stats.cacheWarming.decision.expectedSavings)}
+										</strong>
+									</div>
+									<div>
+										<span>最近决策</span>
+										<strong>{stats.cacheWarming.decision.action === "warm" ? "预热" : "不预热"}</strong>
+									</div>
+								</div>
+							) : (
+								<StateBlock compact tone="neutral" icon="zap" title="尚无预热决策">
+									Provider 不支持 prompt caching，或本会话还没有触发第一次决策。
+								</StateBlock>
+							)}
+						</div>
+					) : null}
 				</>
 			)}
 		</ModalShell>

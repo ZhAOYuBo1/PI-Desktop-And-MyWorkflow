@@ -5,6 +5,7 @@ import type {
 	AgentRole,
 	AgentUiState,
 	ArchiveWorkItemInput,
+	CacheWarmingSettings,
 	CreateAgentInput,
 	CreateWorkItemInput,
 	DiagnosticsExportInput,
@@ -656,4 +657,13 @@ export function assertPathInside(parentPath: string, candidatePath: string, labe
 	if (relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative)))
 		return;
 	throw new Error(`${label} 超出允许目录`);
+}
+
+export function parseCacheWarmingSettings(value: unknown): CacheWarmingSettings {
+	const input = record(value, "缓存预热设置");
+	if (input.mode !== "off" && input.mode !== "streaming" && input.mode !== "idle") {
+		throw new Error("缓存预热模式无效");
+	}
+	if (typeof input.showCacheMissNotices !== "boolean") throw new Error("缓存未命中提示设置无效");
+	return { mode: input.mode, showCacheMissNotices: input.showCacheMissNotices };
 }

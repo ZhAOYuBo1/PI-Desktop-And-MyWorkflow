@@ -223,6 +223,28 @@ export interface AgentSessionStats {
 	};
 	cost: number;
 	contextUsage?: AgentContextUsage;
+	cacheWarming?: AgentCacheWarmingStatus;
+}
+
+export const CACHE_WARMING_MODES = ["off", "streaming", "idle"] as const;
+export type CacheWarmingMode = (typeof CACHE_WARMING_MODES)[number];
+
+export interface CacheWarmingSettings {
+	mode: CacheWarmingMode;
+	showCacheMissNotices: boolean;
+}
+
+export interface CacheWarmingDecisionSummary {
+	warmCost: number;
+	missCost: number;
+	continuationProbability: number;
+	expectedSavings: number;
+	action: "warm" | "stop";
+	updatedAt: string;
+}
+
+export interface AgentCacheWarmingStatus extends CacheWarmingSettings {
+	decision: CacheWarmingDecisionSummary | null;
 }
 
 export interface ForkAgentSessionInput extends AgentInstanceLocator {
@@ -374,6 +396,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	clearTavilyApiKey(): Promise<SettingsStatus>;
 	getTavilyApiKey(): Promise<string | null>;
 	saveShellPath(shellPath: string): Promise<SettingsStatus>;
+	saveCacheWarmingSettings(input: CacheWarmingSettings): Promise<SettingsStatus>;
 	listMcpServers(projectRoot?: string): Promise<McpServerSummary[]>;
 	saveMcpServer(input: McpServerInput): Promise<McpServerSummary[]>;
 	deleteMcpServer(name: string): Promise<McpServerSummary[]>;
@@ -503,6 +526,7 @@ export interface SettingsStatus {
 	encryptionAvailable: boolean;
 	/** 用户配置的 bash 路径；为 null 表示交给 pi 自动探测。 */
 	shellPath: string | null;
+	cacheWarming: CacheWarmingSettings;
 }
 
 export type McpTransport = "stdio" | "http";

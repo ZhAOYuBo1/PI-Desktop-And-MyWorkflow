@@ -38,6 +38,7 @@ import type {
 	AgentSessionSwitchResult,
 	ArchiveWorkItemInput,
 	AuthMethodType,
+	CacheWarmingDecisionSummary,
 	CreateAgentInput,
 	ExtensionUiResponseInput,
 	ForkAgentSessionInput,
@@ -70,6 +71,7 @@ import {
 	parseAgentUiState,
 	parseArchiveWorkItemInput,
 	parseBoundedText,
+	parseCacheWarmingSettings,
 	parseCreateAgentInput,
 	parseCreateWorkItemInput,
 	parseDiagnosticsExportInput,
@@ -184,6 +186,7 @@ const channels = {
 	settingsSetPermissions: "codepiddy:settings:permissions:set",
 	settingsSaveTavily: "codepiddy:settings:tavily:save",
 	settingsSaveShell: "codepiddy:settings:shell:save",
+	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
@@ -449,6 +452,28 @@ function parseAgentSessionStats(value: unknown): AgentSessionStats {
 		cost: number(value.cost),
 		...(contextUsage ? { contextUsage } : {}),
 	};
+}
+
+function parseCacheWarmingDecision(value: unknown): CacheWarmingDecisionSummary | null {
+	if (!isRecord(value)) return null;
+	const number = (candidate: unknown): number | null =>
+		typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
+	const warmCost = number(value.warmCost);
+	const missCost = number(value.missCost);
+	const continuationProbability = number(value.continuationProbability);
+	const expectedSavings = number(value.expectedSavings);
+	const action = value.action === "warm" || value.action === "stop" ? value.action : null;
+	if (
+		warmCost === null ||
+		missCost === null ||
+		continuationProbability === null ||
+		expectedSavings === null ||
+		!action ||
+		typeof value.updatedAt !== "string"
+	) {
+		return null;
+	}
+	return { warmCost, missCost, continuationProbability, expectedSavings, action, updatedAt: value.updatedAt };
 }
 
 function sessionEntryText(value: unknown): string {
@@ -780,6 +805,8 @@ async function probePiUpdate(
 			path.join(extensions, "review.js"),
 			"--extension",
 			path.join(extensions, "retry.js"),
+			"--extension",
+			path.join(extensions, "cache-warming.js"),
 			"--approve",
 		],
 	});
@@ -1296,8 +1323,31 @@ class AgentManager {
 	}
 
 	async getSessionStats(input: AgentInstanceLocator): Promise<AgentSessionStats> {
-		const process = await this.ensureProcess(await this.resolve(input));
-		return parseAgentSessionStats(await process.getSessionStats());
+		const agent = await this.resolve(input);
+		const process = await this.ensureProcess(agent);
+		const stats = parseAgentSessionStats(await process.getSessionStats());
+		return { ...stats, cacheWarming: await this.readCacheWarmingStatus(agent) };
+	}
+
+	/**
+	 * Pi 1.0.1 的 RPC 不返回 session.cacheWarmingStatus，只通过扩展事件暴露每次决策。
+	 * 扩展把最近一次决策写到 runtimeRoot/cache-warming/<agent>.json，这里读取后并入会话统计。
+	 */
+	private cacheWarmingStatusPath(agentInstanceId: string): string {
+		return path.join(this.runtimeRoot, "cache-warming", `${agentInstanceId}.json`);
+	}
+
+	private async readCacheWarmingStatus(agent: StoredAgentInstance): Promise<AgentSessionStats["cacheWarming"]> {
+		const settings = await this.settingsStore.getCacheWarmingSettings();
+		let decision: CacheWarmingDecisionSummary | null = null;
+		try {
+			decision = parseCacheWarmingDecision(
+				JSON.parse(await readFile(this.cacheWarmingStatusPath(agent.id), "utf8")),
+			);
+		} catch {
+			decision = null;
+		}
+		return { ...settings, decision };
 	}
 
 	async getDiagnosticsAgentSnapshot(locator?: AgentInstanceLocator): Promise<DiagnosticsAgentSnapshot | null> {
@@ -1747,6 +1797,7 @@ class AgentManager {
 				CODEPIDDY_AGENT_ROLE: agent.role,
 				CODEPIDDY_PROJECT_ROOT: agent.projectRoot,
 				CODEPIDDY_WORK_ITEM_DIR: agent.workItemDirectory,
+				CODEPIDDY_CACHE_WARMING_STATUS_PATH: this.cacheWarmingStatusPath(agent.id),
 			},
 			args: [
 				...(compiledRuntime
@@ -1780,6 +1831,10 @@ class AgentManager {
 				compiledRuntime
 					? path.join(extensionRoot, "retry.js")
 					: path.join(this.repositoryRoot, "packages", "codepiddy-retry-extension", "index.ts"),
+				"--extension",
+				compiledRuntime
+					? path.join(extensionRoot, "cache-warming.js")
+					: path.join(this.repositoryRoot, "packages", "codepiddy-cache-warming-extension", "index.ts"),
 				...roleSkillPaths.flatMap((skillPath) => ["--skill", skillPath]),
 				"--name",
 				`${agent.workItemId} ${roleLabel(agent.role)}`,
@@ -2429,6 +2484,10 @@ function registerIpcHandlers(
 	ipcMain.handle(channels.settingsSaveShell, (_event, rawShellPath: unknown) =>
 		settingsStore.setShellPath(parseBoundedText(rawShellPath, "Shell 路径", 1024)),
 	);
+	ipcMain.handle(channels.settingsSaveCacheWarming, async (_event, raw: unknown) => {
+		await settingsStore.setCacheWarmingSettings(parseCacheWarmingSettings(raw));
+		return settingsStore.status();
+	});
 	ipcMain.handle(channels.settingsListMcp, (_event, rawProjectRoot?: unknown) =>
 		rawProjectRoot === undefined
 			? settingsStore.listMcpServers()

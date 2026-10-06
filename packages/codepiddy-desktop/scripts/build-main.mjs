@@ -43,6 +43,14 @@ await Promise.all([
     target: "node22",
   }),
   build({
+    entryPoints: ["../codepiddy-cache-warming-extension/index.ts"],
+    outfile: "dist/runtime-extensions/cache-warming.js",
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+  }),
+  build({
     entryPoints: ["../codepiddy-tavily-search-mcp/src/index.ts"],
     outfile: "dist/runtime-extensions/tavily-search.js",
     bundle: true,

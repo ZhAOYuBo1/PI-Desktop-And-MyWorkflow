@@ -15,6 +15,8 @@ import type {
 	AuthMethodType,
 	AuthPromptRequest,
 	AuthProviderSummary,
+	CacheWarmingMode,
+	CacheWarmingSettings,
 	LaneKind,
 	PendingPermissionRequest,
 	PermissionDefaults,
@@ -1247,6 +1249,7 @@ const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.sear
 type SettingsSectionId =
 	| "runtime"
 	| "shell"
+	| "cache-warming"
 	| "diagnostics"
 	| "providers"
 	| "llama"
@@ -1262,6 +1265,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 		items: [
 			{ id: "runtime", label: "Pi 运行时", icon: "settings" },
 			{ id: "shell", label: "Shell", icon: "terminal" },
+			{ id: "cache-warming", label: "缓存预热", icon: "zap" },
 			{ id: "diagnostics", label: "诊断", icon: "bug" },
 		],
 	},
@@ -1380,6 +1384,18 @@ const demoSessionStats: AgentSessionStats = {
 	},
 	cost: 0.184,
 	contextUsage: { tokens: 42_500, contextWindow: 128_000, percent: 33.2 },
+	cacheWarming: {
+		mode: "streaming",
+		showCacheMissNotices: false,
+		decision: {
+			warmCost: 0.0021,
+			missCost: 0.034,
+			continuationProbability: 1,
+			expectedSavings: 0.0319,
+			action: "warm",
+			updatedAt: "2026-10-06T03:20:00.000Z",
+		},
+	},
 };
 
 const demoAgentCommands: AgentCommandOption[] = [
@@ -1583,6 +1599,7 @@ export function App() {
 	const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
 	const [resetAgentDialog, setResetAgentDialog] = useState<ResetAgentDialogState | null>(null);
 	const [shellRestartDialog, setShellRestartDialog] = useState(false);
+	const [cacheWarmingSaving, setCacheWarmingSaving] = useState(false);
 	const [agentActionsOpen, setAgentActionsOpen] = useState<string | null>(null);
 	const [sessionPanel, setSessionPanel] = useState<SessionPanelState | null>(null);
 	const [sessionPanelLoading, setSessionPanelLoading] = useState(false);
@@ -4461,6 +4478,23 @@ export function App() {
 		}
 	}
 
+	async function updateCacheWarmingSettings(patch: Partial<CacheWarmingSettings>): Promise<void> {
+		if (!("codepiddy" in window) || cacheWarmingSaving) return;
+		const previous = settingsStatus;
+		if (!previous) return;
+		const next: CacheWarmingSettings = { ...previous.cacheWarming, ...patch };
+		setSettingsStatus({ ...previous, cacheWarming: next });
+		setCacheWarmingSaving(true);
+		try {
+			setSettingsStatus(await window.codepiddy.saveCacheWarmingSettings(next));
+		} catch (caught) {
+			setSettingsStatus(previous);
+			showSettingsToast(caught instanceof Error ? caught.message : "保存缓存预热设置失败", "error");
+		} finally {
+			setCacheWarmingSaving(false);
+		}
+	}
+
 	async function toggleRoleSkill(role: AgentRole, skillId: string, enabled: boolean): Promise<void> {
 		if (!("codepiddy" in window) || roleSkillSaving) return;
 		const current = roleSkillAssignments[role];
@@ -4744,6 +4778,55 @@ export function App() {
 								/>
 							</div>
 						) : null}
+						<section className="settings-card" hidden={settingsSection !== "cache-warming"}>
+							<div className="settings-card-heading">
+								<div>
+									<h2>缓存预热</h2>
+									<p>
+										Provider 支持 prompt caching 时，在缓存过期前用一次很小的请求把前缀续上，
+										避免下一轮重新按全价读取上下文。只对支持 prompt caching 的模型有效。
+									</p>
+								</div>
+								<div className="settings-status">{cacheWarmingSaving ? "保存中" : "已保存"}</div>
+							</div>
+							<div className="settings-field">
+								<span>预热模式</span>
+								<SelectMenu
+									label="缓存预热模式"
+									value={settingsStatus?.cacheWarming.mode ?? "streaming"}
+									options={[
+										{
+											value: "off",
+											label: "关闭",
+											description: "不主动预热，缓存过期后按正常 cache miss 计费",
+										},
+										{
+											value: "streaming",
+											label: "仅运行中",
+											description: "Agent 运行时续缓存，你空闲时不产生请求",
+										},
+										{
+											value: "idle",
+											label: "运行中 + 空闲",
+											description: "空闲时只要继续续缓存仍然划算就预热",
+										},
+									]}
+									onChange={(value) => void updateCacheWarmingSettings({ mode: value as CacheWarmingMode })}
+								/>
+							</div>
+							<SettingsCheckbox
+								className="cache-warming-checkbox"
+								checked={settingsStatus?.cacheWarming.showCacheMissNotices ?? false}
+								onChange={(checked) => void updateCacheWarmingSettings({ showCacheMissNotices: checked })}
+							>
+								<strong>显示缓存未命中提示</strong>
+								<small>在转录流里显示显著的 cache miss 费用和 Provider 恢复通知</small>
+							</SettingsCheckbox>
+							<small>
+								设置写入 Pi 原生 settings.json。修改后，新启动或重置后的 Agent 才会使用新设置；
+								当前会话的预热状态可以在「会话统计」里查看。
+							</small>
+						</section>
 						<section
 							className="settings-card permission-settings-card"
 							hidden={settingsSection !== "permissions"}

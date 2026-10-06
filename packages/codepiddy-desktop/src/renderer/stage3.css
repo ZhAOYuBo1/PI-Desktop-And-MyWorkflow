@@ -1267,6 +1267,86 @@
   font-weight: 560;
 }
 
+.cache-warming-checkbox {
+  margin-top: var(--cp-space-md);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-lg);
+  background: var(--cp-surface-secondary);
+}
+
+.cache-warming-checkbox .settings-checkbox-content strong {
+  color: var(--cp-ink);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.cache-warming-checkbox .settings-checkbox-content small {
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+}
+
+.session-stats-cache-warming {
+  margin-top: var(--cp-space-md);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-lg);
+  background: var(--cp-surface-secondary);
+}
+
+.session-stats-cache-warming-head {
+  display: flex;
+  align-items: center;
+  gap: var(--cp-space-md);
+}
+
+.session-stats-cache-warming-head > div {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.session-stats-cache-warming-head .session-stats-icon {
+  margin-bottom: 0;
+}
+
+.session-stats-cache-warming-head strong {
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.session-stats-cache-warming-head small {
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+}
+
+.session-stats-cache-warming-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--cp-space-sm);
+  margin-top: var(--cp-space-md);
+}
+
+.session-stats-cache-warming-grid > div {
+  display: grid;
+  gap: var(--cp-space-micro);
+}
+
+.session-stats-cache-warming-grid span {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
+.session-stats-cache-warming-grid strong {
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.cache-warming-savings {
+  color: var(--cp-success);
+}
+
+.cache-warming-cost {
+  color: var(--cp-error);
+}
+
 .session-share-modal {
   width: min(520px, calc(100vw - var(--cp-space-2xl)));
   padding: 0;
@@ -1381,7 +1461,8 @@
   }
 
   .session-stats-grid,
-  .session-stats-tokens {
+  .session-stats-tokens,
+  .session-stats-cache-warming-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

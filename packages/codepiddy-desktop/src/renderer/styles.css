@@ -958,6 +958,17 @@ button { color: inherit; }
   width: min(560px, calc(100vw - 32px));
 }
 
+/*
+  Provider 登录弹窗里的下拉列表参与布局，不做绝对定位浮层。
+  .select-menu-list 默认 absolute，在弹窗里会溢出 .modal-shell-body：
+  外层出现滚动条，列表底部又被 .modal-shell 的 overflow: hidden 裁掉。
+  静态定位后弹窗随列表长高，列表用自己的 max-height 滚动。
+*/
+.auth-modal .select-menu-list {
+  position: static;
+  margin-top: var(--cp-space-xs);
+}
+
 .auth-form {
   display: grid;
   gap: var(--cp-space-md);
@@ -4236,12 +4247,14 @@ body {
 }
 
 .settings-status {
+  flex: none;
   padding: var(--cp-space-xxs) var(--cp-space-sm);
   border-radius: var(--cp-radius-full);
   background: var(--cp-surface-inset);
   color: var(--cp-ink-secondary);
   font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .role-skill-heading h3 {

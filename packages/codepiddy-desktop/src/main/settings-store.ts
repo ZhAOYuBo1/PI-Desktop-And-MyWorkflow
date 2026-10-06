@@ -4,6 +4,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type {
 	AgentRole,
+	CacheWarmingMode,
+	CacheWarmingSettings,
 	CredentialSource,
 	McpClientRegistration,
 	McpExposure,
@@ -55,6 +57,12 @@ const DEFAULT_RETRY_SETTINGS = {
 	baseDelayMs: 1000,
 	maxAgentDelayMs: 5000,
 } as const;
+
+const DEFAULT_CACHE_WARMING_MODE: CacheWarmingMode = "streaming";
+
+function isCacheWarmingMode(value: unknown): value is CacheWarmingMode {
+	return value === "off" || value === "streaming" || value === "idle";
+}
 
 function isNotFound(error: unknown): boolean {
 	return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
@@ -362,6 +370,35 @@ export class AppSettingsStore {
 		if (enabledModelIds === null) delete next.enabledModels;
 		else next.enabledModels = [...new Set(enabledModelIds)];
 		await this.writeJsonRecord(this.piSettingsPath, next);
+	}
+
+	/**
+	 * 读写 Pi 原生 settings.json 的 cacheWarming / showCacheMissNotices。
+	 *
+	 * Pi 1.0.1 的 RPC 没有暴露设置命令，所以这里和 shellPath、retry 一样走配置文件；
+	 * 合并写而不是覆盖，保留用户自己的其他设置。改动对新启动或重置后的 Agent 生效。
+	 */
+	async getCacheWarmingSettings(): Promise<CacheWarmingSettings> {
+		let settings: Record<string, unknown> = {};
+		try {
+			settings = await this.readJsonRecord(this.piSettingsPath);
+		} catch {
+			// settings.json 损坏时不要让整个设置页失败；写入时仍会正常报错。
+		}
+		return {
+			mode: isCacheWarmingMode(settings.cacheWarming) ? settings.cacheWarming : DEFAULT_CACHE_WARMING_MODE,
+			showCacheMissNotices: settings.showCacheMissNotices === true,
+		};
+	}
+
+	async setCacheWarmingSettings(input: CacheWarmingSettings): Promise<void> {
+		if (!isCacheWarmingMode(input.mode)) throw new Error("无效的缓存预热模式");
+		const settings = await this.readJsonRecord(this.piSettingsPath);
+		await this.writeJsonRecord(this.piSettingsPath, {
+			...settings,
+			cacheWarming: input.mode,
+			showCacheMissNotices: input.showCacheMissNotices,
+		});
 	}
 
 	async setShellPath(value: string): Promise<SettingsStatus> {
@@ -893,6 +930,7 @@ export class AppSettingsStore {
 			tavilyApiKeyConfigured: (await this.getTavilyApiKey()) !== null,
 			encryptionAvailable: safeStorage.isEncryptionAvailable(),
 			shellPath: await this.getShellPath(),
+			cacheWarming: await this.getCacheWarmingSettings(),
 		};
 	}
 
