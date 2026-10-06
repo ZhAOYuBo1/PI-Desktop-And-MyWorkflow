@@ -22,7 +22,7 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-59 已提交到本地 `main`；批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`；本地领先 `origin/main` 2 个提交，待推送。当前 HEAD 以 `git log -1` 为准，工作树按实际状态检查。批次 54 完成客户端诊断包导出、统一消息 / 状态块 / 复选框 / ModalShell。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-59 已提交到本地 `main`；批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`；本地 `main` 领先 `origin/main`，待推送。当前 HEAD 以 `git log -1` 为准，工作树按实际状态检查。批次 54 完成客户端诊断包导出、统一消息 / 状态块 / 复选框 / ModalShell。
 批次 55 完成会话滚动定位与 compact 历史修复：每个访问过的 Agent 使用常驻独立转录面板，切换只显隐；界面历史改用 Pi `get_entries` 完整条目，不再用 compact 后的 `get_messages`；定位条只标记用户消息并显示完整时间。批次 55 已随本批推送 `origin/main`。
 批次 56 修复 ModalShell 输入框聚焦环下侧被裁切：modal body 补底部内边距，重命名会话等弹窗的蓝色焦点环完整显示。
 批次 57 将定位条改为最多渲染 20 条的用户消息窗口，支持滚轮上下翻窗口，当前高亮跑出窗口时自动平移；完整用户消息索引仍保留。
@@ -65,7 +65,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-06 批次 59：Cache Warming 云朵图标收口，已提交；本地领先 origin/main 2 个提交）
+## 当前状态（2026-10-06 批次 59：Cache Warming 云朵图标收口，已提交；本地领先 origin/main，待推送）
 
 - 批次 59 提交：`6640bc795 fix(desktop): use cloud icon for cache warming`。缓存预热图标从 lucide `Zap` 换成 `Cloud`，设置导航和会话统计两处统一；同时修复 Provider 登录弹窗的嵌套滚动条，`.auth-modal .select-menu-list` 改为静态定位，避免外层滚动和列表底部被裁。
 - 批次 58 新增客户端 Cache Warming 设置：设置页「常规 > 缓存预热」读写 Pi 原生 `settings.json` 的 `cacheWarming`（`off / streaming / idle`）和 `showCacheMissNotices`。修改写入配置文件，对新启动或重置后的 Agent 生效。
@@ -1197,7 +1197,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ## 提交状态
 
-批次 55 的会话滚动 / compact 历史修复、批次 56 的 Modal 焦点环修复和批次 57 的定位条窗口化已实现、验证并提交，已推送到 `origin/main`。批次 58 的 Cache Warming 设置与决策状态提交 `c17b64abf`；批次 59 的云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`。本地 `main` 领先 `origin/main` 2 个提交，待推送。提交哈希以 `git log -1` 为准。
+批次 55 的会话滚动 / compact 历史修复、批次 56 的 Modal 焦点环修复和批次 57 的定位条窗口化已实现、验证并提交，已推送到 `origin/main`。批次 58 的 Cache Warming 设置与决策状态提交 `c17b64abf`；批次 59 的云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`。本地 `main` 领先 `origin/main`，待推送。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1254,4 +1254,4 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ## 待用户确认
 
-- 暂无，批次 1-59 已验收；本地领先 `origin/main` 2 个提交，待推送。
+- 暂无，批次 1-59 已验收；本地领先 `origin/main`，待推送。
