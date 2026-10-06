@@ -72,6 +72,7 @@ import { StateBlock } from "./components/state-block.tsx";
 import { estimateTokens, extractUsageOutput, type FinalStreamStats, formatElapsed } from "./components/stream-stats.ts";
 import { ThinkingControl } from "./components/ThinkingControl.tsx";
 import { ToolCallCard } from "./components/ToolCallCard.tsx";
+import { ToolSettingsPanel } from "./components/ToolSettingsPanel.tsx";
 import { thinkingLevelLabel } from "./components/thinking-levels.ts";
 import {
 	formatTurnElapsed,
@@ -1319,6 +1320,7 @@ const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.sear
 type SettingsSectionId =
 	| "runtime"
 	| "shell"
+	| "tools"
 	| "codemode"
 	| "cache-warming"
 	| "compaction"
@@ -1337,6 +1339,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 		items: [
 			{ id: "runtime", label: "Pi 运行时", icon: "settings" },
 			{ id: "shell", label: "Shell", icon: "terminal" },
+			{ id: "tools", label: "工具", icon: "wrench" },
 			{ id: "codemode", label: "Codemode", icon: "braces" },
 			{ id: "cache-warming", label: "缓存预热", icon: "cloud" },
 			{ id: "compaction", label: "上下文压缩", icon: "gauge" },
@@ -2087,6 +2090,40 @@ export function App() {
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "刷新 Agent 配置失败");
 			setSessionNotice(`${label}；当前 Agent 刷新失败`);
+		}
+	}, []);
+
+	const refreshAfterToolChange = useCallback(async (): Promise<string> => {
+		if (demoMode || !("codepiddy" in window)) return "工具设置已保存。";
+		const locator = lastActiveAgentLocatorRef.current;
+		if (!locator) return "工具设置已保存；新启动或重置后的 Agent 生效。";
+		const status = findAgentStatus(projectRef.current, locator);
+		if (!status) return "工具设置已保存；重新打开 Agent 后生效。";
+		if (status === "running" || status === "waiting") {
+			return "工具设置已保存；当前 Agent 正在运行，停止或重新连接后生效。";
+		}
+		try {
+			await window.codepiddy.reconnectAgent(locator);
+			return "工具设置已保存；当前 Agent 已重新连接。";
+		} catch (caught) {
+			return `工具设置已保存；刷新 Agent 失败：${clientErrorMessage(caught, "未知错误")}`;
+		}
+	}, []);
+
+	const refreshAfterMcpChange = useCallback(async (): Promise<string> => {
+		if (demoMode || !("codepiddy" in window)) return "MCP 配置已更新。";
+		const locator = lastActiveAgentLocatorRef.current;
+		if (!locator) return "MCP 配置已更新；新启动或重连后的 Agent 生效。";
+		const status = findAgentStatus(projectRef.current, locator);
+		if (!status) return "MCP 配置已更新；重新打开 Agent 后生效。";
+		if (status === "running" || status === "waiting") {
+			return "当前 Agent 正在运行，停止或重新连接后生效。";
+		}
+		try {
+			await window.codepiddy.reconnectAgent(locator);
+			return "当前 Agent 已重新连接。";
+		} catch (caught) {
+			return `当前 Agent 自动重连失败：${clientErrorMessage(caught, "未知错误")}`;
 		}
 	}, []);
 
@@ -5259,6 +5296,15 @@ export function App() {
 								onStatusChange={setSettingsStatus}
 							/>
 						</div>
+						<div className="settings-section-slot" hidden={settingsSection !== "tools"}>
+							<ToolSettingsPanel
+								settings={settingsStatus?.tools ?? null}
+								projectRoot={project?.rootPath ?? null}
+								onStatusChange={setSettingsStatus}
+								onOpenMcp={() => setSettingsSection("mcp")}
+								onSaved={refreshAfterToolChange}
+							/>
+						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "diagnostics"}>
 							<DiagnosticsSettings
 								projectRoot={project?.rootPath ?? null}
@@ -5343,7 +5389,11 @@ export function App() {
 							/>
 						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "mcp"}>
-							<McpSettings projectRoot={project?.rootPath ?? null} activeAgent={activeAgentLocator} />
+							<McpSettings
+								projectRoot={project?.rootPath ?? null}
+								activeAgent={activeAgentLocator}
+								onConfigChanged={refreshAfterMcpChange}
+							/>
 						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "llama"}>
 							<Suspense fallback={<div className="provider-empty">正在加载 llama.cpp 设置…</div>}>

@@ -37,6 +37,7 @@ import {
 	Terminal,
 	TextSearch,
 	TriangleAlert,
+	Wrench,
 	X,
 } from "lucide-react";
 
@@ -84,7 +85,8 @@ export type AppIconName =
 	| "caret"
 	| "shield"
 	| "cloud"
-	| "gauge";
+	| "gauge"
+	| "wrench";
 
 const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	archive: Archive,
@@ -126,6 +128,7 @@ const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	shield: Shield,
 	cloud: Cloud,
 	gauge: Gauge,
+	wrench: Wrench,
 };
 
 export function AppIcon({ name, size = 16, className = "" }: { name: AppIconName; size?: number; className?: string }) {

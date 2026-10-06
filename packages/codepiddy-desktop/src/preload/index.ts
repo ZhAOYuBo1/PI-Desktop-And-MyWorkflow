@@ -42,6 +42,7 @@ import type {
 	TerminalResizeInput,
 	TerminalStartInput,
 	TerminalWriteInput,
+	ToolSettings,
 } from "@codepiddy/shared";
 import { contextBridge, ipcRenderer } from "electron";
 
@@ -120,6 +121,7 @@ const channels = {
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
 	settingsSaveCodemode: "codepiddy:settings:codemode:save",
+	settingsSaveTools: "codepiddy:settings:tools:save",
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
@@ -264,6 +266,7 @@ const api: CodePIddyClientApi = {
 	saveContextCompactionSettings: (input: ContextCompactionSettings) =>
 		ipcRenderer.invoke(channels.settingsSaveContextCompaction, input),
 	saveCodemodeSettings: (input: CodemodeSettings) => ipcRenderer.invoke(channels.settingsSaveCodemode, input),
+	saveToolSettings: (input: ToolSettings) => ipcRenderer.invoke(channels.settingsSaveTools, input),
 	listMcpServers: (projectRoot?: string) => ipcRenderer.invoke(channels.settingsListMcp, projectRoot),
 	saveMcpServer: (input: McpServerInput) => ipcRenderer.invoke(channels.settingsSaveMcp, input),
 	deleteMcpServer: (name: string) => ipcRenderer.invoke(channels.settingsDeleteMcp, name),

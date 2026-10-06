@@ -23,6 +23,7 @@ import type {
 	McpServerInput,
 	McpServerSummary,
 	PermissionDefaults,
+	PiBuiltinToolName,
 	ProviderApi,
 	ProviderInput,
 	ProviderModelSummary,
@@ -30,6 +31,7 @@ import type {
 	RoleSkillAssignments,
 	SetRoleSkillAssignmentsInput,
 	SettingsStatus,
+	ToolSettings,
 } from "@codepiddy/shared";
 import { safeStorage } from "electron";
 import {
@@ -76,6 +78,21 @@ const DEFAULT_BRANCH_SUMMARY_SETTINGS: BranchSummarySettings = {
 	skipPrompt: false,
 };
 const DEFAULT_CODEMODE_MODE: CodemodeMode = "on";
+const PI_BUILTIN_TOOL_NAMES = [
+	"read",
+	"bash",
+	"powershell",
+	"edit",
+	"write",
+	"grep",
+	"find",
+	"ls",
+] as const satisfies readonly PiBuiltinToolName[];
+const PI_DEFAULT_TOOL_NAMES = ["read", "bash", "edit", "write"] as const satisfies readonly PiBuiltinToolName[];
+
+function isPiBuiltinToolName(value: unknown): value is PiBuiltinToolName {
+	return typeof value === "string" && (PI_BUILTIN_TOOL_NAMES as readonly string[]).includes(value);
+}
 
 function isCacheWarmingMode(value: unknown): value is CacheWarmingMode {
 	return value === "off" || value === "streaming" || value === "idle";
@@ -136,6 +153,14 @@ function normalizeCodemodeSettings(value: unknown): CodemodeSettings {
 	return {
 		mode: isCodemodeMode(record.mode) ? record.mode : DEFAULT_CODEMODE_MODE,
 		inlineBudget: isNonNegativeSafeInteger(record.inlineBudget) ? record.inlineBudget : null,
+	};
+}
+
+function normalizeToolSettings(value: unknown): ToolSettings {
+	const record = isRecord(value) ? value : {};
+	if (!Array.isArray(record.defaultTools)) return { defaultTools: null };
+	return {
+		defaultTools: [...new Set(record.defaultTools.filter(isPiBuiltinToolName))],
 	};
 }
 
@@ -576,6 +601,45 @@ export class AppSettingsStore {
 		if (Object.keys(next).length === 0) delete settings.codemode;
 		else settings.codemode = next;
 		await this.writeJsonRecord(this.piSettingsPath, settings);
+	}
+
+	/**
+	 * 读写 Pi 原生 settings.json 的 defaultTools。
+	 *
+	 * 这里只控制内置工具在新 Agent 启动时是否默认激活；MCP 和扩展工具的曝光仍由
+	 * mcp.json / extension 定义管理，不能在这里伪装成 direct/deferred/codemode/hidden。
+	 */
+	async getToolSettings(): Promise<ToolSettings> {
+		let settings: Record<string, unknown> = {};
+		try {
+			settings = await this.readJsonRecord(this.piSettingsPath);
+		} catch {
+			// 配置损坏时设置页仍可打开；写入时再报错。
+		}
+		return normalizeToolSettings(settings);
+	}
+
+	async setToolSettings(input: ToolSettings): Promise<void> {
+		const settings = await this.readJsonRecord(this.piSettingsPath);
+		if (input.defaultTools === null) {
+			delete settings.defaultTools;
+		} else {
+			if (!Array.isArray(input.defaultTools)) throw new Error("内置工具列表无效");
+			const defaultTools = [...new Set(input.defaultTools)];
+			if (!defaultTools.every(isPiBuiltinToolName)) throw new Error("内置工具列表包含无效工具名");
+			settings.defaultTools = defaultTools;
+		}
+		await this.writeJsonRecord(this.piSettingsPath, settings);
+	}
+
+	/**
+	 * `defaultTools` 只控制直接激活的内置工具，Codemode 仍可能调用已注册但未激活的工具。
+	 * 启动 Agent 时还要把未勾选的内置工具传给 `--exclude-tools`，才能让 UI 的开关真正生效。
+	 */
+	async getBuiltinToolExclusions(): Promise<PiBuiltinToolName[]> {
+		const settings = await this.getToolSettings();
+		const enabled = new Set(settings.defaultTools ?? PI_DEFAULT_TOOL_NAMES);
+		return PI_BUILTIN_TOOL_NAMES.filter((tool) => !enabled.has(tool));
 	}
 
 	async setShellPath(value: string): Promise<SettingsStatus> {
@@ -1110,6 +1174,7 @@ export class AppSettingsStore {
 			cacheWarming: await this.getCacheWarmingSettings(),
 			contextCompaction: await this.getContextCompactionSettings(),
 			codemode: await this.getCodemodeSettings(),
+			tools: await this.getToolSettings(),
 		};
 	}
 

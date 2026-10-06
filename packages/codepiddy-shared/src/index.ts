@@ -265,6 +265,18 @@ export interface CodemodeSettings {
 	inlineBudget: number | null;
 }
 
+export const PI_BUILTIN_TOOL_NAMES = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"] as const;
+export type PiBuiltinToolName = (typeof PI_BUILTIN_TOOL_NAMES)[number];
+
+export function isPiBuiltinToolName(value: unknown): value is PiBuiltinToolName {
+	return typeof value === "string" && (PI_BUILTIN_TOOL_NAMES as readonly string[]).includes(value);
+}
+
+export interface ToolSettings {
+	/** null 表示使用 Pi 的标准内置工具集合。 */
+	defaultTools: PiBuiltinToolName[] | null;
+}
+
 export interface CacheWarmingDecisionSummary {
 	warmCost: number;
 	missCost: number;
@@ -430,6 +442,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	saveCacheWarmingSettings(input: CacheWarmingSettings): Promise<SettingsStatus>;
 	saveContextCompactionSettings(input: ContextCompactionSettings): Promise<SettingsStatus>;
 	saveCodemodeSettings(input: CodemodeSettings): Promise<SettingsStatus>;
+	saveToolSettings(input: ToolSettings): Promise<SettingsStatus>;
 	listMcpServers(projectRoot?: string): Promise<McpServerSummary[]>;
 	saveMcpServer(input: McpServerInput): Promise<McpServerSummary[]>;
 	deleteMcpServer(name: string): Promise<McpServerSummary[]>;
@@ -563,6 +576,7 @@ export interface SettingsStatus {
 	cacheWarming: CacheWarmingSettings;
 	contextCompaction: ContextCompactionSettings;
 	codemode: CodemodeSettings;
+	tools: ToolSettings;
 }
 
 export type McpTransport = "stdio" | "http";

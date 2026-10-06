@@ -26,6 +26,7 @@ import type {
 	McpServerInput,
 	PermissionDefaults,
 	PermissionState,
+	PiBuiltinToolName,
 	ProjectUiState,
 	ProviderInput,
 	ProviderModelSummary,
@@ -43,11 +44,26 @@ import type {
 	TerminalResizeInput,
 	TerminalStartInput,
 	TerminalWriteInput,
+	ToolSettings,
 } from "@codepiddy/shared";
 
 const AGENT_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 const MAX_PROMPT_IMAGES = 8;
 const MAX_PROMPT_IMAGE_BYTES = 10 * 1024 * 1024;
+const PI_BUILTIN_TOOL_NAMES = [
+	"read",
+	"bash",
+	"powershell",
+	"edit",
+	"write",
+	"grep",
+	"find",
+	"ls",
+] as const satisfies readonly PiBuiltinToolName[];
+
+function isPiBuiltinToolName(value: unknown): value is PiBuiltinToolName {
+	return typeof value === "string" && (PI_BUILTIN_TOOL_NAMES as readonly string[]).includes(value);
+}
 
 function record(value: unknown, label: string): Record<string, unknown> {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${label} 格式无效`);
@@ -734,4 +750,14 @@ export function parseCodemodeSettings(value: unknown): CodemodeSettings {
 		mode: input.mode,
 		inlineBudget,
 	};
+}
+
+export function parseToolSettings(value: unknown): ToolSettings {
+	const input = record(value, "工具设置");
+	if (input.defaultTools === null) return { defaultTools: null };
+	if (!Array.isArray(input.defaultTools)) throw new Error("内置工具列表必须是数组或 null");
+	if (input.defaultTools.length > 8) throw new Error("内置工具列表最多包含 8 项");
+	const defaultTools = [...new Set(input.defaultTools)];
+	if (!defaultTools.every(isPiBuiltinToolName)) throw new Error("内置工具列表包含无效工具名");
+	return { defaultTools };
 }

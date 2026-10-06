@@ -106,6 +106,7 @@ import {
 	parseTerminalResizeInput,
 	parseTerminalStartInput,
 	parseTerminalWriteInput,
+	parseToolSettings,
 } from "./ipc-validation.ts";
 import { LlamaCppManager } from "./llama-cpp-manager.ts";
 import { PiAuthManager } from "./pi-auth.ts";
@@ -193,6 +194,7 @@ const channels = {
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
 	settingsSaveCodemode: "codepiddy:settings:codemode:save",
+	settingsSaveTools: "codepiddy:settings:tools:save",
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
@@ -1800,9 +1802,10 @@ class AgentManager {
 				: path.join(this.repositoryRoot, "packages", "coding-agent-runtime", "dist", "bundle", "cli.js"));
 		const nodeExecutable = process.env.CODEPIDDY_NODE_EXECUTABLE ?? (packaged ? process.execPath : "node");
 		await this.settingsStore.ensureTavilyMcpServer();
-		const [tavilyApiKey, roleSkillAssignments] = await Promise.all([
+		const [tavilyApiKey, roleSkillAssignments, excludedBuiltinTools] = await Promise.all([
 			this.settingsStore.getTavilyApiKey(),
 			this.settingsStore.getRoleSkillAssignments(),
+			this.settingsStore.getBuiltinToolExclusions(),
 		]);
 		const roleSkillPaths = await resolveRoleSkillPaths(
 			this.repositoryRoot,
@@ -1857,6 +1860,7 @@ class AgentManager {
 				"--mode",
 				"rpc",
 				"--no-extensions",
+				...(excludedBuiltinTools.length > 0 ? ["--exclude-tools", excludedBuiltinTools.join(",")] : []),
 				"--session-dir",
 				agent.sessionDirectory,
 				...(selectedSessionFile && selectedSessionId ? ["--session", selectedSessionId] : ["--continue"]),
@@ -2544,6 +2548,10 @@ function registerIpcHandlers(
 	});
 	ipcMain.handle(channels.settingsSaveCodemode, async (_event, raw: unknown) => {
 		await settingsStore.setCodemodeSettings(parseCodemodeSettings(raw));
+		return settingsStore.status();
+	});
+	ipcMain.handle(channels.settingsSaveTools, async (_event, raw: unknown) => {
+		await settingsStore.setToolSettings(parseToolSettings(raw));
 		return settingsStore.status();
 	});
 	ipcMain.handle(channels.settingsListMcp, (_event, rawProjectRoot?: unknown) =>

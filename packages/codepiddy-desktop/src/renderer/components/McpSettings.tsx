@@ -257,9 +257,11 @@ function parseOptionalInteger(value: string, label: string, maximum: number): nu
 export function McpSettings({
 	projectRoot,
 	activeAgent,
+	onConfigChanged,
 }: {
 	projectRoot: string | null;
 	activeAgent: AgentInstanceLocator | null;
+	onConfigChanged?: () => Promise<string | null> | string | null;
 }) {
 	const [servers, setServers] = useState<McpServerSummary[] | null>(demoMode ? DEMO_SERVERS : null);
 	const [draft, setDraft] = useState<ServerDraft | null>(null);
@@ -321,6 +323,17 @@ export function McpSettings({
 		showSettingsToast(error, "error");
 		setError(null);
 	}, [error]);
+
+	async function announceChange(message: string): Promise<void> {
+		let refreshMessage: string | null = null;
+		try {
+			refreshMessage = (await onConfigChanged?.()) ?? null;
+		} catch (caught) {
+			refreshMessage = caught instanceof Error ? caught.message : "刷新当前 Agent 失败";
+		}
+		setNotice(refreshMessage ? `${message} ${refreshMessage}` : message);
+		void refreshRuntime();
+	}
 
 	async function saveServer(): Promise<void> {
 		if (!draft) return;
@@ -406,9 +419,8 @@ export function McpSettings({
 		try {
 			setServers(await window.codepiddy.saveMcpServer(input));
 			setDraft(null);
-			setNotice("MCP 服务已保存。");
 			setError(null);
-			void refreshRuntime();
+			await announceChange("MCP 服务已保存。");
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存 MCP 配置失败");
 		} finally {
@@ -450,9 +462,8 @@ export function McpSettings({
 		try {
 			setServers(await window.codepiddy.saveMcpProjectOverride(input));
 			setOverrideDraft(null);
-			setNotice("项目覆盖已保存。");
 			setError(null);
-			void refreshRuntime();
+			await announceChange("项目覆盖已保存。");
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存项目覆盖失败");
 		} finally {
@@ -471,7 +482,7 @@ export function McpSettings({
 		try {
 			setServers(await window.codepiddy.deleteMcpServer(name));
 			setError(null);
-			void refreshRuntime();
+			await announceChange("MCP 服务已删除。");
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "删除 MCP 配置失败");
 		} finally {
@@ -493,9 +504,8 @@ export function McpSettings({
 		try {
 			setServers(await window.codepiddy.deleteMcpProjectOverride({ projectRoot, name }));
 			setOverrideDraft(null);
-			setNotice("项目覆盖已移除。");
 			setError(null);
-			void refreshRuntime();
+			await announceChange("项目覆盖已移除。");
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "移除项目覆盖失败");
 		} finally {
@@ -512,9 +522,8 @@ export function McpSettings({
 		setBusy(`${action}:${name}`);
 		try {
 			const result = await window.codepiddy.runMcpAction({ action, name });
-			setNotice(result.output || (action === "login" ? "登录完成。" : "已退出。"));
 			setError(null);
-			void refreshRuntime();
+			await announceChange(result.output || (action === "login" ? "登录完成。" : "已退出。"));
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : `MCP ${action} 失败`);
 		} finally {
