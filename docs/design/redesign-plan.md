@@ -22,12 +22,13 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-60 已提交到本地 `main`；当前 HEAD 以 `git log -1` 为准，本地 `main` 领先 `origin/main`，暂不推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`。
-批次 60 新增设置页「常规 > 上下文压缩」：自动压缩开关、全局 `reserveTokens` / `keepRecentTokens`、分支摘要 `reserveTokens` / `skipPrompt`、按精确 `provider/modelId` 的 `modelOverrides`；合并写 Pi 原生 `settings.json`，手动 `/compact` 保留。单模型覆盖搜索框使用统一 `SelectMenu`，空态使用 `StateBlock`；当前模型选择器选中项使用浅蓝底、蓝字、蓝色内描边，不要改成实心蓝。分支摘要当前只补配置，客户端会话树仍以 Fork 为主，实际触发由 Pi 分支流程决定。
-另一个 session 已提交 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix：常用模型设置刷新保留草稿并修复整页跳动、消息按实际模型显示并区分定位条窗口内外、定位条颜色区分刚滚入的刻度、滚入刻度亮黄后回归蓝色；不要重做。
-阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 完成，第 25 项上下文压缩已由批次 60 完成。下一步从阶段 4 第 26 项开始：Codemode 设置和运行结果视图。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-61 已提交到本地 `main`；当前 HEAD `ec4dde669`，工作树干净，本地 `main` 领先 `origin/main`，暂不推送。
+批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`。
+批次 61 新增设置页「常规 > Codemode」：执行模式 `on / only`、工具目录内联预算 `inlineBudget`；合并写 Pi 原生 `settings.json`。转录流新增 Codemode 专用运行结果视图：脚本、工具调用、状态/耗时、错误、完整输出路径和结果。自定义 Provider 新增/删除后，空闲 Agent 自动重连并同步常用模型范围和模型选择器；运行中 Agent 不强制中断，只显示待重连。
+另一个 session 已提交 `b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
+阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 完成，第 25 项上下文压缩已由批次 60 完成，第 26 项 Codemode 已由批次 61 完成。下一步从阶段 4 第 27 项开始：Tool Search / Tool Exposure 设置。
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
-字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
+字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode 和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
 当前 HEAD 以 `git log -1` 为准。
@@ -61,8 +62,11 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-06 批次 60：上下文压缩设置，已提交；本地领先 origin/main，暂不推送）
+## 当前状态（2026-10-06 批次 61：Codemode 与 Provider 模型刷新，已提交；本地领先 origin/main，暂不推送）
 
+- 批次 61 提交：`ec4dde669 feat(desktop): add codemode settings and model refresh`。设置页新增「常规 > Codemode」，支持 Pi 原生 `settings.json` 的 `codemode.mode`（`on / only`）和 `codemode.inlineBudget`；转录流新增 Codemode 运行结果视图，显示脚本、工具调用、状态/耗时、错误、完整输出路径和结果。
+- 批次 61 同时补齐 Provider 变更后的模型刷新：新增/删除自定义 Provider 后，空闲 Agent 自动重连并重新读取 `models.json`，同步常用模型范围和模型选择器；运行中 Agent 不强制中断，只提示停止或重连后生效。
+- 另一个 session 已提交 `b3693adba fix(desktop): 修复失效 Session 导致 Pi 启动失败`、`7abba1aa1 feat(desktop): 新建会话支持预设名称和模型`，不要重做。
 - 批次 60 提交：`db4e91195 feat(desktop): add context compaction settings`。设置页新增「常规 > 上下文压缩」，支持自动压缩开关、全局 `reserveTokens` / `keepRecentTokens`、分支摘要 `reserveTokens` / `skipPrompt`，以及按精确 `provider/modelId` 的 `modelOverrides`；写入 Pi 原生 `settings.json`，手动 `/compact` 保留。
 - 批次 60 的单模型覆盖是全局压缩参数的补充：未覆盖模型继续使用全局值；搜索框复用统一 `SelectMenu`，空态复用 `StateBlock`。当前模型选择器的选中项是浅蓝底、蓝字、蓝色内描边，不要改成实心蓝。
 - 批次 60 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、设置读写单测 3 项、demo `?demo=1` 截图检查通过；真实 Electron 已重启。
@@ -154,17 +158,18 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 已提交：批次 37 用户消息级快捷 Fork
 - 已提交：批次 38 Pi 1.0.1 固定内置版本、客户端 Provider 登录与统一 SelectMenu
 - 已提交：批次 60 上下文压缩设置 `db4e91195`
+- 已提交：批次 61 Codemode 设置与 Provider 模型刷新 `ec4dde669`
 - 已提交：另一个 session 的定位条 / 常用模型 / 消息模型显示 bugfix：`fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`
 
 批次 1-60 已提交到本地 `main`；当前本地领先 `origin/main`，用户明确暂不推送。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
 
 ### 下一步
 
-阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态，批次 59 已收口云朵图标和 Provider 登录弹窗嵌套滚动条，批次 60 已实现自动压缩 / 分支摘要 / per-model compaction overrides。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 26 项：
+阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态，批次 59 已收口云朵图标和 Provider 登录弹窗嵌套滚动条，批次 60 已实现自动压缩 / 分支摘要 / per-model compaction overrides，批次 61 已实现 Codemode 设置、运行结果视图和 Provider 模型刷新。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 27 项：
 
-1. Codemode 设置和运行结果视图。
-2. Tool Search / Tool Exposure 设置。
-3. Prompt Templates、Pi Packages、Shell aliases、Telemetry。
+1. Tool Search / Tool Exposure 设置。
+2. Prompt Templates、Pi Packages、Shell aliases、Telemetry。
+3. 自定义 Provider / 虚拟模型 / classifier / image models。
 
 继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
 
@@ -1168,6 +1173,16 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、设置读写单测 3 项、demo `?demo=1` 截图检查通过；真实 Electron 已重启。
 - 同期由另一个 session 提交的 bugfix：`fe973c826` 常用模型设置刷新保留草稿并修复整页跳动、`032505627` 消息按实际模型显示并区分定位条窗口内外、`4909d90dd` 定位条颜色区分刚滚入的刻度、`6592f46d0` 滚入刻度亮黄后回归蓝色。
 
+### 2026-10-06 批次 61：Codemode 设置、运行结果视图与 Provider 模型刷新（已提交）
+
+- 提交：`ec4dde669 feat(desktop): add codemode settings and model refresh`。
+- 设置页新增「常规 > Codemode」：读取/合并写入 Pi 原生 `settings.json` 的 `codemode.mode`（`on` 标准模式、`only` 仅 Codemode）和 `codemode.inlineBudget`（工具目录内联预算，留空使用 Pi 默认值）。
+- 转录流新增 Codemode 专用运行结果视图：展开后显示 JavaScript 脚本、工具调用列表、调用状态、耗时、错误、完整输出路径和脚本结果；历史会话从 `tool result details` 恢复同样信息。
+- 新增 `Braces` 图标并接入工具卡；Codemode 设置复用统一 `SelectMenu`、`SettingsToast`，没有新增第二套设置组件。
+- Provider 新增/删除后，空闲 Agent 自动重连并重新读取 `models.json`，刷新常用模型范围和模型选择器；运行中或压缩中的 Agent 不强制中断，只显示待重连。
+- 另一个 session 已提交 `b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、Codemode 设置读写与详情解析单测 5 项、demo `?demo=1` 截图检查通过；真实 Electron 已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1207,10 +1222,11 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 35. [x] **Cache Warming 设置与决策状态**：批次 58 已实现设置页「缓存预热」和会话统计的最近决策费用；已验收并提交 `c17b64abf`。
 36. [x] **缓存预热云朵图标与弹窗滚动条收口**：批次 59 已验收并提交 `6640bc795`。
 37. [x] **上下文压缩设置**：批次 60 已实现自动压缩、分支摘要和 per-model compaction overrides，提交 `db4e91195`。下一步进入阶段 4 第 26 项 Codemode 设置和运行结果视图。
+38. [x] **Codemode 设置与 Provider 模型刷新**：批次 61 已实现 Codemode `mode / inlineBudget` 设置、转录流运行结果视图，以及 Provider 新增/删除后的 Agent 模型目录刷新，提交 `ec4dde669`。下一步进入阶段 4 第 27 项 Tool Search / Tool Exposure。
 
 ## 提交状态
 
-批次 55-57 已推送到 `origin/main`。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix。当前本地 `main` 领先 `origin/main`，用户明确暂不推送。提交哈希以 `git log -1` 为准。
+批次 55-57 已推送到 `origin/main`。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`。当前本地 `main` 领先 `origin/main`，用户明确暂不推送。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1266,7 +1282,9 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 | 2026-10-06 | 会话界面历史必须用 Pi `get_entries`，不能用 `get_messages` | `get_messages` 是 compact 后的 LLM 上下文，压缩后会丢前缀消息 |
 | 2026-10-06 | 自动压缩 / 分支摘要 / per-model overrides 只写 Pi 原生 `settings.json`，不改 core | Pi 1.0.1 已有配置能力，客户端负责设置入口和校验 |
 | 2026-10-06 | 当前模型选择器的已选中项使用浅蓝底、蓝字、蓝色内描边，不用实心蓝 | 用户明确选择第一次浅蓝选中态，实心蓝过重 |
+| 2026-10-06 | Codemode 只适配 Pi 原生 `codemode.mode / inlineBudget`，运行结果读 `tool_execution_*` 的 details | Pi core 可更新，外壳不复制 Codemode 引擎 |
+| 2026-10-06 | Provider 新增/删除后刷新模型目录，空闲 Agent 自动重连，运行中 Agent 延后生效 | 避免强制中断当前回复，同时不要求用户重启客户端 |
 
 ## 待用户确认
 
-- 暂无，批次 1-60 已验收；本地领先 `origin/main`，暂不推送。
+- 暂无，批次 1-61 已验收；本地领先 `origin/main`，暂不推送。

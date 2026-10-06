@@ -172,7 +172,7 @@
 
 | Pi 1.0.1 功能 | 客户端状态 | 备注 |
 | --- | --- | --- |
-| Codemode | 部分覆盖 | Pi 后端已有，客户端没有设置、脚本状态或结果面板 |
+| Codemode | 已覆盖 | 批次 61 已实现客户端 `codemode.mode / inlineBudget` 设置和运行结果视图；脚本、工具调用、错误、完整输出路径从 `tool_execution_*` details 展示 |
 | Tool Search | 部分覆盖 | Pi 后端已有，客户端只展示工具调用结果 |
 | Extensions | 部分覆盖 | 客户端自带权限、Tavily、review、retry 扩展，没有通用管理 UI |
 | Tool exposure | 缺失 | 没有按工具设置 direct/deferred/codemode/hidden |
@@ -247,13 +247,13 @@
 22. [x] `/share`：批次 51-53 已实现并验收客户端原生分享、隐私确认、独立分享设置、品牌图标、Radius / GitHub CLI 回退和 viewer link。
 23. [x] `/bug` / 客户端诊断包：批次 54 已完成客户端原生诊断导出，收集版本、平台、Agent / Session / Provider / MCP / trust 状态、最近错误、日志路径和可选脱敏 Session JSONL，导出本地 ZIP，不上传。Pi 1.0.1 仍没有原生 `/bug`。
 
-批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`。下一步进入第 26 项 Codemode 设置和运行结果视图。
+批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`，第 26 项 Codemode 已由批次 61 实现并提交 `ec4dde669`。下一步进入第 27 项 Tool Search / Tool Exposure 设置。
 
 ### 阶段 4：高级运行时能力
 
 24. [x] Cache Warming 设置和状态：批次 58 已实现并提交 `c17b64abf`。设置写 Pi 原生 `settings.json`（`cacheWarming` / `showCacheMissNotices`）；会话统计面板显示模式、cache miss penalty、refresh cost、expected savings 和最近决策。Pi 1.0.1 的 RPC 不返回 `session.cacheWarmingStatus`，实时 state / nextWarmAt 无法读取，客户端用 `@codepiddy/cache-warming-extension` 订阅 `cache_warming_decision`，把最近一次决策写入状态文件；没有决策时显示“尚无预热决策”。
 25. [x] 自动压缩、分支摘要、per-model compaction overrides：批次 60 已完成客户端「上下文压缩」设置页，写 Pi 原生 `settings.json` 的 `compaction` / `branchSummary`，支持全局参数和按 `provider/modelId` 的覆盖；手动 `/compact` 保留。分支摘要当前只补配置，实际触发仍由 Pi 分支流程决定。
-26. Codemode 设置和运行结果视图
+26. [x] Codemode 设置和运行结果视图：批次 61 已完成设置页 `codemode.mode / inlineBudget`、转录流脚本与工具调用详情、错误和完整输出路径展示，提交 `ec4dde669`。
 27. Tool Search / Tool Exposure 设置
 28. Prompt Templates
 29. Pi Packages
