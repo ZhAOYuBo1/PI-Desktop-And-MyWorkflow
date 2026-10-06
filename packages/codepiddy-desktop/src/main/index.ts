@@ -28,6 +28,7 @@ import type {
 	AgentContextUsage,
 	AgentInstanceLocator,
 	AgentModelOption,
+	AgentModelRefreshResult,
 	AgentModelScope,
 	AgentModelSelection,
 	AgentRole,
@@ -72,6 +73,7 @@ import {
 	parseArchiveWorkItemInput,
 	parseBoundedText,
 	parseCacheWarmingSettings,
+	parseCodemodeSettings,
 	parseContextCompactionSettings,
 	parseCreateAgentInput,
 	parseCreateWorkItemInput,
@@ -147,6 +149,7 @@ const channels = {
 	deleteWorkItem: "codepiddy:work-item:delete",
 	getAgentModelSelection: "codepiddy:agent:model:get",
 	getAgentModelScope: "codepiddy:agent:model:scope:get",
+	refreshAgentModelScope: "codepiddy:agent:model:scope:refresh",
 	getAgentCommands: "codepiddy:agent:commands:get",
 	getProjectWriteLeaseStatus: "codepiddy:write-lease:get",
 	clearStaleProjectWriteLease: "codepiddy:write-lease:clear-stale",
@@ -189,6 +192,7 @@ const channels = {
 	settingsSaveShell: "codepiddy:settings:shell:save",
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
+	settingsSaveCodemode: "codepiddy:settings:codemode:save",
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
@@ -1080,6 +1084,30 @@ class AgentManager {
 			enabledModelIds: await this.settingsStore.getEnabledModels(),
 			availableModels: selection.availableModels,
 			applyPending: false,
+		};
+	}
+
+	async refreshModelScope(input: AgentInstanceLocator): Promise<AgentModelRefreshResult> {
+		const agent = await this.resolve(input);
+		const process = this.processes.get(agent.id);
+		let applyPending = false;
+		if (process) {
+			const stateResponse = await process.getState();
+			const state = isRecord(stateResponse.data) ? stateResponse.data : {};
+			if (state.isStreaming === true || state.isCompacting === true) {
+				applyPending = true;
+			} else {
+				await this.reconnect(input);
+			}
+		}
+		const selection = await this.getModelSelection(input);
+		return {
+			selection,
+			scope: {
+				enabledModelIds: await this.settingsStore.getEnabledModels(),
+				availableModels: selection.availableModels,
+				applyPending,
+			},
 		};
 	}
 
@@ -2274,6 +2302,9 @@ function registerIpcHandlers(
 	ipcMain.handle(channels.getAgentModelScope, (_event, raw: unknown) =>
 		agentManager.getModelScope(parseAgentLocator(raw)),
 	);
+	ipcMain.handle(channels.refreshAgentModelScope, (_event, raw: unknown) =>
+		agentManager.refreshModelScope(parseAgentLocator(raw)),
+	);
 	ipcMain.handle(channels.getAgentCommands, (_event, raw: unknown) =>
 		agentManager.getCommands(parseAgentLocator(raw)),
 	);
@@ -2509,6 +2540,10 @@ function registerIpcHandlers(
 	});
 	ipcMain.handle(channels.settingsSaveContextCompaction, async (_event, raw: unknown) => {
 		await settingsStore.setContextCompactionSettings(parseContextCompactionSettings(raw));
+		return settingsStore.status();
+	});
+	ipcMain.handle(channels.settingsSaveCodemode, async (_event, raw: unknown) => {
+		await settingsStore.setCodemodeSettings(parseCodemodeSettings(raw));
 		return settingsStore.status();
 	});
 	ipcMain.handle(channels.settingsListMcp, (_event, rawProjectRoot?: unknown) =>

@@ -1,9 +1,10 @@
-import type { AgentInstanceLocator, AgentModelOption, AgentModelScope } from "@codepiddy/shared";
+import type { AgentInstanceLocator, AgentModelOption, AgentModelScope, AgentModelSelection } from "@codepiddy/shared";
 import { ChevronDown, ChevronUp, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProviderIcon } from "./provider-icon.tsx";
 import { SettingsCheckbox } from "./settings-checkbox.tsx";
 import { showSettingsToast } from "./settings-toast-store.ts";
+import { StateBlock } from "./state-block.tsx";
 
 const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.search).has("demo");
 
@@ -25,9 +26,11 @@ function normalizeSelection(selection: string[], allIds: string[]): string[] | n
 export function ModelScopeSettings({
 	activeAgent,
 	refreshToken = 0,
+	onSelectionChange,
 }: {
 	activeAgent: AgentInstanceLocator | null;
 	refreshToken?: number;
+	onSelectionChange?: (locator: AgentInstanceLocator, selection: AgentModelSelection) => void;
 }) {
 	const [scope, setScope] = useState<AgentModelScope | null>(null);
 	const [draft, setDraft] = useState<string[] | null>(null);
@@ -41,7 +44,7 @@ export function ModelScopeSettings({
 	 * 语义，刷新模型目录不应该清空用户正在编辑的选择。
 	 */
 	const load = useCallback(
-		async (options?: { preserveDraft?: boolean }): Promise<void> => {
+		async (options?: { preserveDraft?: boolean; reloadAgent?: boolean }): Promise<void> => {
 			if (refreshToken < 0) return;
 			if (demoMode) {
 				const next = { enabledModelIds: null, availableModels: DEMO_MODELS, applyPending: false };
@@ -56,16 +59,23 @@ export function ModelScopeSettings({
 			}
 			setLoading(true);
 			try {
-				const next = await window.codepiddy.getAgentModelScope(activeAgent);
-				setScope(next);
-				if (!options?.preserveDraft) setDraft(next.enabledModelIds);
+				if (options?.reloadAgent) {
+					const result = await window.codepiddy.refreshAgentModelScope(activeAgent);
+					setScope(result.scope);
+					if (!options.preserveDraft) setDraft(result.scope.enabledModelIds);
+					onSelectionChange?.(activeAgent, result.selection);
+				} else {
+					const next = await window.codepiddy.getAgentModelScope(activeAgent);
+					setScope(next);
+					if (!options?.preserveDraft) setDraft(next.enabledModelIds);
+				}
 			} catch (caught) {
 				showSettingsToast(caught instanceof Error ? caught.message : "读取常用模型失败", "error");
 			} finally {
 				setLoading(false);
 			}
 		},
-		[activeAgent, refreshToken],
+		[activeAgent, onSelectionChange, refreshToken],
 	);
 
 	useEffect(() => {
@@ -188,7 +198,7 @@ export function ModelScopeSettings({
 						aria-label="刷新常用模型"
 						title="刷新常用模型"
 						disabled={loading || saving}
-						onClick={() => void load({ preserveDraft: true })}
+						onClick={() => void load({ preserveDraft: true, reloadAgent: true })}
 					>
 						<RefreshCw size={14} strokeWidth={2} />
 					</button>
@@ -214,6 +224,12 @@ export function ModelScopeSettings({
 					</button>
 				</div>
 			</div>
+
+			{scope?.applyPending ? (
+				<StateBlock className="model-scope-pending" tone="warning" title="模型目录待重连" compact>
+					当前 Agent 正在运行，停止或重新连接后会重新读取最新模型目录。
+				</StateBlock>
+			) : null}
 
 			<div className="model-scope-list">
 				{visibleProviders.map((provider) => {

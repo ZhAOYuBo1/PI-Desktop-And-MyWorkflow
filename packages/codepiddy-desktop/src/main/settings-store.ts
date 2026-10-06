@@ -7,6 +7,8 @@ import type {
 	BranchSummarySettings,
 	CacheWarmingMode,
 	CacheWarmingSettings,
+	CodemodeMode,
+	CodemodeSettings,
 	CompactionModelOverride,
 	CompactionSettings,
 	ContextCompactionSettings,
@@ -73,6 +75,7 @@ const DEFAULT_BRANCH_SUMMARY_SETTINGS: BranchSummarySettings = {
 	reserveTokens: 16384,
 	skipPrompt: false,
 };
+const DEFAULT_CODEMODE_MODE: CodemodeMode = "on";
 
 function isCacheWarmingMode(value: unknown): value is CacheWarmingMode {
 	return value === "off" || value === "streaming" || value === "idle";
@@ -121,6 +124,18 @@ function normalizeBranchSummarySettings(value: unknown): BranchSummarySettings {
 			? record.reserveTokens
 			: DEFAULT_BRANCH_SUMMARY_SETTINGS.reserveTokens,
 		skipPrompt: record.skipPrompt === true,
+	};
+}
+
+function isCodemodeMode(value: unknown): value is CodemodeMode {
+	return value === "on" || value === "only";
+}
+
+function normalizeCodemodeSettings(value: unknown): CodemodeSettings {
+	const record = isRecord(value) ? value : {};
+	return {
+		mode: isCodemodeMode(record.mode) ? record.mode : DEFAULT_CODEMODE_MODE,
+		inlineBudget: isNonNegativeSafeInteger(record.inlineBudget) ? record.inlineBudget : null,
 	};
 }
 
@@ -526,6 +541,41 @@ export class AppSettingsStore {
 			compaction: nextCompaction,
 			branchSummary: nextBranchSummary,
 		});
+	}
+
+	/**
+	 * 读写 Pi 原生 settings.json 的 codemode.mode / codemode.inlineBudget。
+	 *
+	 * mode=on 保留常规工具，同时允许 Codemode 作为批量调用入口；mode=only 会让 Pi
+	 * 隐藏可直接调用的工具，由 Codemode 脚本统一调用。inlineBudget 控制系统提示里
+	 * 保留多少工具描述，不是脚本运行结果的截断阈值。
+	 */
+	async getCodemodeSettings(): Promise<CodemodeSettings> {
+		let settings: Record<string, unknown> = {};
+		try {
+			settings = await this.readJsonRecord(this.piSettingsPath);
+		} catch {
+			// 配置损坏时设置页仍可打开，写入时会正常报错。
+		}
+		return normalizeCodemodeSettings(settings.codemode);
+	}
+
+	async setCodemodeSettings(input: CodemodeSettings): Promise<void> {
+		if (!isCodemodeMode(input.mode)) throw new Error("Codemode 模式无效");
+		if (input.inlineBudget !== null) {
+			assertNonNegativeSafeInteger(input.inlineBudget, "Codemode 工具目录预算");
+		}
+		const settings = await this.readJsonRecord(this.piSettingsPath);
+		const current = isRecord(settings.codemode) ? settings.codemode : {};
+		const next: Record<string, unknown> = { ...current };
+		if (input.mode === DEFAULT_CODEMODE_MODE) delete next.mode;
+		else next.mode = input.mode;
+		if (input.inlineBudget === null) delete next.inlineBudget;
+		else next.inlineBudget = input.inlineBudget;
+
+		if (Object.keys(next).length === 0) delete settings.codemode;
+		else settings.codemode = next;
+		await this.writeJsonRecord(this.piSettingsPath, settings);
 	}
 
 	async setShellPath(value: string): Promise<SettingsStatus> {
@@ -1059,6 +1109,7 @@ export class AppSettingsStore {
 			shellPath: await this.getShellPath(),
 			cacheWarming: await this.getCacheWarmingSettings(),
 			contextCompaction: await this.getContextCompactionSettings(),
+			codemode: await this.getCodemodeSettings(),
 		};
 	}
 

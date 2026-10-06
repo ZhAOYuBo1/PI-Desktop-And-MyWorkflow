@@ -139,9 +139,11 @@ function draftFrom(provider: ProviderSummary): Draft {
 
 export function ProviderSettings({
 	onOpenAuth,
+	onProvidersChanged,
 	refreshToken = 0,
 }: {
 	onOpenAuth?: (mode: "login" | "logout", providerId?: string) => void;
+	onProvidersChanged?: () => void;
 	refreshToken?: number;
 }) {
 	const [providers, setProviders] = useState<ProviderSummary[] | null>(demoMode ? DEMO_PROVIDERS : null);
@@ -252,6 +254,7 @@ export function ProviderSettings({
 			]);
 			setDraft(null);
 			setNotice("Provider 已保存。");
+			onProvidersChanged?.();
 			return;
 		}
 		if (!("codepiddy" in window)) return;
@@ -261,6 +264,7 @@ export function ProviderSettings({
 			setDraft(null);
 			setNotice("Provider 已保存。");
 			setError(null);
+			onProvidersChanged?.();
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存 Provider 失败");
 		} finally {
@@ -272,6 +276,7 @@ export function ProviderSettings({
 		if (demoMode) {
 			setProviders((current) => (current ?? []).filter((provider) => provider.id !== id));
 			setNotice("Provider 已删除。");
+			onProvidersChanged?.();
 			return;
 		}
 		if (!("codepiddy" in window)) return;
@@ -280,6 +285,7 @@ export function ProviderSettings({
 			setProviders(await window.codepiddy.deleteProvider(id));
 			setNotice("Provider 已删除。");
 			setError(null);
+			onProvidersChanged?.();
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "删除 Provider 失败");
 		} finally {

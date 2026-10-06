@@ -1,11 +1,13 @@
 import type {
 	AgentClientEvent,
 	AgentInstanceLocator,
+	AgentModelRefreshResult,
 	ArchiveWorkItemInput,
 	AuthClientEvent,
 	AuthMethodType,
 	AuthProviderSummary,
 	CacheWarmingSettings,
+	CodemodeSettings,
 	CodePIddyClientApi,
 	ContextCompactionSettings,
 	CreateAgentInput,
@@ -74,6 +76,7 @@ const channels = {
 	deleteWorkItem: "codepiddy:work-item:delete",
 	getAgentModelSelection: "codepiddy:agent:model:get",
 	getAgentModelScope: "codepiddy:agent:model:scope:get",
+	refreshAgentModelScope: "codepiddy:agent:model:scope:refresh",
 	getAgentCommands: "codepiddy:agent:commands:get",
 	getProjectWriteLeaseStatus: "codepiddy:write-lease:get",
 	clearStaleProjectWriteLease: "codepiddy:write-lease:clear-stale",
@@ -116,6 +119,7 @@ const channels = {
 	settingsSaveShell: "codepiddy:settings:shell:save",
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
+	settingsSaveCodemode: "codepiddy:settings:codemode:save",
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
@@ -173,6 +177,8 @@ const api: CodePIddyClientApi = {
 	saveAgentUiState: (state) => ipcRenderer.invoke(channels.saveAgentUiState, state),
 	getAgentModelSelection: (input: AgentInstanceLocator) => ipcRenderer.invoke(channels.getAgentModelSelection, input),
 	getAgentModelScope: (input: AgentInstanceLocator) => ipcRenderer.invoke(channels.getAgentModelScope, input),
+	refreshAgentModelScope: (input: AgentInstanceLocator): Promise<AgentModelRefreshResult> =>
+		ipcRenderer.invoke(channels.refreshAgentModelScope, input),
 	getAgentCommands: (input: AgentInstanceLocator) => ipcRenderer.invoke(channels.getAgentCommands, input),
 	getProjectWriteLeaseStatus: (projectId: string) =>
 		ipcRenderer.invoke(channels.getProjectWriteLeaseStatus, projectId),
@@ -257,6 +263,7 @@ const api: CodePIddyClientApi = {
 		ipcRenderer.invoke(channels.settingsSaveCacheWarming, input),
 	saveContextCompactionSettings: (input: ContextCompactionSettings) =>
 		ipcRenderer.invoke(channels.settingsSaveContextCompaction, input),
+	saveCodemodeSettings: (input: CodemodeSettings) => ipcRenderer.invoke(channels.settingsSaveCodemode, input),
 	listMcpServers: (projectRoot?: string) => ipcRenderer.invoke(channels.settingsListMcp, projectRoot),
 	saveMcpServer: (input: McpServerInput) => ipcRenderer.invoke(channels.settingsSaveMcp, input),
 	deleteMcpServer: (name: string) => ipcRenderer.invoke(channels.settingsDeleteMcp, name),

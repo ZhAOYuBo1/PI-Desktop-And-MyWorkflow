@@ -47,6 +47,7 @@ import {
 	useState,
 } from "react";
 import { AppIcon, type AppIconName } from "./components/app-icon.tsx";
+import { CodemodeSettingsPanel } from "./components/CodemodeSettingsPanel.tsx";
 import { CompactionSettingsPanel } from "./components/CompactionSettingsPanel.tsx";
 import { DiagnosticsSettings } from "./components/DiagnosticsSettings.tsx";
 import { FileMentionMenu } from "./components/FileMentionMenu.tsx";
@@ -215,6 +216,7 @@ type TranscriptItem =
 			name: string;
 			args: string;
 			text: string;
+			details?: unknown;
 			status: "running" | "completed";
 			isError: boolean;
 	  };
@@ -430,6 +432,10 @@ function extractToolResultPatch(result: unknown): string | null {
 	return isRecord(result) ? patchFromDetails(result.details) : null;
 }
 
+function extractToolResultDetails(result: unknown): unknown {
+	return isRecord(result) ? result.details : undefined;
+}
+
 function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 	const items: TranscriptItem[] = [];
 	for (const [index, message] of messages.entries()) {
@@ -447,6 +453,7 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 				name: typeof message.toolName === "string" ? message.toolName : "tool",
 				args: "",
 				text: patch || text,
+				details: message.details,
 				status: "completed",
 				isError: message.isError === true,
 				...(createdAt ? { completedAt: Date.parse(createdAt) } : {}),
@@ -1312,6 +1319,7 @@ const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.sear
 type SettingsSectionId =
 	| "runtime"
 	| "shell"
+	| "codemode"
 	| "cache-warming"
 	| "compaction"
 	| "diagnostics"
@@ -1329,6 +1337,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 		items: [
 			{ id: "runtime", label: "Pi 运行时", icon: "settings" },
 			{ id: "shell", label: "Shell", icon: "terminal" },
+			{ id: "codemode", label: "Codemode", icon: "braces" },
 			{ id: "cache-warming", label: "缓存预热", icon: "cloud" },
 			{ id: "compaction", label: "上下文压缩", icon: "gauge" },
 			{ id: "diagnostics", label: "诊断", icon: "bug" },
@@ -1754,6 +1763,36 @@ export function App() {
 							isError: false,
 						},
 						{
+							id: "demo-tool-codemode",
+							type: "tool",
+							name: "codemode",
+							args: JSON.stringify({
+								code: 'const files = await tools.find({ pattern: "**/*.ts" });\nconst target = files.split("\\n").find((file) => file.includes("WorkPanel"));\nreturn tools.read({ path: target });',
+							}),
+							text: "Tool calls made:\n- find (ok, 24ms)\n- read (ok, 11ms)\n\nexport const WorkPanel = memo(function WorkPanel({ projectRoot, toolItems }) { ... });",
+							details: {
+								calls: [
+									{
+										id: "demo-codemode-find",
+										name: "find",
+										args: '{"pattern":"**/*.ts"}',
+										status: "ok",
+										durationMs: 24,
+									},
+									{
+										id: "demo-codemode-read",
+										name: "read",
+										args: '{"path":"packages/codepiddy-desktop/src/renderer/components/WorkPanel.tsx"}',
+										status: "ok",
+										durationMs: 11,
+									},
+								],
+								fullOutputPath: "C:\\Users\\demo\\AppData\\Local\\Temp\\pi-codemode-demo.txt",
+							},
+							status: "completed",
+							isError: false,
+						},
+						{
 							id: "demo-tool-edit-work-panel",
 							type: "tool",
 							name: "edit",
@@ -2018,9 +2057,9 @@ export function App() {
 		if (activeAgentLocator) lastActiveAgentLocatorRef.current = activeAgentLocator;
 	}, [activeAgentLocator]);
 
-	const refreshAfterAuthChange = useCallback(async (action: "login" | "logout"): Promise<void> => {
+	const refreshAfterProviderChange = useCallback(async (label: string): Promise<void> => {
 		setProviderSettingsRefreshToken((current) => current + 1);
-		const label = action === "login" ? "Provider 登录成功" : "已退出该 Provider";
+		if (demoMode || !("codepiddy" in window)) return;
 		const locator = lastActiveAgentLocatorRef.current;
 		if (!locator) {
 			setSessionNotice(label);
@@ -2036,19 +2075,34 @@ export function App() {
 			return;
 		}
 		try {
-			await window.codepiddy.reconnectAgent(locator);
-			const [modelSelection, snapshot] = await Promise.all([
-				window.codepiddy.getAgentModelSelection(locator),
-				window.codepiddy.getAgentSessionSnapshot(locator),
-			]);
-			setModelSelections((current) => ({ ...current, [locator.agentInstanceId]: modelSelection }));
+			const refreshed = await window.codepiddy.refreshAgentModelScope(locator);
+			const snapshot = await window.codepiddy.getAgentSessionSnapshot(locator);
+			setModelSelections((current) => ({ ...current, [locator.agentInstanceId]: refreshed.selection }));
 			setAgentSessionSnapshots((current) => ({ ...current, [locator.agentInstanceId]: snapshot }));
-			setSessionNotice(`${label}；当前 Agent 已重新连接`);
+			setSessionNotice(
+				refreshed.scope.applyPending
+					? `${label}；当前 Agent 正在运行，停止或重新连接后生效`
+					: `${label}；当前 Agent 已重新连接`,
+			);
 		} catch (caught) {
-			setError(caught instanceof Error ? caught.message : "刷新 Agent 凭据失败");
+			setError(caught instanceof Error ? caught.message : "刷新 Agent 配置失败");
 			setSessionNotice(`${label}；当前 Agent 刷新失败`);
 		}
 	}, []);
+
+	const refreshAfterAuthChange = useCallback(
+		async (action: "login" | "logout"): Promise<void> => {
+			await refreshAfterProviderChange(action === "login" ? "Provider 登录成功" : "已退出该 Provider");
+		},
+		[refreshAfterProviderChange],
+	);
+
+	const handleModelScopeSelectionChange = useCallback(
+		(locator: AgentInstanceLocator, selection: AgentModelSelection): void => {
+			setModelSelections((current) => ({ ...current, [locator.agentInstanceId]: selection }));
+		},
+		[],
+	);
 
 	/*
 	 * 输入框跟随内容增高。
@@ -2528,7 +2582,11 @@ export function App() {
 				updateTranscript(agentInstanceId, (items) =>
 					items.map((item) =>
 						item.id === toolCallId && item.type === "tool"
-							? { ...item, text: extractMessageText(event.partialResult) || item.text || "正在执行…" }
+							? {
+									...item,
+									text: extractMessageText(event.partialResult) || item.text || "正在执行…",
+									details: extractToolResultDetails(event.partialResult) ?? item.details,
+								}
 							: item,
 					),
 				);
@@ -2558,6 +2616,7 @@ export function App() {
 									text:
 										extractToolResultPatch(event.result) ??
 										(extractMessageText(event.result) || item.text || "已完成"),
+									details: extractToolResultDetails(event.result) ?? item.details,
 									isError: event.isError === true,
 									completedAt: Date.now(),
 								}
@@ -5194,6 +5253,12 @@ export function App() {
 							</div>
 							<small>修改后，新启动或重置后的 Agent 才会使用新路径。</small>
 						</section>
+						<div className="settings-section-slot" hidden={settingsSection !== "codemode"}>
+							<CodemodeSettingsPanel
+								settings={settingsStatus?.codemode ?? null}
+								onStatusChange={setSettingsStatus}
+							/>
+						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "diagnostics"}>
 							<DiagnosticsSettings
 								projectRoot={project?.rootPath ?? null}
@@ -5269,10 +5334,12 @@ export function App() {
 							<ProviderSettings
 								refreshToken={providerSettingsRefreshToken}
 								onOpenAuth={(mode, providerId) => void openAuthDialog(mode, providerId, "provider")}
+								onProvidersChanged={() => void refreshAfterProviderChange("Provider 配置已更新")}
 							/>
 							<ModelScopeSettings
 								activeAgent={activeAgentLocator ?? lastActiveAgentLocatorRef.current}
 								refreshToken={providerSettingsRefreshToken}
+								onSelectionChange={handleModelScopeSelectionChange}
 							/>
 						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "mcp"}>

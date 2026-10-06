@@ -1,4 +1,5 @@
 import {
+	Braces,
 	ChevronRight,
 	CircleCheck,
 	CircleX,
@@ -23,6 +24,7 @@ import { memo } from "react";
 /** 工具卡图标同样走 lucide-react，和应用图标共用一套几何语言。 */
 export type ToolIconName =
 	| "eye"
+	| "braces"
 	| "terminal"
 	| "edit"
 	| "file-plus"
@@ -43,6 +45,7 @@ export type ToolIconName =
 export function toolIconForTool(toolName: string): ToolIconName {
 	const name = toolName.toLowerCase();
 	if (name === "read") return "eye";
+	if (name === "codemode") return "braces";
 	if (name === "bash" || name === "powershell") return "terminal";
 	if (name === "edit") return "edit";
 	if (name === "write") return "file-plus";
@@ -62,6 +65,7 @@ export function toolIconForTool(toolName: string): ToolIconName {
 
 const TOOL_ICONS: Record<ToolIconName, LucideIcon> = {
 	eye: Eye,
+	braces: Braces,
 	terminal: Terminal,
 	edit: Pencil,
 	"file-plus": FilePlus,

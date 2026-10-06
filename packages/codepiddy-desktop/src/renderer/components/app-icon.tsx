@@ -2,6 +2,7 @@ import {
 	Archive,
 	ArchiveRestore,
 	ArrowUp,
+	Braces,
 	Bug,
 	ChevronRight,
 	CircleCheck,
@@ -47,6 +48,7 @@ import {
 export type AppIconName =
 	| "archive"
 	| "arrow-up"
+	| "braces"
 	| "branch"
 	| "bug"
 	| "chevron"
@@ -87,6 +89,7 @@ export type AppIconName =
 const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	archive: Archive,
 	"arrow-up": ArrowUp,
+	braces: Braces,
 	branch: GitBranch,
 	bug: Bug,
 	chevron: ChevronRight,

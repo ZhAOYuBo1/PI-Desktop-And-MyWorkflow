@@ -256,6 +256,15 @@ export interface ContextCompactionSettings {
 	branchSummary: BranchSummarySettings;
 }
 
+export const CODEMODE_MODES = ["on", "only"] as const;
+export type CodemodeMode = (typeof CODEMODE_MODES)[number];
+
+export interface CodemodeSettings {
+	mode: CodemodeMode;
+	/** null 表示使用 Pi 的默认工具目录预算。 */
+	inlineBudget: number | null;
+}
+
 export interface CacheWarmingDecisionSummary {
 	warmCost: number;
 	missCost: number;
@@ -420,6 +429,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	saveShellPath(shellPath: string): Promise<SettingsStatus>;
 	saveCacheWarmingSettings(input: CacheWarmingSettings): Promise<SettingsStatus>;
 	saveContextCompactionSettings(input: ContextCompactionSettings): Promise<SettingsStatus>;
+	saveCodemodeSettings(input: CodemodeSettings): Promise<SettingsStatus>;
 	listMcpServers(projectRoot?: string): Promise<McpServerSummary[]>;
 	saveMcpServer(input: McpServerInput): Promise<McpServerSummary[]>;
 	deleteMcpServer(name: string): Promise<McpServerSummary[]>;
@@ -447,6 +457,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	openExternalUrl(url: string): Promise<void>;
 	getAgentModelSelection(input: AgentInstanceLocator): Promise<AgentModelSelection>;
 	getAgentModelScope(input: AgentInstanceLocator): Promise<AgentModelScope>;
+	refreshAgentModelScope(input: AgentInstanceLocator): Promise<AgentModelRefreshResult>;
 	getAgentCommands(input: AgentInstanceLocator): Promise<AgentCommandOption[]>;
 	setAgentModel(input: SetAgentModelInput): Promise<AgentModelSelection>;
 	setAgentModelScope(input: SetAgentModelScopeInput): Promise<AgentModelScope>;
@@ -551,6 +562,7 @@ export interface SettingsStatus {
 	shellPath: string | null;
 	cacheWarming: CacheWarmingSettings;
 	contextCompaction: ContextCompactionSettings;
+	codemode: CodemodeSettings;
 }
 
 export type McpTransport = "stdio" | "http";
@@ -965,6 +977,11 @@ export interface AgentModelScope {
 	enabledModelIds: string[] | null;
 	availableModels: AgentModelOption[];
 	applyPending: boolean;
+}
+
+export interface AgentModelRefreshResult {
+	scope: AgentModelScope;
+	selection: AgentModelSelection;
 }
 
 export interface SetAgentModelInput extends AgentInstanceLocator {

@@ -6,6 +6,7 @@ import type {
 	AgentUiState,
 	ArchiveWorkItemInput,
 	CacheWarmingSettings,
+	CodemodeSettings,
 	CompactionModelOverride,
 	ContextCompactionSettings,
 	CreateAgentInput,
@@ -721,5 +722,16 @@ export function parseContextCompactionSettings(value: unknown): ContextCompactio
 			reserveTokens: nonNegativeSafeInteger(branchSummaryInput.reserveTokens, "分支摘要预留 Token"),
 			skipPrompt: booleanValue(branchSummaryInput.skipPrompt, "分支摘要确认开关"),
 		},
+	};
+}
+
+export function parseCodemodeSettings(value: unknown): CodemodeSettings {
+	const input = record(value, "Codemode 设置");
+	if (input.mode !== "on" && input.mode !== "only") throw new Error("Codemode 模式无效");
+	const inlineBudget =
+		input.inlineBudget === null ? null : nonNegativeInteger(input.inlineBudget, "Codemode 工具目录预算");
+	return {
+		mode: input.mode,
+		inlineBudget,
 	};
 }

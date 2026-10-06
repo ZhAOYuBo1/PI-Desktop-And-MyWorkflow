@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { CodemodeDetailsView } from "./CodemodeDetailsView.tsx";
 import { formatElapsed } from "./stream-stats.ts";
 import { resolveToolExpanded, type ToolPinMode, toggleToolPin } from "./tool-collapse.ts";
 import { classifyToolFailure, toolFailureGuidance, toolFailureLabel } from "./tool-failure-utils.ts";
@@ -9,6 +10,7 @@ export interface ToolCallCardItem {
 	name: string;
 	args: string;
 	text: string;
+	details?: unknown;
 	status: "running" | "completed";
 	isError: boolean;
 	startedAt?: number;
@@ -86,7 +88,10 @@ export const ToolCallCard = memo(function ToolCallCard({ item }: { item: ToolCal
 			</button>
 			{expanded ? (
 				<div className="tool-details">
-					{item.args ? (
+					{item.name.toLowerCase() === "codemode" ? (
+						<CodemodeDetailsView args={item.args} details={item.details} />
+					) : null}
+					{item.args && item.name.toLowerCase() !== "codemode" ? (
 						<>
 							<small>参数</small>
 							<pre>{item.args}</pre>
