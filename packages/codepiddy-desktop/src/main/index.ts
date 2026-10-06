@@ -1129,6 +1129,7 @@ class AgentManager {
 	async activate(input: AgentInstanceLocator): Promise<void> {
 		const agent = await this.resolve(input);
 		const process = await this.ensureProcess(agent);
+		await this.persistCurrentSession(agent, process);
 		this.broadcast({
 			agentInstanceId: agent.id,
 			projectId: agent.projectId,
@@ -1165,6 +1166,7 @@ class AgentManager {
 		const agent = await this.resolve(input);
 		const process = await this.ensureProcess(agent);
 		await process.cloneCurrentSession();
+		await this.persistCurrentSession(agent, process);
 		this.broadcast({
 			agentInstanceId: agent.id,
 			projectId: agent.projectId,
@@ -1249,12 +1251,7 @@ class AgentManager {
 		const process = await this.ensureProcess(agent);
 		const result = await process.newSession();
 		if (!result.cancelled) {
-			const stateResponse = await process.getState();
-			const state = isRecord(stateResponse.data) ? stateResponse.data : {};
-			await writeSelectedSessionId(
-				agent.sessionDirectory,
-				typeof state.sessionId === "string" ? state.sessionId : null,
-			);
+			await this.persistCurrentSession(agent, process);
 			this.broadcast({
 				agentInstanceId: agent.id,
 				projectId: agent.projectId,
@@ -1272,7 +1269,7 @@ class AgentManager {
 		const sessionFile = await this.resolveSessionFile(agent, input.sessionId);
 		const result = await process.switchSession(sessionFile);
 		if (!result.cancelled) {
-			await writeSelectedSessionId(agent.sessionDirectory, input.sessionId);
+			await this.persistCurrentSession(agent, process);
 			this.broadcast({
 				agentInstanceId: agent.id,
 				projectId: agent.projectId,
@@ -1309,7 +1306,7 @@ class AgentManager {
 				if (imported.copied) await rm(imported.destinationPath, { force: true });
 				return null;
 			}
-			await writeSelectedSessionId(agent.sessionDirectory, imported.sessionId);
+			await this.persistCurrentSession(agent, process);
 			this.broadcast({
 				agentInstanceId: agent.id,
 				projectId: agent.projectId,
@@ -1402,6 +1399,7 @@ class AgentManager {
 		const process = await this.ensureProcess(agent);
 		const result = await process.forkAt(input.entryId);
 		if (!result.cancelled) {
+			await this.persistCurrentSession(agent, process);
 			this.broadcast({
 				agentInstanceId: agent.id,
 				projectId: agent.projectId,
@@ -1583,7 +1581,8 @@ class AgentManager {
 		if (current) await current.stop();
 		if (agent.role !== "requirement-analysis") await this.writeLeases.release(agent.projectId, agent.id);
 		try {
-			await this.ensureProcess(agent);
+			const process = await this.ensureProcess(agent);
+			await this.persistCurrentSession(agent, process);
 			await this.registry.setStatus(agent, "idle");
 			this.broadcast({
 				agentInstanceId: agent.id,
@@ -1621,6 +1620,7 @@ class AgentManager {
 		}
 		if (input.name === "clone") {
 			await process.cloneCurrentSession();
+			await this.persistCurrentSession(agent, process);
 			await broadcastHistory();
 			return { message: "已克隆当前 Pi Session。", sessionReset: true };
 		}
@@ -1644,6 +1644,7 @@ class AgentManager {
 		if (input.name === "new") {
 			const result = await process.newSession();
 			if (result.cancelled) return { message: "创建新 Session 已取消。" };
+			await this.persistCurrentSession(agent, process);
 			await broadcastHistory();
 			return { message: "已创建新的 Pi Session。", sessionReset: true };
 		}
@@ -1660,6 +1661,7 @@ class AgentManager {
 			}
 			const result = await process.switchSession(sessionPath);
 			if (result.cancelled) return { message: "恢复 Session 已取消。" };
+			await this.persistCurrentSession(agent, process);
 			await broadcastHistory();
 			return {
 				message: `已恢复 Pi Session：${sessionPath}`,
@@ -1745,6 +1747,15 @@ class AgentManager {
 		return this.processStarts.run(agent.id, () => this.startProcess(agent));
 	}
 
+	private async persistCurrentSession(agent: StoredAgentInstance, process: PiRpcProcess): Promise<void> {
+		const stateResponse = await process.getState();
+		const state = isRecord(stateResponse.data) ? stateResponse.data : {};
+		const sessionId = typeof state.sessionId === "string" ? state.sessionId : "";
+		const sessionFile = typeof state.sessionFile === "string" ? state.sessionFile : "";
+		const header = sessionId && sessionFile ? await readSessionHeader(sessionFile).catch(() => null) : null;
+		await writeSelectedSessionId(agent.sessionDirectory, header?.sessionId === sessionId ? sessionId : null);
+	}
+
 	private async startProcess(agent: StoredAgentInstance): Promise<PiRpcProcess> {
 		const packaged = app.isPackaged;
 		const updatedRuntime = this.piRuntimeUpdater.getLaunchRuntime();
@@ -1772,6 +1783,12 @@ class AgentManager {
 			roleSkillAssignments,
 		);
 		const selectedSessionId = await readSelectedSessionId(agent.sessionDirectory);
+		const selectedSessionFile = selectedSessionId
+			? await findSessionFileById(agent.sessionDirectory, selectedSessionId)
+			: null;
+		if (selectedSessionId && !selectedSessionFile) {
+			await writeSelectedSessionId(agent.sessionDirectory, null);
+		}
 		const rpc = new PiRpcProcess({
 			command: nodeExecutable,
 			cwd: agent.projectRoot,
@@ -1814,7 +1831,7 @@ class AgentManager {
 				"--no-extensions",
 				"--session-dir",
 				agent.sessionDirectory,
-				...(selectedSessionId ? ["--session", selectedSessionId] : ["--continue"]),
+				...(selectedSessionFile && selectedSessionId ? ["--session", selectedSessionId] : ["--continue"]),
 				"--extension",
 				"builtin:codemode",
 				"--extension",
