@@ -1,0 +1,111 @@
+.session-create-form {
+  display: grid;
+  gap: var(--cp-space-md);
+  padding: var(--cp-space-md) var(--cp-space-lg);
+  margin-inline: calc(-1 * var(--cp-space-lg));
+  border-radius: var(--cp-radius-lg);
+  background: var(--cp-surface-secondary);
+}
+
+.session-create-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--cp-space-md);
+}
+
+.session-create-form .session-create-field {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  gap: var(--cp-space-xs);
+}
+
+.session-create-field > span {
+  color: var(--cp-ink-secondary);
+  font-size: 11.5px;
+  font-weight: 560;
+}
+
+.session-create-name-input {
+  width: 100%;
+  height: 30px;
+  align-self: start;
+  padding: 0 var(--cp-space-md);
+  border: 0;
+  border-radius: var(--cp-radius-sm);
+  outline: none;
+  background: var(--cp-surface-inset);
+  color: var(--cp-ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.session-create-field .select-menu {
+  width: 100%;
+}
+
+.session-create-form .select-menu-list {
+  position: static;
+  margin-top: var(--cp-space-xs);
+}
+
+.session-create-form .select-menu-search-trigger input,
+.session-create-form .select-menu-search-trigger input:focus {
+  width: auto;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.session-create-name-input::placeholder {
+  color: var(--cp-ink-muted);
+}
+
+.session-create-name-input:focus-visible {
+  background: var(--cp-surface);
+  box-shadow: 0 0 0 2px var(--cp-accent-ring);
+}
+
+.session-create-name-input:disabled {
+  color: var(--cp-ink-faint);
+  cursor: default;
+}
+
+.session-create-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--cp-space-sm);
+}
+
+.session-create-error {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  color: var(--cp-error);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .session-create-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .session-create-actions {
+    flex-wrap: wrap;
+  }
+
+  .session-create-error {
+    width: 100%;
+    margin-right: 0;
+    white-space: normal;
+  }
+}

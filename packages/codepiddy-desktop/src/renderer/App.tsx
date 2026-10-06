@@ -57,6 +57,7 @@ import { ModalShell } from "./components/modal-shell.tsx";
 import { ProjectTrustSettings } from "./components/ProjectTrustSettings.tsx";
 import { ProviderSettings } from "./components/ProviderSettings.tsx";
 import { ProviderIcon } from "./components/provider-icon.tsx";
+import { type SessionCreateDraft, SessionCreateForm } from "./components/SessionCreateForm.tsx";
 import { SessionShareDialog } from "./components/SessionShareDialog.tsx";
 import { SessionStatsDialog } from "./components/SessionStatsDialog.tsx";
 import { ShareSettings } from "./components/ShareSettings.tsx";
@@ -1670,6 +1671,8 @@ export function App() {
 	const [agentActionsOpen, setAgentActionsOpen] = useState<string | null>(null);
 	const [sessionPanel, setSessionPanel] = useState<SessionPanelState | null>(null);
 	const [sessionPanelLoading, setSessionPanelLoading] = useState(false);
+	const [sessionCreateDraft, setSessionCreateDraft] = useState<SessionCreateDraft | null>(null);
+	const [sessionCreateError, setSessionCreateError] = useState<string | null>(null);
 	const [sessionStatsDialog, setSessionStatsDialog] = useState<SessionStatsDialogState | null>(null);
 	const [sessionStats, setSessionStats] = useState<AgentSessionStats | null>(null);
 	const [sessionStatsLoading, setSessionStatsLoading] = useState(false);
@@ -2704,6 +2707,12 @@ export function App() {
 		if (!("codepiddy" in window)) return;
 		return window.codepiddy.onAgentEvent(handleAgentEvent);
 	}, [handleAgentEvent]);
+
+	useEffect(() => {
+		if (sessionPanel) return;
+		setSessionCreateDraft(null);
+		setSessionCreateError(null);
+	}, [sessionPanel]);
 
 	useEffect(() => {
 		if (!("codepiddy" in window) || demoMode) return;
@@ -4052,45 +4061,159 @@ export function App() {
 		}
 	}
 
-	async function createAgentSession(): Promise<void> {
+	async function openAgentSessionCreate(): Promise<void> {
 		if (!sessionPanel) return;
+		const agentInstanceId = sessionPanel.agentInstanceId;
+		const locator = {
+			agentInstanceId,
+			projectId: sessionPanel.projectId,
+			workItemId: sessionPanel.workItemId,
+			role: sessionPanel.role,
+		};
+		let selection = modelSelections[agentInstanceId];
+		setSessionCreateError(null);
+		if (!selection && !demoMode && "codepiddy" in window) {
+			setSessionPanelLoading(true);
+			try {
+				selection = await window.codepiddy.getAgentModelSelection(locator);
+				setModelSelections((current) => ({ ...current, [agentInstanceId]: selection }));
+			} catch (caught) {
+				setSessionCreateError(clientErrorMessage(caught, "读取模型失败"));
+			} finally {
+				setSessionPanelLoading(false);
+			}
+		}
+		const models = selection?.availableModels ?? [];
+		const modelIndex = Math.max(
+			0,
+			models.findIndex((model) => model.provider === selection?.model.provider && model.id === selection?.model.id),
+		);
+		setSessionCreateDraft({ name: "", modelIndex });
+	}
+
+	function closeAgentSessionCreate(): void {
+		setSessionCreateDraft(null);
+		setSessionCreateError(null);
+	}
+
+	async function createAgentSession(): Promise<void> {
+		if (!sessionPanel || !sessionCreateDraft) return;
+		const agentInstanceId = sessionPanel.agentInstanceId;
+		const locator = {
+			agentInstanceId,
+			projectId: sessionPanel.projectId,
+			workItemId: sessionPanel.workItemId,
+			role: sessionPanel.role,
+		};
+		const selection = modelSelections[agentInstanceId];
+		const model = selection?.availableModels[sessionCreateDraft.modelIndex];
+		if (!model) {
+			setSessionCreateError("请选择模型");
+			return;
+		}
+		const name = sessionCreateDraft.name.trim();
+		setSessionCreateError(null);
 		if (demoMode) {
+			setSessionPanel((current) => {
+				if (!current) return current;
+				const sessionId = `demo-session-${current.sessions.length + 1}`;
+				return {
+					...current,
+					snapshot: {
+						...current.snapshot,
+						sessionId,
+						sessionName: name || undefined,
+						messageCount: 0,
+						pendingMessageCount: 0,
+						isStreaming: false,
+						isCompacting: false,
+						leafId: null,
+						nodes: [],
+					},
+					sessions: [
+						{
+							sessionId,
+							name: name || null,
+							preview: "新会话",
+							messageCount: 0,
+							createdAt: new Date().toISOString(),
+							updatedAt: new Date().toISOString(),
+							isCurrent: true,
+						},
+						...current.sessions.map((session) => ({ ...session, isCurrent: false })),
+					],
+				};
+			});
+			if (selection) {
+				setModelSelections((current) => ({ ...current, [agentInstanceId]: { ...selection, model } }));
+			}
+			setDrafts((current) => ({ ...current, [agentInstanceId]: "" }));
+			setSessionCreateDraft(null);
+			setSessionPanel(null);
+			setSessionNotice(name ? `已创建会话：${name}` : "已创建新会话");
+			window.requestAnimationFrame(() => composerInputRef.current?.focus());
+			return;
+		}
+		if (!("codepiddy" in window)) return;
+		setSessionPanelLoading(true);
+		try {
+			await window.codepiddy.newAgentSession(locator);
+			const setupErrors: string[] = [];
+			if (!selection || selection.model.provider !== model.provider || selection.model.id !== model.id) {
+				try {
+					const nextSelection = await window.codepiddy.setAgentModel({
+						...locator,
+						provider: model.provider,
+						modelId: model.id,
+					});
+					setModelSelections((current) => ({ ...current, [agentInstanceId]: nextSelection }));
+				} catch (caught) {
+					setupErrors.push(`模型设置失败：${clientErrorMessage(caught, "未知错误")}`);
+				}
+			}
+			if (name) {
+				try {
+					await window.codepiddy.invokeAgentBuiltinCommand({ ...locator, name: "name", args: name });
+				} catch (caught) {
+					setupErrors.push(`会话命名失败：${clientErrorMessage(caught, "未知错误")}`);
+				}
+			}
+			const [snapshotResult, sessionsResult, selectionResult] = await Promise.allSettled([
+				window.codepiddy.getAgentSessionSnapshot(locator),
+				window.codepiddy.listAgentSessions(locator),
+				window.codepiddy.getAgentModelSelection(locator),
+			]);
+			const snapshot = snapshotResult.status === "fulfilled" ? snapshotResult.value : null;
+			const sessions = sessionsResult.status === "fulfilled" ? sessionsResult.value : null;
 			setSessionPanel((current) =>
-				current
+				current && current.agentInstanceId === agentInstanceId
 					? {
 							...current,
-							sessions: [
-								{
-									sessionId: `demo-session-${current.sessions.length + 1}`,
-									name: null,
-									preview: "新会话",
-									messageCount: 0,
-									createdAt: new Date().toISOString(),
-									updatedAt: new Date().toISOString(),
-									isCurrent: true,
-								},
-								...current.sessions.map((session) => ({ ...session, isCurrent: false })),
-							],
+							...(snapshot ? { snapshot } : {}),
+							...(sessions ? { sessions } : {}),
 						}
 					: current,
 			);
-			return;
-		}
-		setSessionPanelLoading(true);
-		setError(null);
-		try {
-			const result = await window.codepiddy.newAgentSession({
-				agentInstanceId: sessionPanel.agentInstanceId,
-				projectId: sessionPanel.projectId,
-				workItemId: sessionPanel.workItemId,
-				role: sessionPanel.role,
-			});
-			setSessionPanel((current) =>
-				current ? { ...current, snapshot: result.snapshot, sessions: result.sessions } : current,
-			);
-			setDrafts((current) => ({ ...current, [sessionPanel.agentInstanceId]: "" }));
+			if (snapshot) {
+				setAgentSessionSnapshots((current) => ({ ...current, [agentInstanceId]: snapshot }));
+			}
+			if (selectionResult.status === "fulfilled") {
+				setModelSelections((current) => ({
+					...current,
+					[agentInstanceId]: selectionResult.value,
+				}));
+			}
+			setDrafts((current) => ({ ...current, [agentInstanceId]: "" }));
+			setSessionCreateDraft(null);
+			setSessionPanel(null);
+			if (setupErrors.length > 0) {
+				setError(`新会话已创建，但${setupErrors.join("；")}`);
+			} else {
+				setSessionNotice(name ? `已创建会话：${name}` : "已创建新会话");
+			}
+			window.requestAnimationFrame(() => composerInputRef.current?.focus());
 		} catch (caught) {
-			setError(caught instanceof Error ? caught.message : "新建会话失败");
+			setSessionCreateError(clientErrorMessage(caught, "新建会话失败"));
 		} finally {
 			setSessionPanelLoading(false);
 		}
@@ -5863,8 +5986,9 @@ export function App() {
 			{sessionPanel ? (
 				<ModalShell
 					title={`${sessionPanel.displayName} 会话树`}
-					description={`当前会话：${sessionPanel.snapshot.sessionName || "未命名会话"}。点用户消息右侧的 Fork 从此处创建分支；原消息会填回输入框，原会话不会被修改。`}
+					description={`当前会话：${sessionPanel.snapshot.sessionName || "未命名会话"}`}
 					onClose={() => setSessionPanel(null)}
+					closeDisabled={sessionPanelLoading}
 					width="xl"
 					className="session-tree-modal"
 				>
@@ -5875,7 +5999,7 @@ export function App() {
 								<button
 									className="secondary-button"
 									type="button"
-									disabled={sessionPanelLoading}
+									disabled={sessionPanelLoading || Boolean(sessionCreateDraft)}
 									onClick={() =>
 										void openSessionShare(
 											{
@@ -5894,7 +6018,7 @@ export function App() {
 								<button
 									className="secondary-button"
 									type="button"
-									disabled={sessionPanelLoading}
+									disabled={sessionPanelLoading || Boolean(sessionCreateDraft)}
 									onClick={() =>
 										setSessionRenameDialog({
 											locator: {
@@ -5913,7 +6037,7 @@ export function App() {
 								<button
 									className="secondary-button"
 									type="button"
-									disabled={sessionPanelLoading}
+									disabled={sessionPanelLoading || Boolean(sessionCreateDraft)}
 									onClick={() =>
 										void openSessionStats(
 											{
@@ -5931,21 +6055,38 @@ export function App() {
 								<button
 									className="secondary-button"
 									type="button"
-									disabled={sessionPanelLoading}
+									disabled={sessionPanelLoading || Boolean(sessionCreateDraft)}
 									onClick={() => void importAgentSession()}
 								>
 									<AppIcon name="restore" size={13} /> 导入会话
 								</button>
 								<button
-									className="secondary-button"
+									className={sessionCreateDraft ? "secondary-button" : "primary-button"}
 									type="button"
 									disabled={sessionPanelLoading}
-									onClick={() => void createAgentSession()}
+									onClick={() =>
+										sessionCreateDraft ? closeAgentSessionCreate() : void openAgentSessionCreate()
+									}
 								>
-									<AppIcon name="plus" size={13} /> 新建会话
+									<AppIcon name={sessionCreateDraft ? "close" : "plus"} size={13} />
+									{sessionCreateDraft ? "取消新建" : "新建会话"}
 								</button>
 							</div>
 						</div>
+						{sessionCreateDraft ? (
+							<SessionCreateForm
+								draft={sessionCreateDraft}
+								models={modelSelections[sessionPanel.agentInstanceId]?.availableModels ?? []}
+								busy={sessionPanelLoading}
+								error={sessionCreateError}
+								onChange={(draft) => {
+									setSessionCreateDraft(draft);
+									setSessionCreateError(null);
+								}}
+								onCancel={closeAgentSessionCreate}
+								onSubmit={() => void createAgentSession()}
+							/>
+						) : null}
 						<div className="session-picker-list">
 							{sessionPanel.sessions.map((session) => (
 								<div
@@ -5955,7 +6096,7 @@ export function App() {
 									<button
 										type="button"
 										className="session-picker-main"
-										disabled={sessionPanelLoading}
+										disabled={sessionPanelLoading || Boolean(sessionCreateDraft)}
 										onClick={() => void switchAgentSession(session.sessionId)}
 									>
 										<span className="session-picker-copy">
@@ -5973,7 +6114,7 @@ export function App() {
 											className="work-panel-icon-button"
 											aria-label="删除会话"
 											title="删除会话"
-											disabled={sessionPanelLoading}
+											disabled={sessionPanelLoading || Boolean(sessionCreateDraft)}
 											onClick={() => void deleteAgentSession(session.sessionId)}
 										>
 											<Trash2 size={13} strokeWidth={2} />
@@ -6040,7 +6181,7 @@ export function App() {
 											<button
 												className="session-fork-button"
 												type="button"
-												disabled={sessionPanelLoading}
+												disabled={sessionPanelLoading || Boolean(sessionCreateDraft)}
 												aria-label={`从${nodeLabel}节点创建分支`}
 												title="从此节点创建分支"
 												onClick={() => void forkAgentSession(node.entryId)}
