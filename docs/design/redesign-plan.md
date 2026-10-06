@@ -22,11 +22,11 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-61 已提交到本地 `main`；批次 61 代码提交 `ec4dde669`，当前 HEAD 以 `git log -1` 为准，工作树干净，本地 `main` 领先 `origin/main`，暂不推送。
-批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`。
-批次 61 新增设置页「常规 > Codemode」：执行模式 `on / only`、工具目录内联预算 `inlineBudget`；合并写 Pi 原生 `settings.json`。转录流新增 Codemode 专用运行结果视图：脚本、工具调用、状态/耗时、错误、完整输出路径和结果。自定义 Provider 新增/删除后，空闲 Agent 自动重连并同步常用模型范围和模型选择器；运行中 Agent 不强制中断，只显示待重连。
-另一个 session 已提交 `b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
-阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 完成，第 25 项上下文压缩已由批次 60 完成，第 26 项 Codemode 已由批次 61 完成。下一步从阶段 4 第 27 项开始：Tool Search / Tool Exposure 设置。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-62 已提交并推送到 `origin/main`；批次 62 代码提交 `6815fc026`，另一个 session 的 bugfix 提交 `c7174fadc`，当前 HEAD 以 `git log -1` 为准，工作树干净。
+批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`。
+批次 62 新增设置页「常规 > 工具」：`defaultTools` 控制新 Agent 默认内置工具，未勾选的内置工具通过 `--exclude-tools` 从工具注册表真正排除，Codemode 也不能调用；工具发现与曝光只读展示 MCP 服务级 / 工具级 exposure，并提供 MCP 配置入口。保存工具设置后空闲 Agent 自动重连；MCP 服务保存、删除、项目覆盖、登录和退出后也会自动重连空闲 Agent，运行中 Agent 只提示延后生效。
+另一个 session 已提交 `c7174fadc` 修复会话名称重启覆盖与删除会话交互，`b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
+阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming、第 25 项上下文压缩、第 26 项 Codemode、第 27 项 Tool Search / Tool Exposure 都已完成。下一步从阶段 4 第 28 项开始：Prompt Templates。
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
 字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode 和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
@@ -62,8 +62,14 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-06 批次 61：Codemode 与 Provider 模型刷新，已提交；本地领先 origin/main，暂不推送）
+## 当前状态（2026-10-06 批次 62：工具设置与 MCP 自动刷新，已提交并推送）
 
+- 批次 62 代码提交：`6815fc026 feat(desktop): add tool settings and MCP refresh`；另一个 session 的 bugfix 提交：`c7174fadc fix(desktop): 修复会话名称重启覆盖与删除交互`。
+- 设置页新增「常规 > 工具」：支持 Pi 原生 `settings.json` 的 `defaultTools`；默认集合为 `read / bash / edit / write`，勾选后切换为自定义集合，也可恢复 Pi 默认或清空内置工具。
+- 未勾选的内置工具在 Agent 启动时额外通过 `--exclude-tools` 从工具注册表排除，Codemode 也不能调用；扩展工具和 MCP 工具不受影响。这一条修复了“界面显示未启用，但 Codemode 仍能调用”的假生效问题。
+- 「工具发现与曝光」只读汇总 MCP 服务级 `exposure` 和工具级 `toolExposure`，说明 `direct / deferred / codemode / hidden`；真正配置入口在「集成 > MCP 服务」，工具页不复制第二套设置。
+- 工具设置保存后，空闲的当前 Agent 自动重连；MCP 服务保存、删除、项目覆盖、登录和退出后也会自动重连空闲 Agent；运行中或等待授权的 Agent 只提示停止或手动重连后生效。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、工具设置单测 5 项、`?demo=1` 桌面 / 窄窗截图与交互检查通过；真实 Electron 已重启。另一个 session 的会话名称 / 删除交互 bugfix 已随 `c7174fadc` 提交。
 - 批次 61 提交：`ec4dde669 feat(desktop): add codemode settings and model refresh`。设置页新增「常规 > Codemode」，支持 Pi 原生 `settings.json` 的 `codemode.mode`（`on / only`）和 `codemode.inlineBudget`；转录流新增 Codemode 运行结果视图，显示脚本、工具调用、状态/耗时、错误、完整输出路径和结果。
 - 批次 61 同时补齐 Provider 变更后的模型刷新：新增/删除自定义 Provider 后，空闲 Agent 自动重连并重新读取 `models.json`，同步常用模型范围和模型选择器；运行中 Agent 不强制中断，只提示停止或重连后生效。
 - 另一个 session 已提交 `b3693adba fix(desktop): 修复失效 Session 导致 Pi 启动失败`、`7abba1aa1 feat(desktop): 新建会话支持预设名称和模型`，不要重做。
@@ -159,16 +165,18 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 已提交：批次 38 Pi 1.0.1 固定内置版本、客户端 Provider 登录与统一 SelectMenu
 - 已提交：批次 60 上下文压缩设置 `db4e91195`
 - 已提交：批次 61 Codemode 设置与 Provider 模型刷新 `ec4dde669`
+- 已提交：批次 62 工具设置与 MCP 自动刷新 `6815fc026`
+- 已提交：另一个 session 的会话名称重启覆盖与删除交互 bugfix `c7174fadc`
 - 已提交：另一个 session 的定位条 / 常用模型 / 消息模型显示 bugfix：`fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`
 
-批次 1-60 已提交到本地 `main`；当前本地领先 `origin/main`，用户明确暂不推送。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
+批次 1-62 已提交并推送到 `origin/main`。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
 
 ### 下一步
 
-阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态，批次 59 已收口云朵图标和 Provider 登录弹窗嵌套滚动条，批次 60 已实现自动压缩 / 分支摘要 / per-model compaction overrides，批次 61 已实现 Codemode 设置、运行结果视图和 Provider 模型刷新。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 27 项：
+阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态，批次 59 已收口云朵图标和 Provider 登录弹窗嵌套滚动条，批次 60 已实现自动压缩 / 分支摘要 / per-model compaction overrides，批次 61 已实现 Codemode 设置、运行结果视图和 Provider 模型刷新，批次 62 已实现工具设置与 MCP 自动刷新。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 28 项：
 
-1. Tool Search / Tool Exposure 设置。
-2. Prompt Templates、Pi Packages、Shell aliases、Telemetry。
+1. Prompt Templates。
+2. Pi Packages、Shell aliases、Telemetry。
 3. 自定义 Provider / 虚拟模型 / classifier / image models。
 
 继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
@@ -1183,6 +1191,17 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 另一个 session 已提交 `b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、Codemode 设置读写与详情解析单测 5 项、demo `?demo=1` 截图检查通过；真实 Electron 已重启。
 
+### 2026-10-06 批次 62：工具设置与 MCP 自动刷新（已提交并推送）
+
+- 代码提交：`6815fc026 feat(desktop): add tool settings and MCP refresh`；同期另一个 session 提交 `c7174fadc fix(desktop): 修复会话名称重启覆盖与删除交互`。
+- 设置页新增「常规 > 工具」，读写 Pi 原生 `settings.json` 的 `defaultTools`。Pi 默认集合为 `read / bash / edit / write`；用户可以切换到自定义集合、恢复 Pi 默认或清空内置工具。
+- 工具设置不再只写 `defaultTools`：Agent 启动时把未勾选的内置工具传给 `--exclude-tools`，从而从工具注册表真正排除，Codemode 也不能调用。扩展工具和 MCP 工具不受影响。
+- 「工具发现与曝光」只读展示 MCP 服务级 `exposure`、工具级 `toolExposure` 和 `direct / deferred / codemode / hidden` 的含义；配置仍在「集成 > MCP 服务」，并提供直接跳转入口，不新增第二套 MCP 配置。
+- 保存工具设置后，空闲的当前 Agent 自动重连；运行中或等待授权的 Agent 提示停止或手动重连后生效。
+- MCP 服务保存、删除、项目覆盖、登录和退出后也统一触发同样的自动刷新：空闲 Agent 自动重连，运行中 Agent 延后生效。
+- 修复“工具显示未启用但实际仍能调用”的根因：`defaultTools` 只控制直接激活，不能约束 Codemode 的工具注册表；`--exclude-tools` 才是完整隔离。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、工具设置单测 5 项、`?demo=1` 桌面 / 窄窗截图与交互检查通过；真实 Agent 启动参数已确认包含 `--exclude-tools`；真实 Electron 已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1223,10 +1242,11 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 36. [x] **缓存预热云朵图标与弹窗滚动条收口**：批次 59 已验收并提交 `6640bc795`。
 37. [x] **上下文压缩设置**：批次 60 已实现自动压缩、分支摘要和 per-model compaction overrides，提交 `db4e91195`。下一步进入阶段 4 第 26 项 Codemode 设置和运行结果视图。
 38. [x] **Codemode 设置与 Provider 模型刷新**：批次 61 已实现 Codemode `mode / inlineBudget` 设置、转录流运行结果视图，以及 Provider 新增/删除后的 Agent 模型目录刷新，提交 `ec4dde669`。下一步进入阶段 4 第 27 项 Tool Search / Tool Exposure。
+39. [x] **工具设置与 MCP 自动刷新**：批次 62 已实现 `defaultTools` 严格内置工具隔离、工具发现与曝光只读汇总、工具设置 / MCP 配置保存后的空闲 Agent 自动重连，提交 `6815fc026`。同期另一个 session 提交 `c7174fadc` 修复会话名称重启覆盖与删除交互。下一步进入阶段 4 第 28 项 Prompt Templates。
 
 ## 提交状态
 
-批次 55-57 已推送到 `origin/main`。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`。当前本地 `main` 领先 `origin/main`，用户明确暂不推送。提交哈希以 `git log -1` 为准。
+批次 55-62 已推送到 `origin/main`。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`、`c7174fadc`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1284,7 +1304,10 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 | 2026-10-06 | 当前模型选择器的已选中项使用浅蓝底、蓝字、蓝色内描边，不用实心蓝 | 用户明确选择第一次浅蓝选中态，实心蓝过重 |
 | 2026-10-06 | Codemode 只适配 Pi 原生 `codemode.mode / inlineBudget`，运行结果读 `tool_execution_*` 的 details | Pi core 可更新，外壳不复制 Codemode 引擎 |
 | 2026-10-06 | Provider 新增/删除后刷新模型目录，空闲 Agent 自动重连，运行中 Agent 延后生效 | 避免强制中断当前回复，同时不要求用户重启客户端 |
+| 2026-10-06 | 内置工具用 `defaultTools` 控制直接激活，并用 `--exclude-tools` 排除未勾选项 | `defaultTools` 单独使用无法阻止 Codemode 调用已注册工具 |
+| 2026-10-06 | MCP exposure 继续只在 MCP 服务页配置，工具页只读汇总 | 避免为同一配置维护第二套 UI；配置来源保持单一 |
+| 2026-10-06 | 工具设置和 MCP 配置保存后，空闲 Agent 自动重连，运行中 Agent 延后生效 | 配置是 Agent 启动参数，必须重建进程才能保证工具索引和注册表及时生效 |
 
 ## 待用户确认
 
-- 暂无，批次 1-61 已验收；本地领先 `origin/main`，暂不推送。
+- 暂无，批次 1-62 已验收并推送。
