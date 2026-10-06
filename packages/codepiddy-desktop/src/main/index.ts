@@ -364,6 +364,10 @@ function roleLabel(role: AgentRole): string {
 	return "Review Agent";
 }
 
+function defaultSessionName(agent: StoredAgentInstance): string {
+	return `${agent.workItemId} ${roleLabel(agent.role)}`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1281,6 +1285,7 @@ class AgentManager {
 		const process = await this.ensureProcess(agent);
 		const result = await process.newSession();
 		if (!result.cancelled) {
+			await process.setSessionName(defaultSessionName(agent));
 			await this.persistCurrentSession(agent, process);
 			this.broadcast({
 				agentInstanceId: agent.id,
@@ -1786,6 +1791,13 @@ class AgentManager {
 		await writeSelectedSessionId(agent.sessionDirectory, header?.sessionId === sessionId ? sessionId : null);
 	}
 
+	private async ensureDefaultSessionName(agent: StoredAgentInstance, process: PiRpcProcess): Promise<void> {
+		const stateResponse = await process.getState();
+		const state = isRecord(stateResponse.data) ? stateResponse.data : {};
+		if (typeof state.sessionName === "string" && state.sessionName.trim()) return;
+		await process.setSessionName(defaultSessionName(agent));
+	}
+
 	private async startProcess(agent: StoredAgentInstance): Promise<PiRpcProcess> {
 		const packaged = app.isPackaged;
 		const updatedRuntime = this.piRuntimeUpdater.getLaunchRuntime();
@@ -1887,8 +1899,6 @@ class AgentManager {
 					? path.join(extensionRoot, "cache-warming.js")
 					: path.join(this.repositoryRoot, "packages", "codepiddy-cache-warming-extension", "index.ts"),
 				...roleSkillPaths.flatMap((skillPath) => ["--skill", skillPath]),
-				"--name",
-				`${agent.workItemId} ${roleLabel(agent.role)}`,
 				"--append-system-prompt",
 				await rolePrompt(agent, Boolean(tavilyApiKey)),
 			],
@@ -1959,6 +1969,7 @@ class AgentManager {
 			handshakeComplete = true;
 			this.processes.set(agent.id, rpc);
 			this.processAgents.set(agent.id, agent);
+			await this.ensureDefaultSessionName(agent, rpc);
 			const messages = await this.historyMessages(rpc);
 			this.broadcast({
 				agentInstanceId: agent.id,

@@ -139,6 +139,12 @@ interface SessionRenameDialogState {
 	name: string;
 }
 
+interface SessionDeleteDialogState {
+	locator: AgentInstanceLocator;
+	sessionId: string;
+	name: string;
+}
+
 interface DeleteDialogState {
 	lane: LaneKind;
 	item: WorkItemSummary;
@@ -1676,6 +1682,7 @@ export function App() {
 	const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 	const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
 	const [sessionRenameDialog, setSessionRenameDialog] = useState<SessionRenameDialogState | null>(null);
+	const [sessionDeleteDialog, setSessionDeleteDialog] = useState<SessionDeleteDialogState | null>(null);
 	const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
 	const [resetAgentDialog, setResetAgentDialog] = useState<ResetAgentDialogState | null>(null);
 	const [shellRestartDialog, setShellRestartDialog] = useState(false);
@@ -2808,7 +2815,14 @@ export function App() {
 		if (sessionPanel) return;
 		setSessionCreateDraft(null);
 		setSessionCreateError(null);
+		setSessionDeleteDialog(null);
 	}, [sessionPanel]);
+
+	useEffect(() => {
+		if (sessionPanel || selection.type !== "agent" || !activeAgentId) return;
+		const frame = window.requestAnimationFrame(() => composerInputRef.current?.focus());
+		return () => window.cancelAnimationFrame(frame);
+	}, [activeAgentId, selection.type, sessionPanel]);
 
 	useEffect(() => {
 		if (!("codepiddy" in window) || demoMode) return;
@@ -4352,28 +4366,32 @@ export function App() {
 		}
 	}
 
-	async function deleteAgentSession(sessionId: string): Promise<void> {
-		if (!sessionPanel || sessionPanel.snapshot.sessionId === sessionId) return;
-		if (!window.confirm("确定删除这个会话？此操作不可撤销。")) return;
+	async function deleteAgentSession(): Promise<void> {
+		const dialog = sessionDeleteDialog;
+		if (!dialog) return;
 		if (demoMode) {
 			setSessionPanel((current) =>
 				current
-					? { ...current, sessions: current.sessions.filter((session) => session.sessionId !== sessionId) }
+					? {
+							...current,
+							sessions: current.sessions.filter((session) => session.sessionId !== dialog.sessionId),
+						}
 					: current,
 			);
+			setSessionDeleteDialog(null);
 			return;
 		}
 		setSessionPanelLoading(true);
 		setError(null);
 		try {
 			const sessions = await window.codepiddy.deleteAgentSession({
-				agentInstanceId: sessionPanel.agentInstanceId,
-				projectId: sessionPanel.projectId,
-				workItemId: sessionPanel.workItemId,
-				role: sessionPanel.role,
-				sessionId,
+				...dialog.locator,
+				sessionId: dialog.sessionId,
 			});
-			setSessionPanel((current) => (current ? { ...current, sessions } : current));
+			setSessionPanel((current) =>
+				current && current.agentInstanceId === dialog.locator.agentInstanceId ? { ...current, sessions } : current,
+			);
+			setSessionDeleteDialog(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "删除会话失败");
 		} finally {
@@ -4572,7 +4590,8 @@ export function App() {
 			} else if (modelPickerAgentId) {
 				setModelPickerAgentId(null);
 				setModelSearch("");
-			} else if (sessionPanel) setSessionPanel(null);
+			} else if (sessionDeleteDialog) setSessionDeleteDialog(null);
+			else if (sessionPanel) setSessionPanel(null);
 			else if (shellRestartDialog) setShellRestartDialog(false);
 			else if (deleteDialog) setDeleteDialog(null);
 			else if (resetAgentDialog) setResetAgentDialog(null);
@@ -4606,6 +4625,7 @@ export function App() {
 		selectedWorkItem,
 		selection,
 		sessionPanel,
+		sessionDeleteDialog,
 		sessionRenameDialog,
 		sessionStatsDialog,
 		sessionShareDialog,
@@ -6232,7 +6252,18 @@ export function App() {
 											aria-label="删除会话"
 											title="删除会话"
 											disabled={sessionPanelLoading || Boolean(sessionCreateDraft)}
-											onClick={() => void deleteAgentSession(session.sessionId)}
+											onClick={() =>
+												setSessionDeleteDialog({
+													locator: {
+														agentInstanceId: sessionPanel.agentInstanceId,
+														projectId: sessionPanel.projectId,
+														workItemId: sessionPanel.workItemId,
+														role: sessionPanel.role,
+													},
+													sessionId: session.sessionId,
+													name: session.name || "未命名会话",
+												})
+											}
 										>
 											<Trash2 size={13} strokeWidth={2} />
 										</button>
@@ -6319,6 +6350,31 @@ export function App() {
 					</div>
 				</ModalShell>
 			) : null}
+			{sessionDeleteDialog ? (
+				<ModalShell
+					title="删除这个会话？"
+					description={`将永久删除“${sessionDeleteDialog.name}”。此操作不可撤销。`}
+					onClose={() => setSessionDeleteDialog(null)}
+					closeDisabled={sessionPanelLoading}
+					width="sm"
+					className="danger-modal"
+					footer={
+						<>
+							<button type="button" onClick={() => setSessionDeleteDialog(null)}>
+								取消
+							</button>
+							<button
+								className="danger-button"
+								type="button"
+								disabled={sessionPanelLoading}
+								onClick={() => void deleteAgentSession()}
+							>
+								{sessionPanelLoading ? "删除中…" : "删除会话"}
+							</button>
+						</>
+					}
+				/>
+			) : null}
 			{sessionRenameDialog ? (
 				<ModalShell
 					title="重命名会话"
@@ -6334,8 +6390,9 @@ export function App() {
 							</button>
 							<button
 								className="primary-button"
-								type="submit"
+								type="button"
 								disabled={!sessionRenameDialog.name.trim() || sessionPanelLoading}
+								onClick={() => void renameAgentSession()}
 							>
 								{sessionPanelLoading ? "保存中…" : "保存"}
 							</button>
