@@ -6,6 +6,8 @@ import type {
 	AgentUiState,
 	ArchiveWorkItemInput,
 	CacheWarmingSettings,
+	CompactionModelOverride,
+	ContextCompactionSettings,
 	CreateAgentInput,
 	CreateWorkItemInput,
 	DiagnosticsExportInput,
@@ -58,6 +60,18 @@ function text(value: unknown, label: string, maximum: number, allowEmpty = false
 	if (result.length > maximum) throw new Error(`${label} 超过最大长度 ${maximum}`);
 	if (result.includes("\0")) throw new Error(`${label} 包含非法字符`);
 	return result;
+}
+
+function nonNegativeSafeInteger(value: unknown, label: string): number {
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+		throw new Error(`${label} 必须是非负整数`);
+	}
+	return value;
+}
+
+function booleanValue(value: unknown, label: string): boolean {
+	if (typeof value !== "boolean") throw new Error(`${label} 必须是布尔值`);
+	return value;
 }
 
 function role(value: unknown): AgentRole {
@@ -666,4 +680,46 @@ export function parseCacheWarmingSettings(value: unknown): CacheWarmingSettings 
 	}
 	if (typeof input.showCacheMissNotices !== "boolean") throw new Error("缓存未命中提示设置无效");
 	return { mode: input.mode, showCacheMissNotices: input.showCacheMissNotices };
+}
+
+export function parseContextCompactionSettings(value: unknown): ContextCompactionSettings {
+	const input = record(value, "上下文压缩设置");
+	const compactionInput = record(input.compaction, "压缩设置");
+	const branchSummaryInput = record(input.branchSummary, "分支摘要设置");
+	const modelOverridesInput = record(compactionInput.modelOverrides ?? {}, "模型覆盖设置");
+	const modelOverrideEntries = Object.entries(modelOverridesInput);
+	if (modelOverrideEntries.length > 200) throw new Error("模型覆盖最多支持 200 项");
+
+	const modelOverrides = Object.fromEntries(
+		modelOverrideEntries.map(([key, raw]) => {
+			if (!/^[^/]+\/[^/]+$/.test(key) || key.length > 300) {
+				throw new Error(`模型覆盖 key 无效：${key}`);
+			}
+			const overrideInput = record(raw, `模型覆盖 ${key}`);
+			const override: CompactionModelOverride = {};
+			if (overrideInput.reserveTokens !== undefined) {
+				override.reserveTokens = nonNegativeSafeInteger(overrideInput.reserveTokens, `${key} 的压缩预留 Token`);
+			}
+			if (overrideInput.keepRecentTokens !== undefined) {
+				override.keepRecentTokens = nonNegativeSafeInteger(
+					overrideInput.keepRecentTokens,
+					`${key} 的压缩保留最近 Token`,
+				);
+			}
+			return [key, override] as const;
+		}),
+	);
+
+	return {
+		compaction: {
+			enabled: booleanValue(compactionInput.enabled, "自动压缩开关"),
+			reserveTokens: nonNegativeSafeInteger(compactionInput.reserveTokens, "压缩预留 Token"),
+			keepRecentTokens: nonNegativeSafeInteger(compactionInput.keepRecentTokens, "压缩保留最近 Token"),
+			modelOverrides,
+		},
+		branchSummary: {
+			reserveTokens: nonNegativeSafeInteger(branchSummaryInput.reserveTokens, "分支摘要预留 Token"),
+			skipPrompt: booleanValue(branchSummaryInput.skipPrompt, "分支摘要确认开关"),
+		},
+	};
 }

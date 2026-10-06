@@ -95,6 +95,7 @@
   --cp-field: 30px;
 
   --cp-elevation-raised: 0 1px 2px rgb(23 24 26 / 6%), 0 0 0 0.5px rgb(23 24 26 / 5%);
+  --cp-elevation-selected: 0 1px 2px rgb(23 24 26 / 8%), 0 5px 14px rgb(23 24 26 / 10%), 0 0 0 0.5px rgb(23 24 26 / 7%);
   --cp-elevation-float: 0 1px 2px rgb(23 24 26 / 6%), 0 8px 28px rgb(23 24 26 / 12%), 0 0 0 0.5px rgb(23 24 26 / 8%);
 
   --cp-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -862,7 +863,11 @@ button { color: inherit; }
   text-align: left;
 }
 .model-list section > button:hover { background: var(--cp-surface-secondary); }
-.model-list section > button.selected { background: var(--cp-surface-secondary); box-shadow: none; }
+.model-list section > button.selected {
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  box-shadow: inset 0 0 0 1px var(--cp-accent-ring);
+}
 /* 模型名字号/字重必须和 .model-seat 一样（12px / 400），否则抽屉里的名字
    和按钮上显示的同一个模型长得不一样宽，一眼对不上。
    不加 text-overflow: ellipsis：宁可让抽屉按内容撑开，也不要把名字截断。 */
@@ -1114,10 +1119,15 @@ button { color: inherit; }
 }
 
 .select-menu-option:hover,
-.select-menu-option.is-selected,
 .select-menu-option.is-active {
   background: var(--cp-surface-secondary);
   color: var(--cp-ink);
+}
+
+.select-menu-option.is-selected {
+  background: var(--cp-accent-soft);
+  color: var(--cp-accent);
+  box-shadow: inset 0 0 0 1px var(--cp-accent-ring);
 }
 
 .select-menu-option:disabled {
@@ -1893,6 +1903,9 @@ button { color: inherit; }
   z-index: 1;
   outline: 2px solid var(--cp-accent-ring);
   outline-offset: -2px;
+}
+
+.model-list section > button.keyboard-selected:not(.selected) {
   background: var(--cp-surface-secondary);
 }
 @media (prefers-reduced-motion: reduce) {

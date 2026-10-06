@@ -1437,6 +1437,172 @@
   outline-offset: 2px;
 }
 
+.compaction-settings-card {
+  gap: var(--cp-space-lg);
+}
+
+.compaction-section {
+  display: grid;
+  gap: var(--cp-space-md);
+  padding: var(--cp-space-md);
+  border-radius: var(--cp-radius-lg);
+  background: var(--cp-surface-secondary);
+}
+
+.compaction-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cp-space-md);
+}
+
+.compaction-section-heading h3 {
+  color: var(--cp-ink);
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.compaction-section-heading p {
+  max-width: 620px;
+  margin-top: var(--cp-space-xxs);
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+}
+
+.compaction-token-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--cp-space-md);
+}
+
+.compaction-token-grid .settings-field small {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+}
+
+.compaction-inline-label {
+  color: var(--cp-ink-secondary);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.compaction-checkbox {
+  padding: var(--cp-space-sm) 0 0;
+}
+
+.compaction-checkbox .settings-checkbox-content strong {
+  color: var(--cp-ink);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.compaction-checkbox .settings-checkbox-content small {
+  color: var(--cp-ink-muted);
+  font-size: 11.5px;
+}
+
+.compaction-override-add {
+  max-width: 420px;
+}
+
+.compaction-override-list {
+  display: grid;
+  gap: var(--cp-space-sm);
+}
+
+.compaction-override-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 108px 108px 28px;
+  align-items: end;
+  gap: var(--cp-space-sm);
+  padding: var(--cp-space-sm);
+  border-radius: var(--cp-radius-md);
+  background: var(--cp-surface);
+  box-shadow: var(--cp-elevation-selected);
+}
+
+.compaction-override-model {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--cp-space-sm);
+  padding-bottom: var(--cp-space-xs);
+}
+
+.compaction-override-model > div {
+  display: grid;
+  min-width: 0;
+  gap: var(--cp-space-micro);
+}
+
+.compaction-override-model strong,
+.compaction-override-model small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compaction-override-model strong {
+  color: var(--cp-ink);
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.compaction-override-model small {
+  color: var(--cp-ink-muted);
+  font-size: 10.5px;
+}
+
+.compaction-override-field {
+  display: grid;
+  gap: var(--cp-space-xxs);
+}
+
+.compaction-override-field span {
+  color: var(--cp-ink-muted);
+  font-size: 10.5px;
+}
+
+.compaction-override-field input {
+  width: 100%;
+  height: var(--cp-control);
+  padding: 0 var(--cp-space-sm);
+  border: 0;
+  border-radius: var(--cp-radius-md);
+  outline: none;
+  background: var(--cp-surface-inset);
+  color: var(--cp-ink);
+  font: inherit;
+  font-size: 11.5px;
+}
+
+.compaction-override-field input:focus {
+  background: var(--cp-surface);
+  box-shadow: 0 0 0 2px var(--cp-accent-ring);
+}
+
+.compaction-override-remove {
+  display: grid;
+  width: 28px;
+  height: var(--cp-control);
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cp-radius-sm);
+  background: transparent;
+  color: var(--cp-ink-muted);
+  cursor: pointer;
+}
+
+.compaction-override-remove:hover {
+  background: color-mix(in oklab, var(--cp-danger) 10%, transparent);
+  color: var(--cp-danger);
+}
+
+.compaction-empty-state {
+  background: var(--cp-surface);
+}
+
 @keyframes session-share-spin {
   to {
     transform: rotate(360deg);
@@ -1490,5 +1656,20 @@
 
   .diagnostics-version-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .compaction-token-grid,
+  .compaction-override-row {
+    grid-template-columns: 1fr;
+  }
+
+  .compaction-override-model {
+    padding-bottom: 0;
+  }
+
+  .compaction-override-remove {
+    justify-self: start;
   }
 }

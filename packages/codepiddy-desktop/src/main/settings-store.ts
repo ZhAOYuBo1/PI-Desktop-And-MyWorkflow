@@ -4,8 +4,12 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type {
 	AgentRole,
+	BranchSummarySettings,
 	CacheWarmingMode,
 	CacheWarmingSettings,
+	CompactionModelOverride,
+	CompactionSettings,
+	ContextCompactionSettings,
 	CredentialSource,
 	McpClientRegistration,
 	McpExposure,
@@ -59,9 +63,65 @@ const DEFAULT_RETRY_SETTINGS = {
 } as const;
 
 const DEFAULT_CACHE_WARMING_MODE: CacheWarmingMode = "streaming";
+const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
+	enabled: true,
+	reserveTokens: 16384,
+	keepRecentTokens: 20000,
+	modelOverrides: {},
+};
+const DEFAULT_BRANCH_SUMMARY_SETTINGS: BranchSummarySettings = {
+	reserveTokens: 16384,
+	skipPrompt: false,
+};
 
 function isCacheWarmingMode(value: unknown): value is CacheWarmingMode {
 	return value === "off" || value === "streaming" || value === "idle";
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function assertNonNegativeSafeInteger(value: unknown, label: string): asserts value is number {
+	if (!isNonNegativeSafeInteger(value)) throw new Error(`${label} 必须是非负整数`);
+}
+
+function normalizeCompactionModelOverrides(value: unknown): Record<string, CompactionModelOverride> {
+	if (!isRecord(value)) return {};
+	return Object.fromEntries(
+		Object.entries(value).flatMap(([key, raw]) => {
+			if (!/^[^/]+\/[^/]+$/.test(key) || key.length > 300) return [];
+			if (!isRecord(raw)) return [];
+			const override: CompactionModelOverride = {};
+			if (isNonNegativeSafeInteger(raw.reserveTokens)) override.reserveTokens = raw.reserveTokens;
+			if (isNonNegativeSafeInteger(raw.keepRecentTokens)) override.keepRecentTokens = raw.keepRecentTokens;
+			return Object.keys(override).length > 0 ? [[key, override] as const] : [];
+		}),
+	);
+}
+
+function normalizeCompactionSettings(value: unknown): CompactionSettings {
+	const record = isRecord(value) ? value : {};
+	return {
+		enabled: record.enabled !== false,
+		reserveTokens: isNonNegativeSafeInteger(record.reserveTokens)
+			? record.reserveTokens
+			: DEFAULT_COMPACTION_SETTINGS.reserveTokens,
+		keepRecentTokens: isNonNegativeSafeInteger(record.keepRecentTokens)
+			? record.keepRecentTokens
+			: DEFAULT_COMPACTION_SETTINGS.keepRecentTokens,
+		modelOverrides: normalizeCompactionModelOverrides(record.modelOverrides),
+	};
+}
+
+function normalizeBranchSummarySettings(value: unknown): BranchSummarySettings {
+	const record = isRecord(value) ? value : {};
+	return {
+		reserveTokens: isNonNegativeSafeInteger(record.reserveTokens)
+			? record.reserveTokens
+			: DEFAULT_BRANCH_SUMMARY_SETTINGS.reserveTokens,
+		skipPrompt: record.skipPrompt === true,
+	};
 }
 
 function isNotFound(error: unknown): boolean {
@@ -398,6 +458,73 @@ export class AppSettingsStore {
 			...settings,
 			cacheWarming: input.mode,
 			showCacheMissNotices: input.showCacheMissNotices,
+		});
+	}
+
+	/**
+	 * 读写 Pi 原生 settings.json 的 compaction / branchSummary。
+	 *
+	 * Pi 1.0.1 只把这些字段暴露在 settings 文件中，RPC 仅能切换当前 Session 的
+	 * auto compaction 开关。这里合并写文件，保留用户和 Pi 的其他配置。
+	 */
+	async getContextCompactionSettings(): Promise<ContextCompactionSettings> {
+		let settings: Record<string, unknown> = {};
+		try {
+			settings = await this.readJsonRecord(this.piSettingsPath);
+		} catch {
+			// 与缓存预热一致：配置损坏时设置页仍可打开，写入时会正常报错。
+		}
+		return {
+			compaction: normalizeCompactionSettings(settings.compaction),
+			branchSummary: normalizeBranchSummarySettings(settings.branchSummary),
+		};
+	}
+
+	async setContextCompactionSettings(input: ContextCompactionSettings): Promise<void> {
+		assertNonNegativeSafeInteger(input.compaction.reserveTokens, "压缩预留 Token");
+		assertNonNegativeSafeInteger(input.compaction.keepRecentTokens, "压缩保留最近 Token");
+		assertNonNegativeSafeInteger(input.branchSummary.reserveTokens, "分支摘要预留 Token");
+		for (const [key, override] of Object.entries(input.compaction.modelOverrides)) {
+			if (!key.includes("/")) throw new Error(`模型覆盖 key 无效：${key}`);
+			if (override.reserveTokens !== undefined) {
+				assertNonNegativeSafeInteger(override.reserveTokens, `${key} 的压缩预留 Token`);
+			}
+			if (override.keepRecentTokens !== undefined) {
+				assertNonNegativeSafeInteger(override.keepRecentTokens, `${key} 的压缩保留最近 Token`);
+			}
+		}
+
+		const settings = await this.readJsonRecord(this.piSettingsPath);
+		const currentCompaction = isRecord(settings.compaction) ? settings.compaction : {};
+		const nextCompaction: Record<string, unknown> = {
+			...currentCompaction,
+			enabled: input.compaction.enabled,
+			reserveTokens: input.compaction.reserveTokens,
+			keepRecentTokens: input.compaction.keepRecentTokens,
+		};
+		const modelOverrides = Object.fromEntries(
+			Object.entries(input.compaction.modelOverrides).map(([key, override]) => [
+				key,
+				{
+					...(override.reserveTokens === undefined ? {} : { reserveTokens: override.reserveTokens }),
+					...(override.keepRecentTokens === undefined ? {} : { keepRecentTokens: override.keepRecentTokens }),
+				},
+			]),
+		);
+		if (Object.keys(modelOverrides).length > 0) nextCompaction.modelOverrides = modelOverrides;
+		else delete nextCompaction.modelOverrides;
+
+		const currentBranchSummary = isRecord(settings.branchSummary) ? settings.branchSummary : {};
+		const nextBranchSummary = {
+			...currentBranchSummary,
+			reserveTokens: input.branchSummary.reserveTokens,
+			skipPrompt: input.branchSummary.skipPrompt,
+		};
+
+		await this.writeJsonRecord(this.piSettingsPath, {
+			...settings,
+			compaction: nextCompaction,
+			branchSummary: nextBranchSummary,
 		});
 	}
 
@@ -931,6 +1058,7 @@ export class AppSettingsStore {
 			encryptionAvailable: safeStorage.isEncryptionAvailable(),
 			shellPath: await this.getShellPath(),
 			cacheWarming: await this.getCacheWarmingSettings(),
+			contextCompaction: await this.getContextCompactionSettings(),
 		};
 	}
 

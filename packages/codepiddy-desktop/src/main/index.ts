@@ -72,6 +72,7 @@ import {
 	parseArchiveWorkItemInput,
 	parseBoundedText,
 	parseCacheWarmingSettings,
+	parseContextCompactionSettings,
 	parseCreateAgentInput,
 	parseCreateWorkItemInput,
 	parseDiagnosticsExportInput,
@@ -187,6 +188,7 @@ const channels = {
 	settingsSaveTavily: "codepiddy:settings:tavily:save",
 	settingsSaveShell: "codepiddy:settings:shell:save",
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
+	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
@@ -2486,6 +2488,10 @@ function registerIpcHandlers(
 	);
 	ipcMain.handle(channels.settingsSaveCacheWarming, async (_event, raw: unknown) => {
 		await settingsStore.setCacheWarmingSettings(parseCacheWarmingSettings(raw));
+		return settingsStore.status();
+	});
+	ipcMain.handle(channels.settingsSaveContextCompaction, async (_event, raw: unknown) => {
+		await settingsStore.setContextCompactionSettings(parseContextCompactionSettings(raw));
 		return settingsStore.status();
 	});
 	ipcMain.handle(channels.settingsListMcp, (_event, rawProjectRoot?: unknown) =>

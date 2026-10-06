@@ -234,6 +234,28 @@ export interface CacheWarmingSettings {
 	showCacheMissNotices: boolean;
 }
 
+export interface CompactionModelOverride {
+	reserveTokens?: number;
+	keepRecentTokens?: number;
+}
+
+export interface CompactionSettings {
+	enabled: boolean;
+	reserveTokens: number;
+	keepRecentTokens: number;
+	modelOverrides: Record<string, CompactionModelOverride>;
+}
+
+export interface BranchSummarySettings {
+	reserveTokens: number;
+	skipPrompt: boolean;
+}
+
+export interface ContextCompactionSettings {
+	compaction: CompactionSettings;
+	branchSummary: BranchSummarySettings;
+}
+
 export interface CacheWarmingDecisionSummary {
 	warmCost: number;
 	missCost: number;
@@ -397,6 +419,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	getTavilyApiKey(): Promise<string | null>;
 	saveShellPath(shellPath: string): Promise<SettingsStatus>;
 	saveCacheWarmingSettings(input: CacheWarmingSettings): Promise<SettingsStatus>;
+	saveContextCompactionSettings(input: ContextCompactionSettings): Promise<SettingsStatus>;
 	listMcpServers(projectRoot?: string): Promise<McpServerSummary[]>;
 	saveMcpServer(input: McpServerInput): Promise<McpServerSummary[]>;
 	deleteMcpServer(name: string): Promise<McpServerSummary[]>;
@@ -527,6 +550,7 @@ export interface SettingsStatus {
 	/** 用户配置的 bash 路径；为 null 表示交给 pi 自动探测。 */
 	shellPath: string | null;
 	cacheWarming: CacheWarmingSettings;
+	contextCompaction: ContextCompactionSettings;
 }
 
 export type McpTransport = "stdio" | "http";

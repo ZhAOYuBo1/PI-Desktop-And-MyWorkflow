@@ -7,6 +7,7 @@ import type {
 	AuthProviderSummary,
 	CacheWarmingSettings,
 	CodePIddyClientApi,
+	ContextCompactionSettings,
 	CreateAgentInput,
 	CreateWorkItemInput,
 	DiagnosticsExportInput,
@@ -114,6 +115,7 @@ const channels = {
 	settingsSaveTavily: "codepiddy:settings:tavily:save",
 	settingsSaveShell: "codepiddy:settings:shell:save",
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
+	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
@@ -253,6 +255,8 @@ const api: CodePIddyClientApi = {
 	saveShellPath: (shellPath: string) => ipcRenderer.invoke(channels.settingsSaveShell, shellPath),
 	saveCacheWarmingSettings: (input: CacheWarmingSettings) =>
 		ipcRenderer.invoke(channels.settingsSaveCacheWarming, input),
+	saveContextCompactionSettings: (input: ContextCompactionSettings) =>
+		ipcRenderer.invoke(channels.settingsSaveContextCompaction, input),
 	listMcpServers: (projectRoot?: string) => ipcRenderer.invoke(channels.settingsListMcp, projectRoot),
 	saveMcpServer: (input: McpServerInput) => ipcRenderer.invoke(channels.settingsSaveMcp, input),
 	deleteMcpServer: (name: string) => ipcRenderer.invoke(channels.settingsDeleteMcp, name),

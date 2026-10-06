@@ -47,6 +47,7 @@ import {
 	useState,
 } from "react";
 import { AppIcon, type AppIconName } from "./components/app-icon.tsx";
+import { CompactionSettingsPanel } from "./components/CompactionSettingsPanel.tsx";
 import { DiagnosticsSettings } from "./components/DiagnosticsSettings.tsx";
 import { FileMentionMenu } from "./components/FileMentionMenu.tsx";
 import { McpSettings } from "./components/McpSettings.tsx";
@@ -1311,6 +1312,7 @@ type SettingsSectionId =
 	| "runtime"
 	| "shell"
 	| "cache-warming"
+	| "compaction"
 	| "diagnostics"
 	| "providers"
 	| "llama"
@@ -1327,6 +1329,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 			{ id: "runtime", label: "Pi 运行时", icon: "settings" },
 			{ id: "shell", label: "Shell", icon: "terminal" },
 			{ id: "cache-warming", label: "缓存预热", icon: "cloud" },
+			{ id: "compaction", label: "上下文压缩", icon: "gauge" },
 			{ id: "diagnostics", label: "诊断", icon: "bug" },
 		],
 	},
@@ -4896,6 +4899,13 @@ export function App() {
 								当前会话的预热状态可以在「会话统计」里查看。
 							</small>
 						</section>
+						<div className="settings-section-slot" hidden={settingsSection !== "compaction"}>
+							<CompactionSettingsPanel
+								settings={settingsStatus?.contextCompaction ?? null}
+								activeAgent={activeAgentLocator ?? lastActiveAgentLocatorRef.current}
+								onStatusChange={setSettingsStatus}
+							/>
+						</div>
 						<section
 							className="settings-card permission-settings-card"
 							hidden={settingsSection !== "permissions"}

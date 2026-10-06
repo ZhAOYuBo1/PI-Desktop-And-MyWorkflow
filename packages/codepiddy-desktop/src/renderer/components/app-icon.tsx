@@ -14,6 +14,7 @@ import {
 	FilePlus,
 	FileSearch,
 	Folder,
+	Gauge,
 	GitBranch,
 	Globe,
 	HardDrive,
@@ -80,7 +81,8 @@ export type AppIconName =
 	| "x-circle"
 	| "caret"
 	| "shield"
-	| "cloud";
+	| "cloud"
+	| "gauge";
 
 const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	archive: Archive,
@@ -120,6 +122,7 @@ const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	caret: ChevronRight,
 	shield: Shield,
 	cloud: Cloud,
+	gauge: Gauge,
 };
 
 export function AppIcon({ name, size = 16, className = "" }: { name: AppIconName; size?: number; className?: string }) {
