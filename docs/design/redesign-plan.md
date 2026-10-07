@@ -22,16 +22,34 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。批次 1-65 已提交到本地 `main`，`origin/main` 尚未同步；批次 63 代码提交 `8a9231079`，支线 64 代码提交 `293c6a5e2`，批次 65 工作区文件工作台增强代码提交 `66f6bbe18`。支线 66 文件操作撤销栈代码提交 `a1a2c0870`，文档提交紧随其后；当前 HEAD 以 `git log -1` 为准，工作树应为干净。
-批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`。
-批次 63 新增设置页「Agent > Prompt 模板」：客户端管理用户 `~/.pi/agent/prompts/` 和项目 `.pi/prompts/` 下的 Markdown 模板，支持新增、编辑、重命名、删除、打开目录、`description` / `argument-hint` / 正文编辑，并把 `/模板名` 插入当前 Agent 输入框。模板文件保存或删除后，空闲 Agent 自动重连并刷新 `/` 命令菜单；运行中 Agent 只提示停止或重连后生效。`/name` 仍是 Session 重命名，和模板名称不是同一功能。
-支线 64 和批次 65 已完成工作区文件工作台：文件树右键操作、多选、复制 / 剪切 / 粘贴、拖拽移动、自动刷新、多标签编辑保存、Markdown / 图片预览、外部磁盘变更同步、文件类型图标、`@相对路径` 插入、语法高亮、标签拖拽排序、文件拖进聊天输入框、项目栏 / 对话区 / 工作区 / 文件树宽度拖拽和统一拖拽手柄。
-文件编辑器 Tab 插入制表符；`@` 文件菜单已和 `/` 命令菜单对齐上下键选择、自动滚动和滚轮接管。写操作检查项目边界、realpath 和 Agent write lease。
-支线 66 已实现文件操作撤销栈：每个项目独立保存最近 30 条操作，删除移入隐藏 `.codepiddy-trash`，支持工具栏撤销和 `Ctrl/Cmd+Z`，覆盖新建、重命名、复制、移动、删除；回收目录从文件树和文件搜索中隐藏。
-另一个 session 已提交 `c7174fadc` 修复会话名称重启覆盖与删除会话交互，`b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
-阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming、第 25 项上下文压缩、第 26 项 Codemode、第 27 项 Tool Search / Tool Exposure、第 28 项 Prompt Templates 都已完成。主线下一步仍从阶段 4 第 29 项开始：Pi Packages。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。
+批次 1-67 已提交到本地 `main`；批次 63 代码提交 `8a9231079`，支线 64 代码提交 `293c6a5e2`，
+批次 65 工作区文件工作台增强代码提交 `66f6bbe18`，支线 66 文件操作撤销栈代码提交 `a1a2c0870`，
+批次 67 代码提交 `3db8f6a37`。当前 HEAD 以 `git log -1` 为准，文档整理提交紧随代码提交之后。
+`origin/main` 仍为 `29feb195e`，尚未推送。
+批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，
+批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，
+批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`。
+批次 63 新增设置页「Agent > Prompt 模板」；支线 64-66 已完成工作区文件工作台、语法高亮、
+标签排序、文件拖入输入框、`@` 菜单键盘导航、文件操作撤销栈和隐藏回收目录。不要重做。
+阶段 3 已全部完成；阶段 4 第 24-29 项 Cache Warming、上下文压缩、Codemode、Tool Search / Tool Exposure、
+Prompt Templates、Pi Packages 都已实现。批次 67 已新增设置页「Agent > Pi Packages」，
+通过 runtime bundle 导出的 `DefaultPackageManager` helper 完成列表、安装、更新、移除、更新检查和错误诊断；
+`pi list` 没有 JSON，不作为唯一数据源；客户端不调用裸 `pi update` 更新 Pi 自身。
+内置 Pi runtime 现在是完整 canonical package root，更新 Pi 时使用官方完整 npm 包结构；
+`npm run update:pi-runtime -- <version>` 可同步更新内置 runtime。命令菜单读取真实
+`dist/core/slash-commands.js` 描述；package skills / prompts 已合并进 Agent Skills / Prompt 模板页。
+下一轮先验收 Pi Packages 和 runtime 更新，再进入阶段 4 第 30 项 Shell aliases。
+Pi Packages 可包含 extensions / skills / prompts / themes。当前 Agent 启动继续使用
+`--no-extensions`，显式加载 builtin:mcp / builtin:codemode / builtin:tool-search 和 CodePIddy
+自己的 permission / review / retry / cache-warming 扩展；第三方 package extension 默认隔离，
+但 Pi Package 页面可按包显式开启。开启后 Agent 启动会解析对应 package extension 并作为
+`--extension` 加载；skills / prompts / themes 的资源状态单独显示。
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
-字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode、Prompt 模板、工作区文件工作台和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
+字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、
+会话树、工作区面板、变更历史、内部终端、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、
+会话 Fork、快速定位条、诊断包、上下文压缩、Codemode、Prompt 模板、工作区文件工作台和统一组件规则
+都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
 当前 HEAD 以 `git log -1` 为准。
@@ -46,7 +64,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 真实客户端：先 build，再 Start-Process node_modules\electron\dist\electron.exe -ArgumentList "." -WorkingDirectory packages\codepiddy-desktop。
 ```
 
-**四个容易踩的坑**
+**容易踩的坑**
 
 - `npm run check` 内部会跑 `biome check --write`，它会重排格式，diff 变大是正常的，不是改错了。
 - renderer 的类型检查**不在**根 `tsgo` 范围内，必须单独跑 `npm run typecheck --workspace=@codepiddy/desktop`。
@@ -65,8 +83,32 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-07 支线 66：工作区文件操作撤销栈，已提交到本地 main）
+## 当前状态（2026-10-08 Pi Packages / runtime 适配已实现并提交，待验收）
 
+- 阶段 4 第 29 项 Pi Packages 已实现：设置页新增「Agent > Pi Packages」，读取用户级和项目级
+  `packages`，显示来源、作用域、版本、安装路径、资源摘要和扩展开关；支持安装、移除、
+  单包更新、刷新和更新检查。安装、移除、更新只调用 Pi package manager，不更新 Pi 运行时。
+- Pi Package helper 使用固定 runtime bundle 的 `DefaultPackageManager` / `SettingsManager`，
+  `pi list` 不参与数据读取。项目级操作要求项目已打开且受信任；项目未受信任时只显示用户级包。
+- 第三方 package extension 默认不加载；每个含 extension 的包提供独立开关。开启时写入 Pi
+  原生 package 过滤字段 `extensions: ["*"]`，关闭时写入 `extensions: []`。Agent 启动仍使用
+  `--no-extensions`，只把已开启包的 extension 作为显式 `--extension` 传入。
+- Agent Skills 页面会把 Pi package manager 解析出的 package skills 合并进目录，来源显示为
+  `package`；它们可以像内置 / 用户 / 项目 Skill 一样按 Agent 角色分配。
+- Prompt 模板页面会合并 package prompts，显示为只读“包模板”，支持插入输入框，但不允许在
+  客户端编辑或删除；`/council`、`/parallel-review` 等模板现在可以在设置页看到。
+- `packages/coding-agent-runtime` 现在是完整的 1.0.1 canonical package root，不再只有
+  `dist/bundle`：根 `dist/index.js` 提供 SDK 入口，完整 1.0.1 SDK 提供
+  `dist/core/slash-commands.js`，`node_modules` 提供 peer packages 和 `quickjs-wasi`。
+- `npm run update:pi-runtime -- <version>` 可更新内置 runtime：自动替换 bundle、同步依赖和
+  SDK alias、hydrate `node_modules` 并做完整性校验。桌面端 Pi 更新器仍安装官方完整 npm 包，
+  并校验 SDK 入口、commands、host peers 和 `quickjs-wasi`；不完整时拒绝启用并保留当前版本。
+- 内置命令菜单现在从真实 `dist/core/slash-commands.js` 读取 `/name`、`/session`、`/fork`、
+  `/clone` 等说明，不再统一回退为“Pi 内置命令”。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、Pi Package helper 单测
+  6 项（列表、校验、无副作用、用户级本地包安装 / 移除、开启 extension 后解析路径、
+  package prompt 来源读取）、
+  真实用户级包列表读取和 `?demo=1` 桌面 / 安装弹窗 / 窄窗截图检查通过；真实 Electron 已重启。
 - 支线 64 已适配 `E:\mypi-refs\reference-dsh-plugin-workbench` 的文件工作台能力，详细拆解见 [reference-dsh-workbench.md](./reference-dsh-workbench.md)。
 - 右侧「文件」视图从只读树和单文件预览升级为完整文件工作台：右键新建 / 重命名 / 删除 / 复制 / 剪切 / 粘贴、多选、拖拽移动、自动刷新、资源管理器定位、多标签编辑保存、Markdown / 图片预览、行号 / 换行、外部磁盘变更同步和 `@相对路径` 插入。
 - 文件操作新增 core / main / preload 接口：读取元数据、写入、创建、重命名、删除、复制和资源管理器定位。所有写操作限制在项目根内，并对最近存在的祖先执行 `realpath` 校验；写操作会检查 Agent write lease。
@@ -189,14 +231,14 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 已提交：另一个 session 的会话名称重启覆盖与删除交互 bugfix `c7174fadc`
 - 已提交：另一个 session 的定位条 / 常用模型 / 消息模型显示 bugfix：`fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`
 
-批次 1-63 已提交到本地 `main`，`origin/main` 尚未同步。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
+批次 1-66 已提交到本地 `main`，批次 67 Pi Packages 实现尚未提交，`origin/main` 尚未同步。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
 
 ### 下一步
 
-阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态，批次 59 已收口云朵图标和 Provider 登录弹窗嵌套滚动条，批次 60 已实现自动压缩 / 分支摘要 / per-model compaction overrides，批次 61 已实现 Codemode 设置、运行结果视图和 Provider 模型刷新，批次 62 已实现工具设置与 MCP 自动刷新，批次 63 已实现 Prompt 模板管理和保存后的 Agent / 命令菜单刷新。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 29 项：
+阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态，批次 59 已收口云朵图标和 Provider 登录弹窗嵌套滚动条，批次 60 已实现自动压缩 / 分支摘要 / per-model compaction overrides，批次 61 已实现 Codemode 设置、运行结果视图和 Provider 模型刷新，批次 62 已实现工具设置与 MCP 自动刷新，批次 63 已实现 Prompt 模板管理和保存后的 Agent / 命令菜单刷新，支线 64-66 已完成工作区文件工作台，批次 67 已实现 Pi Packages 设置页和 package helper。下一步验收 Pi Packages，然后进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 30 项：
 
-1. Pi Packages。
-2. Shell aliases、Telemetry。
+1. Shell aliases。
+2. Telemetry。
 3. 自定义 Provider / 虚拟模型 / classifier / image models。
 
 继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
@@ -1266,6 +1308,53 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 重命名或移动时同步迁移标签、活动文件、编辑器状态和展开目录，避免已打开文件去读取旧路径；撤销时同样迁回。
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、工作区文件操作单测 5 项、Playwright mock 新建 / 重命名 / 复制 / 移动 / 删除撤销流程及打开文件重命名 / 撤销检查通过；真实 Electron 已重启。
 
+### 2026-10-07 阶段 4 第 29 项：Pi Packages 审计（代码未改动）
+
+- 确认 Pi Packages 是 Pi 自己管理的扩展包，不等同于 CodePIddy 的 npm 依赖；一个包可包含
+  extensions、skills、prompts、themes。
+- 用户级配置为 `~/.pi/agent/settings.json`，项目级为 `.pi/settings.json`，`packages` 支持
+  字符串和带 `source` / `autoload` / 资源过滤数组的对象。
+- 安装源支持 `npm:`、Git URL 和本地路径；用户级 / 项目级安装路径、信任要求和 CLI 命令已审计。
+- Pi 1.0.1 导出 `DefaultPackageManager`，可用于程序化列表、安装、更新、移除和更新检查；
+  `pi list` 没有 JSON，不应作为客户端列表的唯一数据源。
+- CodePIddy 默认使用 `--no-extensions` 隔离第三方 package extension；客户端按包提供显式
+  开启开关，开启后启动 Agent 时把该包的 extension 作为额外 `--extension` 加载。
+- 下一步实现客户端原生 Pi Packages 设置页，范围先限定为包来源管理、安装、更新、移除、刷新、
+  版本 / 作用域 / 路径 / 资源摘要、按包 extension 开关和错误诊断；暂不复刻 `pi config` 的 TUI。
+
+### 2026-10-08 批次 67：Pi Packages 设置与运行时包管理（已提交到本地 main）
+
+- 设置页新增「Agent > Pi Packages」，读取用户级和项目级包；显示来源、作用域、版本、安装路径、
+  资源摘要和每个包的 extension 开关。
+- 新增 `pi-package-helper.mjs`，用固定 runtime bundle 的 `DefaultPackageManager` /
+  `SettingsManager` 完成列表、安装、移除、单包更新和更新检查；不解析 `pi list`，不调用裸
+  `pi update`。
+- 修复内置 runtime 的 SDK 包根问题：锁死 1.0.1 peer dependencies，补 `dist/index.js`，
+  依赖完整 1.0.1 SDK 包提供 `dist/core/slash-commands.js`，并把完整 `node_modules` 纳入
+  packaged runtime。`pi-subagents` 的 host peer alias 和 codemode 的 `quickjs-wasi`
+  可正常解析；Pi 更新器仍安装完整 npm 包，更新后结构与内置 runtime 一致。
+- 新增 `npm run update:pi-runtime -- <version>`，后续更新内置 runtime 时统一替换 bundle、
+  同步 SDK / peer 版本、hydrate `node_modules` 并验证；不允许只替换 `dist/bundle`。
+- Pi 更新器新增完整 runtime 校验：`dist/index.js`、`dist/core/slash-commands.js`、
+  `pi-agent-core`、`pi-ai`、`pi-tui`、`chord` 和 `quickjs-wasi` 缺一不可；失败保留当前版本。
+- 新增 main / IPC / preload / shared 类型边界；项目级操作要求项目已打开且受信任，未受信任时
+  只显示用户级包并提示先信任项目。
+- Agent Skills 目录现在合并 package manager 解析出的 skill，避免 Pi 运行时已经能看到的
+  `skill:pi-subagents` 在客户端设置页里消失。
+- 设置页复用 `ModalShell`、`SettingsToast`、`StateBlock`、`SelectMenu`；安装前显示第三方包风险，
+  更新只作用于当前包，配置变更后空闲 Agent 自动重连并刷新命令菜单。开启 extension 时写入
+  Pi 原生 `extensions: ["*"]`，关闭时写入 `extensions: []`；Agent 只显式加载开启的包。
+- 安装弹窗里的作用域下拉改为静态参与布局，避免展开时给 `.modal-shell-body` 增加内层滚动条。
+- 移除 Pi Packages 页面里的常驻项目信任警告；信任状态仍由 Pi `trust.json` 的继承结果决定，
+  未受信任时只禁用项目级操作，不再在页面顶部重复提示。
+- 内置命令说明改为读取真实 `dist/core/slash-commands.js`；`/name`、`/session`、`/fork`、
+  `/clone` 不再统一显示为“Pi 内置命令”。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、Pi Package helper 单测
+  6 项（含用户级本地包安装 / 移除、extension 开关和 package prompt 来源读取）、
+  真实用户级 npm 包列表读取、`?demo=1`
+  桌面 / 安装弹窗 / 窄窗截图检查通过；真实 Electron 已重启。
+- 代码提交：`3db8f6a37 feat(desktop): add Pi package controls and complete runtime root`。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1311,16 +1400,25 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 41. [x] **支线 64：工作区文件管理增强**：已适配参考项目的文件树操作、多选 / 剪贴板 / 拖拽、多标签编辑保存、磁盘变更同步、文件图标和 `@相对路径` 插入；写操作检查项目边界、realpath 和 Agent write lease。主线仍从阶段 4 第 29 项 Pi Packages 继续。
 42. [x] **批次 65：工作区文件工作台增强**：语法高亮、标签拖拽排序、文件拖进聊天输入框、编辑器 Tab、`@` 菜单键盘导航、统一宽度拖拽手柄和毛玻璃边界收口已完成并提交 `66f6bbe18`。下一项按参考项目实现文件操作撤销栈。
 43. [x] **支线 66：工作区文件操作撤销栈**：每项目 30 条撤销栈、隐藏回收目录、工具栏撤销、`Ctrl/Cmd+Z`，覆盖新建、重命名、复制、移动、删除；代码提交 `a1a2c0870`，支线至此收口。
+44. [x] **阶段 4 第 29 项：Pi Packages 审计**：确认配置格式、用户 / 项目作用域、npm / Git / 本地路径、安装位置、CLI 与 `DefaultPackageManager` 能力，以及 `--no-extensions` 对 package extension 的隔离边界；下一步实现客户端原生 Pi Packages 设置页。
+45. [x] **批次 67：Pi Packages 设置与运行时包管理**：实现用户 / 项目级包列表、npm / Git / 本地路径安装、移除、单包更新、更新检查、项目信任校验、资源摘要和按包 extension 开关；开启后 Agent 显式加载对应 extension，关闭后不加载。helper 使用 runtime bundle，不解析 `pi list`，不更新 Pi 运行时。完整 runtime 包根、内置 runtime 更新脚本和命令说明适配已提交 `3db8f6a37`。待验收。
 
 ## 提交状态
 
-批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64 工作区文件管理、批次 65 工作区文件工作台增强和支线 66 撤销栈仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`、`c7174fadc`。提交哈希以 `git log -1` 为准。
+批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64-66 工作区文件工作台和批次 67 Pi Packages 仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`、`c7174fadc`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
 `npx impeccable install` 的本地安装目录仍在 `.gitignore` 中，不提交。后续如改 `package-lock.json`，仍需按仓库规则使用 `PI_ALLOW_LOCKFILE_CHANGE=1`。
 
 ## Pi core 更新边界（2026-10-03 审计）
+
+2026-10-08 补充：内置 `packages/coding-agent-runtime` 已从 bundle-only 目录升级为完整
+1.0.1 canonical package root。以后更新内置 runtime 使用
+`npm run update:pi-runtime -- <version>`，由脚本统一替换 bundle、同步 SDK / peer 版本、
+hydrate 依赖并校验，不能只替换 `dist/bundle`。桌面端内置 Pi 更新器安装的是官方完整 npm 包，
+并校验 SDK 入口、commands、host peers 和 `quickjs-wasi`，因此正常更新 Pi 不会再破坏
+subagent / codemode 的宿主解析。
 
 结论：审计时发现两处功能性 core 补丁在 Pi 更新后失效；批次 30 已把它们改成不侵入实现。现在 `packages/ai/src/utils/retry.ts` 和 `packages/coding-agent/src/core/settings-manager.ts` 与上游基线 `9cf21c8` 完全一致。
 
@@ -1381,4 +1479,4 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ## 待用户确认
 
-- 暂无，批次 1-65 已验收；批次 63-65 和本次文档整理尚在本地 `main`，未推送。
+- Pi Packages、package 资源和 runtime 更新适配待用户验收；批次 63-67 尚在本地 `main`，未推送。

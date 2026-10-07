@@ -208,6 +208,205 @@
 | SDK Auth | 已完成验证，待验收 | 客户端通过 helper 调 `ModelRuntime.login/logout` |
 | SDK ModelRuntime | 缺失 | 尚未直接接入外壳 |
 
+## Pi Packages 审计（2026-10-07）
+
+### 结论
+
+Pi Packages 是 Pi 自己管理的扩展包，不等同于 CodePIddy 的 npm 依赖。一个包可以同时提供
+`extensions`、`skills`、`prompts` 和 `themes`，其中 extensions 是可执行代码，skills 也可能指示模型执行命令。
+
+当前机器用户级 `settings.json` 已配置一个真实包：
+
+```text
+npm:@gotgenes/pi-permission-system
+C:\Users\zhaoy\.pi\agent\npm\node_modules\@gotgenes\pi-permission-system
+```
+
+该包的 `package.json` 使用：
+
+```json
+{
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  }
+}
+```
+
+### 配置格式
+
+用户级配置：
+
+```text
+~/.pi/agent/settings.json
+```
+
+项目级配置：
+
+```text
+<project>/.pi/settings.json
+```
+
+Pi 1.0.1 的 `packages` 字段是数组，元素支持两种形式：
+
+```json
+[
+  "npm:@foo/pi-tools",
+  {
+    "source": "git:github.com/foo/pi-tools",
+    "autoload": false,
+    "extensions": ["+"],
+    "skills": ["skills/review"],
+    "prompts": ["prompts/review.md"],
+    "themes": ["themes/light.json"]
+  }
+]
+```
+
+- 字符串形式：自动加载包内全部资源。
+- 对象形式：`source` 是包来源，`autoload` 控制是否自动加载。
+- `extensions` / `skills` / `prompts` / `themes` 是资源过滤规则，支持精确路径、glob 和
+  `!` / `+` / `-` 覆盖语义。
+- `autoload: false` 表示从空集合开始，只加载显式列出的资源；没有资源列表时等于不加载资源。
+- 项目包与用户包身份相同时，项目级配置优先；项目包只有在项目受信任后才允许解析、安装和修改。
+
+### 来源和安装路径
+
+支持 npm、Git 和本地路径：
+
+```text
+npm:@foo/pi-tools
+npm:@foo/pi-tools@1.2.3
+git:github.com/user/repo
+git:git@github.com:user/repo@v1
+https://github.com/user/repo
+ssh://git@github.com/user/repo
+./local/path
+```
+
+用户级安装路径：
+
+```text
+npm  ~/.pi/agent/npm/node_modules/<package-name>
+git  ~/.pi/agent/git/<host>/<repo-path>
+```
+
+项目级安装路径：
+
+```text
+npm  <project>/.pi/npm/node_modules/<package-name>
+git  <project>/.pi/git/<host>/<repo-path>
+```
+
+本地路径不会复制文件，只把规范化后的路径写入对应作用域的 `settings.json`。
+
+### Pi 1.0.1 命令与能力
+
+CLI 命令：
+
+```text
+pi install <source> [-l] [--approve|--no-approve]
+pi remove <source> [-l]
+pi uninstall <source> [-l]
+pi update --extensions
+pi update --extension <source>
+pi list [--approve|--no-approve]
+pi config [-l]
+```
+
+- `pi list` 只有人类可读文本，没有 `--json`，且只输出来源、作用域、`filtered` 和安装路径，
+  不输出版本、资源类型或每个资源的启用状态。
+- `pi config` 是 TUI，用来启用/禁用包内资源；它不是客户端可直接复用的 RPC 接口。
+- `pi update` 不带参数时更新 Pi 自身；客户端只能使用 `--extensions` 或 `--extension <source>`，
+  不能调用裸 `pi update`。
+- `pi remove` 对本地路径只移除配置，不删除源目录；npm / git 包会移除对应安装目录。
+
+运行时 SDK：
+
+- `packages/coding-agent-runtime/dist/bundle/index.js` 导出 `DefaultPackageManager` 和 `SettingsManager`。
+- `DefaultPackageManager` 提供 `resolve`、`install`、`installAndPersist`、`remove`、
+  `removeAndPersist`、`update`、`listConfiguredPackages`、`checkForAvailableUpdates`、
+  `getInstalledPath` 和进度回调。
+- 因此客户端不应解析 `pi list` 文本；列表应优先走 `DefaultPackageManager`，安装、更新、移除也优先走它。
+- Pi 的 RPC 没有 package 管理命令，不能把 `/pi-package` 之类不存在的命令硬接进命令菜单。
+
+### 与 CodePIddy 当前启动策略的关系
+
+CodePIddy 启动 Agent 时继续使用 `--no-extensions`，并显式加载：
+
+```text
+builtin:mcp
+builtin:codemode
+builtin:tool-search
+permission.js
+review.js
+retry.js
+cache-warming.js
+```
+
+Pi 1.0.1 的 `--no-extensions` 会禁用自动发现的 extensions 和内置 extensions，但显式 `-e`
+仍然有效。当前实现中它只过滤 extension 路径；包内的 skills / prompts / themes 仍可能被解析。
+
+这意味着：
+
+- 第三方包里的 extension 默认不会加载，避免 `@gotgenes/pi-permission-system` 和 CodePIddy
+  自己的 permission 扩展重复；但客户端提供按包开关，开启后会把该包的 extension 作为显式
+  `--extension` 传给 Agent。
+- 包内的 skills / prompts / themes 仍可能进入 Pi 资源解析，因此客户端不能只用“扩展已安装”
+  一个状态描述整个包。
+- 启用第三方 package extension 必须经过显式确认；客户端不能自动放宽所有包，也不能修改
+  permission / review / retry / cache-warming 这些内置扩展的加载顺序。
+
+### 客户端实现建议
+
+第一版应放在「Agent > Pi Packages」，默认隔离但允许按包开启 extension：
+
+1. 读取用户级和项目级 `packages`，显示来源、作用域、版本、安装路径、来源类型和资源摘要。
+2. 对 extension 资源提供按包开关；开启时写入 Pi 原生 `extensions: ["*"]`，关闭时写入
+   `extensions: []`。skills / prompts / themes 显示实际解析状态，不把它们和 extension
+   混成一个开关。
+3. 支持 npm / git / 本地路径安装，安装前显示第三方代码风险确认和项目信任要求。
+4. 支持移除和单包更新；更新只调用 package manager 的扩展更新能力，绝不更新 Pi 运行时。
+5. Agent 启动仍使用 `--no-extensions`，只把已开启包的 extension 作为显式 `--extension`
+   传入；支持刷新列表和错误诊断，配置变更后空闲 Agent 重新连接，运行中 Agent 延后生效。
+6. 复用 `ModalShell`、`SettingsToast`、`StateBlock`、`SelectMenu`，不新增第二套组件。
+
+暂不在第一版做 `pi config` 的完整资源级 TUI 复刻；extension 按包开关先走 Pi 原生
+`PackageSource` 过滤字段，不复制 `pi config`。
+
+### 下一轮代码落点
+
+建议按下面的边界实现，避免把 Pi package 管理做成第二套独立系统：
+
+1. `packages/codepiddy-shared/src/index.ts`
+   - 增加 package scope、source type、resource summary、installed package、action result 类型。
+   - 在 `CodePIddyClientApi` 增加 list / install / remove / update / check-updates 接口。
+2. `packages/codepiddy-desktop/scripts/`
+   - 新增 Pi package helper，使用与 `pi-auth-helper.mjs` 相同的 `createRequire` 方式加载
+     `packages/coding-agent-runtime/dist/bundle/index.js`。
+   - helper 只输出 JSON 行；不要在 main 里解析 `pi list` 的人类文本。
+   - 操作范围只允许 `install`、`remove`、`update --extensions` / `update --extension` 和 list /
+     update-check；禁止裸 `pi update` 或 `--all`。
+3. `packages/codepiddy-desktop/src/main/`
+   - 新增 package manager 包装，负责 helper 进程、超时、stderr、项目根和 trust 校验。
+   - 在 IPC validation 中限制 source 长度、scope、action 和项目路径，不接受任意命令字符串。
+4. `packages/codepiddy-desktop/src/preload/index.ts`
+   - 只暴露共享类型定义的窄 API，不暴露原始 helper 参数或 shell 命令。
+5. `packages/codepiddy-desktop/src/renderer/`
+   - 新增 `PiPackageSettings.tsx`，挂在设置页 `Agent` 分组。
+   - 列表显示名称 / source / scope / version / installedPath / 资源摘要 / extension 开关。
+   - 安装、移除、更新、风险确认使用 `ModalShell`；结果使用 `SettingsToast`；空态和错误使用
+     `StateBlock`；来源和 scope 选择使用 `SelectMenu`。
+   - 不在第一版复制 `pi config` TUI，不新增 package 专用弹层、消息或复选框实现。
+6. 测试
+   - main helper 单测覆盖 source 解析、scope、缺失安装目录、版本读取和 update-check。
+   - IPC validation 单测覆盖非法 scope / source / 项目路径。
+   - `?demo=1` 覆盖空列表、已安装包、extension 开关、安装弹窗、移除确认和错误状态。
+   - 真实验收至少覆盖用户级 npm 包列表、安装本地测试包、移除本地测试包和刷新。
+
+实现时必须继续保留现有 Agent 启动参数 `--no-extensions` 和显式扩展列表；只有用户明确开启的
+package extension 才会追加到显式列表，不得自动修改 permission / review / retry / cache-warming
+扩展的加载策略。
+
 ## 后续任务清单
 
 ### 阶段 0：清理和控制版本（已完成）
@@ -247,7 +446,7 @@
 22. [x] `/share`：批次 51-53 已实现并验收客户端原生分享、隐私确认、独立分享设置、品牌图标、Radius / GitHub CLI 回退和 viewer link。
 23. [x] `/bug` / 客户端诊断包：批次 54 已完成客户端原生诊断导出，收集版本、平台、Agent / Session / Provider / MCP / trust 状态、最近错误、日志路径和可选脱敏 Session JSONL，导出本地 ZIP，不上传。Pi 1.0.1 仍没有原生 `/bug`。
 
-批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`，第 26 项 Codemode 已由批次 61 实现并提交 `ec4dde669`，第 27 项 Tool Search / Tool Exposure 已由批次 62 实现并提交 `6815fc026`，第 28 项 Prompt Templates 已由批次 63 实现并提交 `8a9231079`。下一步进入第 29 项 Pi Packages。
+批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`，第 26 项 Codemode 已由批次 61 实现并提交 `ec4dde669`，第 27 项 Tool Search / Tool Exposure 已由批次 62 实现并提交 `6815fc026`，第 28 项 Prompt Templates 已由批次 63 实现并提交 `8a9231079`。第 29 项 Pi Packages 已由批次 67 实现客户端设置页、runtime helper、安装 / 更新 / 移除 / 更新检查和项目信任边界；下一步进入第 30 项 Shell aliases。
 
 ### 阶段 4：高级运行时能力
 
@@ -256,7 +455,19 @@
 26. [x] Codemode 设置和运行结果视图：批次 61 已完成设置页 `codemode.mode / inlineBudget`、转录流脚本与工具调用详情、错误和完整输出路径展示，提交 `ec4dde669`。
 27. [x] Tool Search / Tool Exposure 设置：批次 62 已完成客户端工具页、`defaultTools` 严格隔离和 MCP exposure 汇总；保存后空闲 Agent 自动重连，提交 `6815fc026`。
 28. [x] Prompt Templates：批次 63 已完成客户端用户 / 项目模板管理、`/模板名` 插入、空闲 Agent 自动重连和命令菜单刷新，提交 `8a9231079`。
-29. Pi Packages
+29. [x] Pi Packages：批次 67 已实现客户端原生包列表、npm / Git / 本地路径安装、更新、移除、
+    刷新、更新检查、项目信任校验、资源摘要和按包 extension 开关；使用 runtime bundle 的
+    `DefaultPackageManager`，不解析 `pi list`，不更新 Pi 运行时。默认隔离，开启后 Agent
+    显式加载对应 package extension；Agent Skills 页面也会合并 package manager 解析出的
+    package skills，并标记来源为 `package`；Prompt 模板页面会合并 package prompts，
+    以只读“包模板”展示并支持插入输入框。
+
+运行时更新补充：内置 `packages/coding-agent-runtime` 已补齐 canonical 1.0.1 SDK 包根，
+包含 `dist/index.js`、完整 1.0.1 peer dependencies 和 `quickjs-wasi`。Pi 更新器继续安装
+官方完整 npm 包，更新后的 `PI_PACKAGE_DIR` 结构同样满足 `pi-subagents` host peer alias
+解析，并校验 SDK 入口、commands、host peers 和 `quickjs-wasi`。更新内置 runtime 使用
+`npm run update:pi-runtime -- <version>`；只替换 `dist/bundle` 不再被视为有效更新。
+内置命令说明从 `dist/core/slash-commands.js` 读取，不再回退为统一的“Pi 内置命令”文案。
 30. Shell aliases
 31. Telemetry 设置
 32. 自定义 Provider / 虚拟模型 / classifier / image models
