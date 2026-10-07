@@ -59,6 +59,7 @@ import { ModalShell } from "./components/modal-shell.tsx";
 import { ProjectTrustSettings } from "./components/ProjectTrustSettings.tsx";
 import { PromptTemplateSettings } from "./components/PromptTemplateSettings.tsx";
 import { ProviderSettings } from "./components/ProviderSettings.tsx";
+import { PanelResizeHandle } from "./components/panel-resize-handle.tsx";
 import { ProviderIcon } from "./components/provider-icon.tsx";
 import { type SessionCreateDraft, SessionCreateForm } from "./components/SessionCreateForm.tsx";
 import { SessionShareDialog } from "./components/SessionShareDialog.tsx";
@@ -87,10 +88,28 @@ import { useTranscriptScroll } from "./components/use-transcript-scroll.ts";
 import { WorkPanel } from "./components/WorkPanel.tsx";
 import { demoProject } from "./demo-project.ts";
 import { permissionChoicePresentation } from "./permission-choices.ts";
+import { WORKSPACE_FILES_DRAG_TYPE } from "./workspace-drag.ts";
 
 const LlamaCppSettings = lazy(() =>
 	import("./components/LlamaCppSettings.tsx").then((module) => ({ default: module.LlamaCppSettings })),
 );
+
+const SIDEBAR_DEFAULT_WIDTH = 266;
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 420;
+
+function clampSidebarWidth(value: number): number {
+	return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(value)));
+}
+
+function loadStoredSidebarWidth(): number {
+	try {
+		const stored = Number(window.localStorage.getItem("codepiddy.sidebar.width"));
+		return Number.isFinite(stored) && stored > 0 ? clampSidebarWidth(stored) : SIDEBAR_DEFAULT_WIDTH;
+	} catch {
+		return SIDEBAR_DEFAULT_WIDTH;
+	}
+}
 
 type Selection =
 	| { type: "welcome" }
@@ -121,6 +140,15 @@ function restoreSelection(project: ProjectSummary, state: ProjectUiState): Selec
 		}
 	}
 	return { type: "project" };
+}
+
+function workspacePathsFromDrag(dataTransfer: DataTransfer): string[] {
+	try {
+		const parsed: unknown = JSON.parse(dataTransfer.getData(WORKSPACE_FILES_DRAG_TYPE));
+		return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+	} catch {
+		return [];
+	}
 }
 
 interface WorkItemDialogState {
@@ -1839,6 +1867,7 @@ export function App() {
 	const [collapsedRounds, setCollapsedRounds] = useState<Record<string, boolean>>({});
 	// 右侧工作区面板启动时始终收起；宽度记忆仍然保留，只有可见性不跨会话恢复。
 	const [workPanelVisible, setWorkPanelVisible] = useState(false);
+	const [sidebarWidth, setSidebarWidth] = useState(loadStoredSidebarWidth);
 	const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 	const [agentActivities, setAgentActivities] = useState<Record<string, AgentActivity>>(
 		demoMode ? { "CODE-001": { label: "Pi 正在处理", kind: "working", queued: 0 } } : {},
@@ -1904,6 +1933,8 @@ export function App() {
 	const unreadCountsRef = useRef<Record<string, number>>({});
 	const paneElementsRef = useRef(new Map<string, HTMLDivElement>());
 	const activeTranscriptRef = useRef<HTMLDivElement | null>(null);
+	const sidebarResizeStartRef = useRef(sidebarWidth);
+	const sidebarResizeLatestRef = useRef(sidebarWidth);
 	const [retainedAgentIds, setRetainedAgentIds] = useState<string[]>([]);
 
 	const selectedWorkItem = useMemo(() => {
@@ -2102,6 +2133,32 @@ export function App() {
 		},
 		[activeAgentLocator, project],
 	);
+
+	const startSidebarResize = useCallback(() => {
+		sidebarResizeStartRef.current = sidebarWidth;
+		sidebarResizeLatestRef.current = sidebarWidth;
+	}, [sidebarWidth]);
+
+	const resizeSidebar = useCallback((delta: number) => {
+		const next = clampSidebarWidth(sidebarResizeStartRef.current + delta);
+		sidebarResizeLatestRef.current = next;
+		setSidebarWidth(next);
+	}, []);
+
+	const finishSidebarResize = useCallback(() => {
+		try {
+			window.localStorage.setItem("codepiddy.sidebar.width", String(sidebarResizeLatestRef.current));
+		} catch {}
+	}, []);
+
+	const resetSidebarWidth = useCallback(() => {
+		sidebarResizeStartRef.current = SIDEBAR_DEFAULT_WIDTH;
+		sidebarResizeLatestRef.current = SIDEBAR_DEFAULT_WIDTH;
+		setSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+		try {
+			window.localStorage.removeItem("codepiddy.sidebar.width");
+		} catch {}
+	}, []);
 
 	const refreshAfterProviderChange = useCallback(async (label: string): Promise<void> => {
 		setProviderSettingsRefreshToken((current) => current + 1);
@@ -5678,9 +5735,29 @@ export function App() {
 									<form
 										className="composer composer-stacked"
 										onDragOver={(event) => {
-											if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+											if (
+												event.dataTransfer.types.includes("Files") ||
+												event.dataTransfer.types.includes(WORKSPACE_FILES_DRAG_TYPE)
+											)
+												event.preventDefault();
 										}}
 										onDrop={(event) => {
+											const workspacePaths = workspacePathsFromDrag(event.dataTransfer);
+											if (workspacePaths.length > 0) {
+												event.preventDefault();
+												setDrafts((current) => {
+													const draft = current[agentId] ?? "";
+													const separator = draft && !draft.endsWith(" ") ? " " : "";
+													return {
+														...current,
+														[agentId]: `${draft}${separator}${workspacePaths
+															.map((path) => `@${path}`)
+															.join(" ")} `,
+													};
+												});
+												composerInputRef.current?.focus();
+												return;
+											}
 											const files = Array.from(event.dataTransfer.files);
 											if (files.length === 0) return;
 											event.preventDefault();
@@ -6065,7 +6142,10 @@ export function App() {
 	const useWindowOverlay = "codepiddy" in window && window.codepiddy.platform === "win32";
 	const selectedAuthProvider = authProviders.find((provider) => provider.id === authProviderId) ?? null;
 	return (
-		<div className={`app-shell${useWindowOverlay ? " windows-overlay" : ""}`}>
+		<div
+			className={`app-shell${useWindowOverlay ? " windows-overlay" : ""}`}
+			style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
+		>
 			{useWindowOverlay ? (
 				<header className="app-titlebar">
 					<img src="./codepiddy-icon.png" alt="" />
@@ -6179,6 +6259,14 @@ export function App() {
 					</button>
 				</div>
 			</aside>
+			<PanelResizeHandle
+				label="调整项目栏宽度"
+				className="sidebar-resize"
+				onResizeStart={startSidebarResize}
+				onResize={resizeSidebar}
+				onResizeEnd={finishSidebarResize}
+				onReset={resetSidebarWidth}
+			/>
 			<main className="main-pane">
 				{error ? (
 					<StateBlock

@@ -20,15 +20,21 @@ import {
 	X,
 } from "lucide-react";
 import { type CSSProperties, memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { highlightFileCode } from "../file-syntax.ts";
+import { WORKSPACE_FILES_DRAG_TYPE } from "../workspace-drag.ts";
 import { MessageContent } from "./message-content.tsx";
 import { ModalShell } from "./modal-shell.tsx";
 import { PanelIconButton } from "./panel-icon-button.tsx";
+import { PanelResizeHandle } from "./panel-resize-handle.tsx";
 import { showSettingsToast } from "./settings-toast-store.ts";
 import { StateBlock } from "./state-block.tsx";
 
 const FILE_REFRESH_MS = 2500;
 const FILE_SEARCH_DEBOUNCE_MS = 180;
-const DRAG_TYPE = "application/x-codepiddy-workspace-files";
+const HIGHLIGHT_MAX_BYTES = 64 * 1024;
+const TAB_DRAG_TYPE = "application/x-codepiddy-workspace-tab";
+const MIN_TREE_WIDTH = 150;
+const MIN_PREVIEW_WIDTH = 220;
 
 type EntryKind = "file" | "dir";
 
@@ -141,6 +147,16 @@ function loadStoredExpanded(projectRoot: string): Set<string> {
 	}
 }
 
+function loadStoredTreeWidth(projectRoot: string): number | null {
+	try {
+		const raw = window.localStorage.getItem(storageKey(projectRoot, "tree-width"));
+		const parsed = raw ? Number(raw) : Number.NaN;
+		return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
 function persistTabs(projectRoot: string, tabs: string[]): void {
 	try {
 		window.localStorage.setItem(storageKey(projectRoot, "tabs"), JSON.stringify(tabs));
@@ -150,6 +166,14 @@ function persistTabs(projectRoot: string, tabs: string[]): void {
 function persistExpanded(projectRoot: string, expanded: Set<string>): void {
 	try {
 		window.localStorage.setItem(storageKey(projectRoot, "expanded"), JSON.stringify([...expanded]));
+	} catch {}
+}
+
+function persistTreeWidth(projectRoot: string, width: number | null): void {
+	try {
+		const key = storageKey(projectRoot, "tree-width");
+		if (width === null) window.localStorage.removeItem(key);
+		else window.localStorage.setItem(key, String(Math.round(width)));
 	} catch {}
 }
 
@@ -203,6 +227,80 @@ function FileViewerSkeleton() {
 	);
 }
 
+function WorkspaceTextEditor({
+	path,
+	value,
+	wrapLines,
+	onChange,
+	onSave,
+}: {
+	path: string;
+	value: string;
+	wrapLines: boolean;
+	onChange(value: string): void;
+	onSave(): void;
+}) {
+	const lineNumbersRef = useRef<HTMLPreElement>(null);
+	const highlightRef = useRef<HTMLPreElement>(null);
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const highlighted = useMemo(
+		() => (value.length <= HIGHLIGHT_MAX_BYTES ? highlightFileCode(value, path) : null),
+		[path, value],
+	);
+	const lineNumbers = useMemo(() => {
+		const count = value.split("\n").length;
+		return Array.from({ length: count }, (_, index) => index + 1).join("\n");
+	}, [value]);
+
+	return (
+		<div className={`workspace-file-editor${wrapLines ? " wrapped" : ""}${highlighted ? " highlighted" : ""}`}>
+			<pre ref={lineNumbersRef} className="workspace-file-line-numbers" aria-hidden="true">
+				{lineNumbers}
+			</pre>
+			<div className="workspace-file-code">
+				{highlighted ? (
+					<pre ref={highlightRef} className="workspace-file-highlight" aria-hidden="true">
+						{/* biome-ignore lint/security/noDangerouslySetInnerHtml: highlight.js escapes source text before emitting token markup */}
+						<code dangerouslySetInnerHTML={{ __html: highlighted }} />
+					</pre>
+				) : null}
+				<textarea
+					ref={textareaRef}
+					value={value}
+					spellCheck={false}
+					wrap={wrapLines ? "soft" : "off"}
+					onChange={(event) => onChange(event.target.value)}
+					onScroll={(event) => {
+						if (lineNumbersRef.current) lineNumbersRef.current.scrollTop = event.currentTarget.scrollTop;
+						if (highlightRef.current) {
+							highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+							highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+						}
+					}}
+					onKeyDown={(event) => {
+						if (event.key === "Tab") {
+							event.preventDefault();
+							const textarea = event.currentTarget;
+							const start = textarea.selectionStart;
+							const end = textarea.selectionEnd;
+							onChange(`${value.slice(0, start)}\t${value.slice(end)}`);
+							window.requestAnimationFrame(() => {
+								const nextPosition = start + 1;
+								textarea.setSelectionRange(nextPosition, nextPosition);
+							});
+							return;
+						}
+						if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+							event.preventDefault();
+							onSave();
+						}
+					}}
+				/>
+			</div>
+		</div>
+	);
+}
+
 function fileTabFromContent(content: WorkspaceFileContent, mtimeMs: number, path: string): FileTabState {
 	const text = content.kind === "text" ? (content.content ?? "") : "";
 	return {
@@ -240,10 +338,17 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 	const [wrapLines, setWrapLines] = useState(true);
 	const [dropTarget, setDropTarget] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
+	const [draggedTab, setDraggedTab] = useState<string | null>(null);
+	const [treePaneWidth, setTreePaneWidth] = useState<number | null>(() => loadStoredTreeWidth(projectRoot));
 	const loadedDirsRef = useRef<Set<string>>(new Set());
 	const filesRef = useRef(files);
 	const tabsRef = useRef(tabs);
 	const dragPathsRef = useRef<string[]>([]);
+	const draggedTabRef = useRef<string | null>(null);
+	const bodyRef = useRef<HTMLDivElement>(null);
+	const treePaneRef = useRef<HTMLDivElement>(null);
+	const treeResizeStartRef = useRef(0);
+	const treeResizeLatestRef = useRef(0);
 	const dialogInputRef = useRef<HTMLInputElement>(null);
 	const contextMenuRef = useRef<HTMLDivElement>(null);
 
@@ -268,6 +373,7 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 		setQuery("");
 		setSearchResults(null);
 		setDropTarget(null);
+		setTreePaneWidth(loadStoredTreeWidth(projectRoot));
 		loadedDirsRef.current = new Set();
 	}, [projectRoot]);
 
@@ -510,6 +616,44 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 		},
 		[activePath],
 	);
+
+	const moveTab = useCallback((dragged: string, target: string) => {
+		if (dragged === target) return;
+		setTabs((current) => {
+			const from = current.indexOf(dragged);
+			const to = current.indexOf(target);
+			if (from < 0 || to < 0) return current;
+			const next = [...current];
+			next.splice(from, 1);
+			next.splice(to, 0, dragged);
+			return next;
+		});
+	}, []);
+
+	const startTreeResize = useCallback(() => {
+		const measured = treePaneRef.current?.getBoundingClientRect().width ?? MIN_TREE_WIDTH;
+		treeResizeStartRef.current = measured;
+		treeResizeLatestRef.current = measured;
+	}, []);
+
+	const resizeTreePane = useCallback((delta: number) => {
+		const bodyWidth = bodyRef.current?.getBoundingClientRect().width ?? 0;
+		const maxWidth = Math.max(MIN_TREE_WIDTH, bodyWidth - MIN_PREVIEW_WIDTH);
+		const next = Math.min(maxWidth, Math.max(MIN_TREE_WIDTH, treeResizeStartRef.current + delta));
+		treeResizeLatestRef.current = next;
+		setTreePaneWidth(next);
+	}, []);
+
+	const finishTreeResize = useCallback(() => {
+		persistTreeWidth(projectRoot, treeResizeLatestRef.current);
+	}, [projectRoot]);
+
+	const resetTreeWidth = useCallback(() => {
+		treeResizeStartRef.current = 0;
+		treeResizeLatestRef.current = 0;
+		setTreePaneWidth(null);
+		persistTreeWidth(projectRoot, null);
+	}, [projectRoot]);
 
 	const setDraft = useCallback((path: string, value: string) => {
 		setFiles((current) => {
@@ -886,7 +1030,7 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 						dragPathsRef.current = paths;
 						event.dataTransfer.effectAllowed = "copyMove";
 						event.dataTransfer.setData("text/plain", paths.join("\n"));
-						event.dataTransfer.setData(DRAG_TYPE, JSON.stringify(paths));
+						event.dataTransfer.setData(WORKSPACE_FILES_DRAG_TYPE, JSON.stringify(paths));
 					}}
 					onDragEnd={() => {
 						dragPathsRef.current = [];
@@ -1060,25 +1204,15 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 				</div>
 			);
 		}
-		const lineCount = state.draft.split("\n").length;
 		return (
-			<div className={`workspace-file-editor${wrapLines ? " wrapped" : ""}`}>
-				<pre className="workspace-file-line-numbers" aria-hidden="true">
-					{Array.from({ length: lineCount }, (_, index) => index + 1).join("\n")}
-				</pre>
-				<textarea
-					value={state.draft}
-					spellCheck={false}
-					wrap={wrapLines ? "soft" : "off"}
-					onChange={(event) => setDraft(activePath, event.target.value)}
-					onKeyDown={(event) => {
-						if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-							event.preventDefault();
-							void saveActive();
-						}
-					}}
-				/>
-			</div>
+			<WorkspaceTextEditor
+				key={activePath}
+				path={activePath}
+				value={state.draft}
+				wrapLines={wrapLines}
+				onChange={(value) => setDraft(activePath, value)}
+				onSave={() => void saveActive()}
+			/>
 		);
 	};
 
@@ -1375,58 +1509,118 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 					<LocateFixed size={14} strokeWidth={2} />
 				</PanelIconButton>
 			</div>
-			{tabs.length > 0 ? (
-				<div className="workspace-file-tabs" role="tablist" aria-label="打开的文件">
-					{tabs.map((path) => {
-						const state = files[path];
-						return (
-							<div key={path} className={`workspace-file-tab${path === activePath ? " active" : ""}`}>
-								<button
-									type="button"
-									className="workspace-file-tab-main"
-									onClick={() => setActivePath(path)}
-									title={path}
-								>
-									<WorkspaceFileIcon kind="file" path={path} />
-									<span>{basename(path)}</span>
-									{state?.dirty ? (
-										<span className="workspace-file-dirty-dot" title="未保存">
-											<span className="sr-only">未保存</span>
-										</span>
-									) : null}
-								</button>
-								{state?.diskChanged ? (
-									<button
-										type="button"
-										className="workspace-file-tab-action"
-										title="磁盘内容已变化，重新加载"
-										onClick={() => void loadFile(path, true)}
-									>
-										<RefreshCw size={12} strokeWidth={2} />
-									</button>
-								) : null}
-								<button
-									type="button"
-									className="workspace-file-tab-action"
-									title="关闭"
-									onClick={() => closeTab(path)}
-								>
-									<X size={12} strokeWidth={2} />
-								</button>
-							</div>
-						);
-					})}
-					{activePath ? (
-						<PanelIconButton
-							label="在资源管理器中显示当前文件"
-							onClick={() => void revealEntry(activePath, "file")}
-						>
-							<LocateFixed size={14} strokeWidth={2} />
-						</PanelIconButton>
-					) : null}
+			<div ref={bodyRef} className={`workspace-files-body${activePath ? " has-active-file" : ""}`}>
+				<div
+					ref={treePaneRef}
+					className="workspace-file-tree-pane"
+					style={treePaneWidth === null ? undefined : { flexBasis: `${treePaneWidth}px` }}
+				>
+					{renderTree()}
 				</div>
-			) : null}
-			<div className="workspace-files-body">{activePath ? renderActiveFile() : renderTree()}</div>
+				{activePath ? (
+					<PanelResizeHandle
+						label="调整文件树和文件预览宽度"
+						className="is-inline"
+						onResizeStart={startTreeResize}
+						onResize={resizeTreePane}
+						onResizeEnd={finishTreeResize}
+						onReset={resetTreeWidth}
+					/>
+				) : null}
+				{activePath ? (
+					<div className="workspace-file-preview-pane">
+						{tabs.length > 0 ? (
+							<div className="workspace-file-tabs" role="tablist" aria-label="打开的文件">
+								{tabs.map((path) => {
+									const state = files[path];
+									return (
+										<div
+											key={path}
+											className={`workspace-file-tab${path === activePath ? " active" : ""}${
+												draggedTab === path ? " is-dragging" : ""
+											}`}
+										>
+											<button
+												type="button"
+												className="workspace-file-tab-main"
+												draggable
+												onClick={() => setActivePath(path)}
+												title={path}
+												onDragStart={(event) => {
+													draggedTabRef.current = path;
+													setDraggedTab(path);
+													event.dataTransfer.effectAllowed = "move";
+													event.dataTransfer.setData(TAB_DRAG_TYPE, path);
+												}}
+												onDragEnter={(event) => {
+													const dragged = draggedTabRef.current ?? draggedTab;
+													if (!dragged || dragged === path) return;
+													event.preventDefault();
+													moveTab(dragged, path);
+												}}
+												onDragOver={(event) => {
+													const dragged = draggedTabRef.current ?? draggedTab;
+													if (!dragged || dragged === path) return;
+													event.preventDefault();
+													event.dataTransfer.dropEffect = "move";
+												}}
+												onDrop={(event) => {
+													const dragged =
+														event.dataTransfer.getData(TAB_DRAG_TYPE) ||
+														draggedTabRef.current ||
+														draggedTab;
+													if (!dragged) return;
+													event.preventDefault();
+													moveTab(dragged, path);
+													draggedTabRef.current = null;
+													setDraggedTab(null);
+												}}
+												onDragEnd={() => {
+													draggedTabRef.current = null;
+													setDraggedTab(null);
+												}}
+											>
+												<WorkspaceFileIcon kind="file" path={path} />
+												<span>{basename(path)}</span>
+												{state?.dirty ? (
+													<span className="workspace-file-dirty-dot" title="未保存">
+														<span className="sr-only">未保存</span>
+													</span>
+												) : null}
+											</button>
+											{state?.diskChanged ? (
+												<button
+													type="button"
+													className="workspace-file-tab-action"
+													title="磁盘内容已变化，重新加载"
+													onClick={() => void loadFile(path, true)}
+												>
+													<RefreshCw size={12} strokeWidth={2} />
+												</button>
+											) : null}
+											<button
+												type="button"
+												className="workspace-file-tab-action"
+												title="关闭"
+												onClick={() => closeTab(path)}
+											>
+												<X size={12} strokeWidth={2} />
+											</button>
+										</div>
+									);
+								})}
+								<PanelIconButton
+									label="在资源管理器中显示当前文件"
+									onClick={() => void revealEntry(activePath, "file")}
+								>
+									<LocateFixed size={14} strokeWidth={2} />
+								</PanelIconButton>
+							</div>
+						) : null}
+						{renderActiveFile()}
+					</div>
+				) : null}
+			</div>
 			{contextMenu ? (
 				<div
 					ref={contextMenuRef}

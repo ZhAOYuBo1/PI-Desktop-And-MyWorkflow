@@ -2217,6 +2217,25 @@ textarea:focus-visible,
   cursor: ew-resize;
 }
 
+.work-panel-resize.is-inline {
+  position: relative;
+  z-index: auto;
+  top: auto;
+  bottom: auto;
+  left: auto;
+  width: 6px;
+  flex: 0 0 6px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.work-panel-resize.sidebar-resize {
+  left: calc(var(--sidebar-width, 266px) - var(--cp-space-sm));
+  width: var(--cp-space-lg);
+  flex: none;
+  cursor: ew-resize;
+}
+
 .work-panel-resize::after {
   position: absolute;
   top: 50%;
@@ -3038,6 +3057,10 @@ textarea:focus-visible,
   box-shadow: var(--cp-elevation-raised);
 }
 
+.workspace-file-tab.is-dragging {
+  opacity: 0.55;
+}
+
 .workspace-file-tab-main {
   display: flex;
   min-width: 0;
@@ -3092,7 +3115,29 @@ textarea:focus-visible,
   min-width: 0;
   min-height: 0;
   flex: 1;
+}
+
+.workspace-file-tree-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
+}
+
+.workspace-files-body.has-active-file .workspace-file-tree-pane {
+  flex: 0 0 clamp(180px, 36%, 250px);
+  min-width: 150px;
+  max-width: max(150px, calc(100% - 220px));
+}
+
+.workspace-file-preview-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  background: var(--cp-surface);
 }
 
 .workspace-file-tree {
@@ -3324,7 +3369,15 @@ textarea:focus-visible,
   background: var(--cp-surface);
 }
 
+.workspace-file-code {
+  position: relative;
+  min-width: 0;
+  min-height: 100%;
+  overflow: hidden;
+}
+
 .workspace-file-line-numbers,
+.workspace-file-highlight,
 .workspace-file-editor textarea {
   margin: 0;
   padding: var(--cp-space-md);
@@ -3342,21 +3395,92 @@ textarea:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 
+.workspace-file-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background: transparent;
+  color: var(--cp-ink);
+  white-space: pre;
+}
+
+.workspace-file-highlight code {
+  font: inherit;
+  white-space: inherit;
+}
+
 .workspace-file-editor textarea {
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 100%;
   resize: none;
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--cp-ink);
+  color: transparent;
+  caret-color: var(--cp-ink);
   white-space: pre;
 }
 
+.workspace-file-editor:not(.highlighted) textarea {
+  color: var(--cp-ink);
+}
+
+.workspace-file-editor.wrapped .workspace-file-highlight,
 .workspace-file-editor.wrapped textarea {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.workspace-file-editor.wrapped textarea {
+  overflow-x: hidden;
+}
+
+.workspace-file-highlight .hljs-comment,
+.workspace-file-highlight .hljs-quote {
+  color: var(--cp-ink-faint);
+  font-style: italic;
+}
+
+.workspace-file-highlight .hljs-keyword,
+.workspace-file-highlight .hljs-selector-tag,
+.workspace-file-highlight .hljs-literal,
+.workspace-file-highlight .hljs-name {
+  color: var(--cp-violet);
+}
+
+.workspace-file-highlight .hljs-string,
+.workspace-file-highlight .hljs-regexp,
+.workspace-file-highlight .hljs-addition {
+  color: var(--cp-success);
+}
+
+.workspace-file-highlight .hljs-number,
+.workspace-file-highlight .hljs-symbol,
+.workspace-file-highlight .hljs-bullet {
+  color: var(--cp-warning);
+}
+
+.workspace-file-highlight .hljs-title,
+.workspace-file-highlight .hljs-section,
+.workspace-file-highlight .hljs-built_in {
+  color: var(--cp-accent);
+}
+
+.workspace-file-highlight .hljs-attr,
+.workspace-file-highlight .hljs-attribute,
+.workspace-file-highlight .hljs-variable,
+.workspace-file-highlight .hljs-template-variable,
+.workspace-file-highlight .hljs-params {
+  color: var(--cp-ink-secondary);
+}
+
+.workspace-file-highlight .hljs-type,
+.workspace-file-highlight .hljs-class .hljs-title {
+  color: var(--cp-danger);
 }
 
 .workspace-file-markdown {
@@ -4660,6 +4784,9 @@ body {
 }
 
 .sidebar {
+  width: var(--sidebar-width, 266px);
+  max-width: min(420px, 42vw);
+  flex-basis: var(--sidebar-width, 266px);
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -4675,10 +4802,23 @@ body {
 }
 
 .sidebar-footer {
+  width: var(--sidebar-width, 265px);
+  max-width: min(420px, 42vw);
   bottom: 0;
   left: 0;
   border-radius: 0;
   background: linear-gradient(transparent, color-mix(in oklab, var(--cp-surface-rail) 45%, transparent) 38%);
+}
+
+@media (max-width: 940px) {
+  .sidebar {
+    width: min(var(--sidebar-width, 240px), 240px);
+    flex-basis: min(var(--sidebar-width, 240px), 240px);
+  }
+
+  .sidebar-footer {
+    width: min(var(--sidebar-width, 239px), 239px);
+  }
 }
 
 .main-pane {
