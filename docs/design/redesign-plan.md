@@ -22,12 +22,12 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。批次 1-65 已提交到本地 `main`，`origin/main` 尚未同步；批次 63 代码提交 `8a9231079`，支线 64 代码提交 `293c6a5e2`，批次 65 工作区文件工作台增强代码提交 `66f6bbe18`，文档整理提交紧随其后，当前 HEAD 以 `git log -1` 为准，工作树干净。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。批次 1-65 已提交到本地 `main`，`origin/main` 尚未同步；批次 63 代码提交 `8a9231079`，支线 64 代码提交 `293c6a5e2`，批次 65 工作区文件工作台增强代码提交 `66f6bbe18`。支线 66 文件操作撤销栈代码提交 `a1a2c0870`，文档提交紧随其后；当前 HEAD 以 `git log -1` 为准，工作树应为干净。
 批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`。
 批次 63 新增设置页「Agent > Prompt 模板」：客户端管理用户 `~/.pi/agent/prompts/` 和项目 `.pi/prompts/` 下的 Markdown 模板，支持新增、编辑、重命名、删除、打开目录、`description` / `argument-hint` / 正文编辑，并把 `/模板名` 插入当前 Agent 输入框。模板文件保存或删除后，空闲 Agent 自动重连并刷新 `/` 命令菜单；运行中 Agent 只提示停止或重连后生效。`/name` 仍是 Session 重命名，和模板名称不是同一功能。
 支线 64 和批次 65 已完成工作区文件工作台：文件树右键操作、多选、复制 / 剪切 / 粘贴、拖拽移动、自动刷新、多标签编辑保存、Markdown / 图片预览、外部磁盘变更同步、文件类型图标、`@相对路径` 插入、语法高亮、标签拖拽排序、文件拖进聊天输入框、项目栏 / 对话区 / 工作区 / 文件树宽度拖拽和统一拖拽手柄。
 文件编辑器 Tab 插入制表符；`@` 文件菜单已和 `/` 命令菜单对齐上下键选择、自动滚动和滚轮接管。写操作检查项目边界、realpath 和 Agent write lease。
-下一项按 `docs/design/reference-dsh-workbench.md` 实现文件操作撤销栈：隐藏回收目录、`Ctrl/Cmd+Z`、工具栏撤销入口，覆盖新建、重命名、复制、移动、删除。
+支线 66 已实现文件操作撤销栈：每个项目独立保存最近 30 条操作，删除移入隐藏 `.codepiddy-trash`，支持工具栏撤销和 `Ctrl/Cmd+Z`，覆盖新建、重命名、复制、移动、删除；回收目录从文件树和文件搜索中隐藏。
 另一个 session 已提交 `c7174fadc` 修复会话名称重启覆盖与删除会话交互，`b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
 阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming、第 25 项上下文压缩、第 26 项 Codemode、第 27 项 Tool Search / Tool Exposure、第 28 项 Prompt Templates 都已完成。主线下一步仍从阶段 4 第 29 项开始：Pi Packages。
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
@@ -65,7 +65,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-07 批次 65：工作区文件工作台增强，已提交到本地 main）
+## 当前状态（2026-10-07 支线 66：工作区文件操作撤销栈，已提交到本地 main）
 
 - 支线 64 已适配 `E:\mypi-refs\reference-dsh-plugin-workbench` 的文件工作台能力，详细拆解见 [reference-dsh-workbench.md](./reference-dsh-workbench.md)。
 - 右侧「文件」视图从只读树和单文件预览升级为完整文件工作台：右键新建 / 重命名 / 删除 / 复制 / 剪切 / 粘贴、多选、拖拽移动、自动刷新、资源管理器定位、多标签编辑保存、Markdown / 图片预览、行号 / 换行、外部磁盘变更同步和 `@相对路径` 插入。
@@ -73,8 +73,9 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 文件标签和展开目录按项目保存在本地 `localStorage`；外部变更用 2.5 秒轮询元数据同步，有未保存草稿时只显示“磁盘内容已变化”，不自动覆盖。
 - 批次 65 增加常见语言语法高亮、标签拖拽排序、文件树拖进聊天输入框、编辑器 Tab 插入制表符，并把 `@` 文件菜单的上下键选择 / 自动滚动 / 滚轮接管与 `/` 命令菜单对齐。
 - 项目栏、对话区边界、右侧工作区和文件树 / 文件预览共用统一拖拽手柄；文件树宽度按项目保存，左侧项目栏手柄覆盖在毛玻璃边界上，不额外占布局宽度，蓝色悬停短条保留。
-- 未照搬参考项目的深色主题、emoji 图标、自定义滚动条和宿主布局补丁。操作撤销栈尚未实现，已决定按参考项目实现隐藏回收目录、`Ctrl/Cmd+Z` 和工具栏撤销入口。
-- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、工作区文件操作单测 4 项、Playwright mock 文件树 / 右键菜单 / 重命名弹窗 / Markdown 编辑保存检查通过；批次 65 另验证语法高亮、标签重排、文件拖入输入框、`@` 菜单滚动、编辑器 Tab 和三处手柄光标；真实 Electron 已重启。
+- 支线 66 已按参考项目补齐操作撤销栈：每个项目独立保存最近 30 条操作；删除、新建、重命名、复制、移动都记录为可撤销操作；删除使用隐藏 `.codepiddy-trash` 回收目录，撤销通过重命名恢复；回收目录从文件树和文件搜索中隐藏。
+- 文件工作台工具栏新增撤销入口，文件树支持 `Ctrl/Cmd+Z`；撤销失败时恢复栈顶操作并用 `SettingsToast` 显示原因。未照搬参考项目的深色主题、emoji 图标、自定义滚动条和宿主布局补丁。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、工作区文件操作单测 5 项、Playwright mock 文件树 / 右键菜单 / 重命名弹窗 / Markdown 编辑保存和撤销流程检查通过；批次 65 另验证语法高亮、标签重排、文件拖入输入框、`@` 菜单滚动、编辑器 Tab 和三处手柄光标；真实 Electron 已重启。
 - 批次 65 代码提交：`66f6bbe18 feat(desktop): polish workspace file workbench`；文档整理提交紧随其后。
 - 批次 63 代码提交：`8a9231079 feat(desktop): add prompt template management`；文档整理提交紧随其后。
 - 设置页新增「Agent > Prompt 模板」：管理用户模板 `~/.pi/agent/prompts/` 和项目模板 `.pi/prompts/`；支持新增、编辑、重命名、删除、打开目录，以及 `description`、`argument-hint` 和模板正文编辑。
@@ -1255,6 +1256,16 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 修复统一过程中右侧工作区手柄被替换成按钮后出现默认图标的问题，恢复原 `.work-panel-resize` DOM、鼠标事件和视觉。
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`；Playwright mock 验证语法高亮、标签重排、文件拖入输入框、`@` 菜单滚动、编辑器 Tab、三处手柄光标和毛玻璃边界无额外缝隙；真实 Electron 已重启。
 
+### 2026-10-07 支线 66：工作区文件操作撤销栈（已提交到本地 main）
+
+- 代码提交：`a1a2c0870 feat(desktop): add workspace file undo stack`。
+- 按 `reference-dsh-workbench.md` 补齐文件操作撤销栈，未修改 Pi core。
+- 每个项目独立保存最近 30 条操作；支持新建、重命名、复制、移动、删除的撤销。
+- 删除不再永久移除文件：先移动到同目录的隐藏 `.codepiddy-trash`，撤销时通过重命名恢复；栈溢出时清理被淘汰的回收项。
+- 文件树工具栏新增撤销入口，文件树支持 `Ctrl/Cmd+Z`；回收目录从 `listWorkspaceDir` 和文件搜索中隐藏。
+- 重命名或移动时同步迁移标签、活动文件、编辑器状态和展开目录，避免已打开文件去读取旧路径；撤销时同样迁回。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、工作区文件操作单测 5 项、Playwright mock 新建 / 重命名 / 复制 / 移动 / 删除撤销流程及打开文件重命名 / 撤销检查通过；真实 Electron 已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1299,10 +1310,11 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 40. [x] **Prompt 模板管理**：批次 63 已实现用户 / 项目模板增删改、`/模板名` 插入、空闲 Agent 自动重连和命令菜单刷新，提交 `8a9231079`。下一步进入阶段 4 第 29 项 Pi Packages。
 41. [x] **支线 64：工作区文件管理增强**：已适配参考项目的文件树操作、多选 / 剪贴板 / 拖拽、多标签编辑保存、磁盘变更同步、文件图标和 `@相对路径` 插入；写操作检查项目边界、realpath 和 Agent write lease。主线仍从阶段 4 第 29 项 Pi Packages 继续。
 42. [x] **批次 65：工作区文件工作台增强**：语法高亮、标签拖拽排序、文件拖进聊天输入框、编辑器 Tab、`@` 菜单键盘导航、统一宽度拖拽手柄和毛玻璃边界收口已完成并提交 `66f6bbe18`。下一项按参考项目实现文件操作撤销栈。
+43. [x] **支线 66：工作区文件操作撤销栈**：每项目 30 条撤销栈、隐藏回收目录、工具栏撤销、`Ctrl/Cmd+Z`，覆盖新建、重命名、复制、移动、删除；代码提交 `a1a2c0870`，支线至此收口。
 
 ## 提交状态
 
-批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64 工作区文件管理、批次 65 工作区文件工作台增强和本次文档整理仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`、`c7174fadc`。提交哈希以 `git log -1` 为准。
+批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64 工作区文件管理、批次 65 工作区文件工作台增强和支线 66 撤销栈仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`、`c7174fadc`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
