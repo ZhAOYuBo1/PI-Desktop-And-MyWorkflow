@@ -1,6 +1,11 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { WorkspaceDirEntry, WorkspaceFileContent } from "@codepiddy/shared";
+import type {
+	WorkspaceDirEntry,
+	WorkspaceFileContent,
+	WorkspaceFileMetadata,
+	WorkspaceMutationResult,
+} from "@codepiddy/shared";
 
 const TEXT_LIMIT_BYTES = 512 * 1024;
 const IMAGE_LIMIT_BYTES = 8 * 1024 * 1024;
@@ -23,6 +28,54 @@ function resolveInside(projectRoot: string, relativePath: string): string {
 	if (absolute !== root && !absolute.startsWith(root + path.sep))
 		throw new Error(`路径超出项目范围：${relativePath || "."}`);
 	return absolute;
+}
+
+function isInside(parentPath: string, candidatePath: string): boolean {
+	const relative = path.relative(parentPath, candidatePath);
+	return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+/**
+ * 写操作前沿最近的已存在祖先做 realpath 校验，避免项目内符号链接把操作带到项目外。
+ * 新文件/新目录本身尚不存在时，检查其最近的已存在父目录即可。
+ */
+async function assertRealPathInside(projectRoot: string, absolutePath: string): Promise<void> {
+	const realRoot = await realpath(path.resolve(projectRoot));
+	let cursor = absolutePath;
+	for (;;) {
+		try {
+			const realCursor = await realpath(cursor);
+			if (!isInside(realRoot, realCursor))
+				throw new Error(`路径超出项目范围：${path.relative(realRoot, realCursor)}`);
+			return;
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			if (code !== "ENOENT") throw error;
+			const parent = path.dirname(cursor);
+			if (parent === cursor) throw error;
+			cursor = parent;
+		}
+	}
+}
+
+function relativeWorkspacePath(projectRoot: string, absolutePath: string): string {
+	return path.relative(path.resolve(projectRoot), absolutePath).split(path.sep).join("/");
+}
+
+function isLockError(error: unknown): boolean {
+	const code = (error as NodeJS.ErrnoException).code;
+	return code === "EBUSY" || code === "EPERM";
+}
+
+async function withLockRetry<T>(operation: () => Promise<T>, attempts = 3): Promise<T> {
+	for (let attempt = 1; ; attempt += 1) {
+		try {
+			return await operation();
+		} catch (error) {
+			if (!isLockError(error) || attempt >= attempts) throw error;
+			await new Promise((resolve) => setTimeout(resolve, attempt * 150));
+		}
+	}
 }
 
 /** 列单层目录：目录优先、名称不区分大小写排序，附文件大小。 */
@@ -68,4 +121,99 @@ export async function readWorkspaceFile(projectRoot: string, relativePath: strin
 	const buffer = await readFile(absolute);
 	if (buffer.subarray(0, 8192).includes(0)) return { kind: "binary", size };
 	return { kind: "text", size, content: buffer.toString("utf8") };
+}
+
+export async function statWorkspaceFile(projectRoot: string, relativePath: string): Promise<WorkspaceFileMetadata> {
+	const absolute = resolveInside(projectRoot, relativePath);
+	await assertRealPathInside(projectRoot, absolute);
+	const fileStat = await stat(absolute);
+	if (!fileStat.isFile()) throw new Error(`不是文件：${relativePath}`);
+	return { size: fileStat.size, mtimeMs: fileStat.mtimeMs };
+}
+
+export async function writeWorkspaceFile(
+	projectRoot: string,
+	relativePath: string,
+	content: string,
+): Promise<WorkspaceFileMetadata> {
+	const absolute = resolveInside(projectRoot, relativePath);
+	await assertRealPathInside(projectRoot, absolute);
+	await writeFile(absolute, content, "utf8");
+	const fileStat = await stat(absolute);
+	return { size: fileStat.size, mtimeMs: fileStat.mtimeMs };
+}
+
+export async function createWorkspaceEntry(
+	projectRoot: string,
+	relativePath: string,
+	kind: "file" | "dir",
+): Promise<WorkspaceMutationResult> {
+	const absolute = resolveInside(projectRoot, relativePath);
+	await assertRealPathInside(projectRoot, absolute);
+	if (kind === "file") await writeFile(absolute, "", { encoding: "utf8", flag: "wx" });
+	else await mkdir(absolute);
+	return { relativePath: relativeWorkspacePath(projectRoot, absolute) };
+}
+
+export async function renameWorkspaceEntry(
+	projectRoot: string,
+	relativePath: string,
+	nextRelativePath: string,
+): Promise<WorkspaceMutationResult> {
+	const source = resolveInside(projectRoot, relativePath);
+	const target = resolveInside(projectRoot, nextRelativePath);
+	await assertRealPathInside(projectRoot, source);
+	await assertRealPathInside(projectRoot, target);
+	try {
+		await stat(target);
+		throw new Error("目标已存在");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+	}
+	await withLockRetry(() => rename(source, target));
+	return { relativePath: relativeWorkspacePath(projectRoot, target) };
+}
+
+export async function deleteWorkspaceEntry(
+	projectRoot: string,
+	relativePath: string,
+): Promise<WorkspaceMutationResult> {
+	const absolute = resolveInside(projectRoot, relativePath);
+	await assertRealPathInside(projectRoot, absolute);
+	const entryStat = await stat(absolute);
+	await withLockRetry(() => rm(absolute, { recursive: entryStat.isDirectory(), force: false }));
+	return { relativePath: relativeWorkspacePath(projectRoot, absolute) };
+}
+
+export async function copyWorkspaceEntry(
+	projectRoot: string,
+	sourceRelativePath: string,
+	targetRelativePath: string,
+	overwrite: boolean,
+): Promise<WorkspaceMutationResult> {
+	const source = resolveInside(projectRoot, sourceRelativePath);
+	const target = resolveInside(projectRoot, targetRelativePath);
+	await assertRealPathInside(projectRoot, source);
+	await assertRealPathInside(projectRoot, target);
+	const sourceStat = await stat(source);
+	if (source.toLowerCase() === target.toLowerCase()) throw new Error("源路径和目标路径相同");
+	if (sourceStat.isDirectory() && target.toLowerCase().startsWith(`${source.toLowerCase()}${path.sep}`)) {
+		throw new Error("不能把目录复制到自身内部");
+	}
+	try {
+		await cp(source, target, { recursive: sourceStat.isDirectory(), force: overwrite, errorOnExist: !overwrite });
+		return { relativePath: relativeWorkspacePath(projectRoot, target) };
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ERR_FS_CP_EEXIST") {
+			return { relativePath: relativeWorkspacePath(projectRoot, target), exists: true };
+		}
+		throw error;
+	}
+}
+
+/** 解析项目内条目绝对路径，供资源管理器定位或系统打开使用。 */
+export async function resolveWorkspaceEntryPath(projectRoot: string, relativePath: string): Promise<string> {
+	const absolute = resolveInside(projectRoot, relativePath);
+	await assertRealPathInside(projectRoot, absolute);
+	return absolute;
 }

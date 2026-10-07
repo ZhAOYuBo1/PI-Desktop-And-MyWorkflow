@@ -1,23 +1,5 @@
-import type { WorkspaceDirEntry, WorkspaceFileContent } from "@codepiddy/shared";
+import { ChevronRight, FileDiff, Files, FileText, type LucideIcon, SquareTerminal } from "lucide-react";
 import {
-	Check,
-	ChevronLeft,
-	ChevronRight,
-	Copy,
-	FileDiff,
-	FileQuestion,
-	Files,
-	FileText,
-	Folder,
-	LocateFixed,
-	type LucideIcon,
-	RefreshCw,
-	Search,
-	SquareTerminal,
-	WrapText,
-} from "lucide-react";
-import {
-	type CSSProperties,
 	lazy,
 	memo,
 	type MouseEvent as ReactMouseEvent,
@@ -27,15 +9,13 @@ import {
 	useEffect,
 	useId,
 	useMemo,
-	useRef,
 	useState,
 } from "react";
-import { MessageContent } from "./message-content.tsx";
 import { PanelIconButton } from "./panel-icon-button.tsx";
 import { StateBlock } from "./state-block.tsx";
+import { WorkspaceFilesView } from "./WorkspaceFilesView.tsx";
 import {
 	extractPanelPath,
-	formatPanelSize,
 	inferPanelPathFromText,
 	type PanelDiffLine,
 	type ProjectableToolItem,
@@ -68,18 +48,8 @@ function loadPanelWidth(): number {
 	return PANEL_DEFAULT_WIDTH;
 }
 
-function isMarkdownPath(path: string): boolean {
-	return /\.(?:md|markdown)$/i.test(path);
-}
-
 function basename(path: string): string {
 	return path.split("/").filter(Boolean).at(-1) ?? path;
-}
-
-function dirname(path: string): string {
-	const parts = path.split("/").filter(Boolean);
-	parts.pop();
-	return parts.join("/");
 }
 
 function projectRelativePath(path: string, projectRoot: string): string {
@@ -192,11 +162,6 @@ function mergeChangeEntries(live: WorkPanelEntry[], persisted: WorkPanelEntry[])
 	for (const entry of persisted) merged.set(entry.id, entry);
 	for (const entry of live) merged.set(entry.id, entry);
 	return [...merged.values()].sort((left, right) => left.timestamp - right.timestamp).slice(-CHANGE_HISTORY_LIMIT);
-}
-
-function PanelGlyph({ kind }: { kind: "dir" | "file" }) {
-	const Icon = kind === "dir" ? Folder : FileText;
-	return <Icon className="file-tree-icon" size={14} strokeWidth={2} aria-hidden="true" />;
 }
 
 function WorkPanelEmpty({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
@@ -371,48 +336,34 @@ const ChangeStack = memo(function ChangeStack({
 	);
 });
 
-interface DirState {
-	entries: WorkspaceDirEntry[];
-	error?: boolean;
-}
-
-type FileState = { status: "loading" } | { status: "ready"; content: WorkspaceFileContent } | { status: "error" };
-
 export const WorkPanel = memo(function WorkPanel({
 	projectRoot,
+	projectId,
 	workItemId,
 	agentRole,
 	turnId,
 	turnStartedAt,
 	toolItems,
+	onInsertMention,
 }: {
 	projectRoot: string;
+	projectId: string;
 	workItemId: string;
 	agentRole: string;
 	turnId: string;
 	turnStartedAt?: string;
 	toolItems: ProjectableToolItem[];
+	onInsertMention(path: string): void;
 }) {
 	const [width, setWidth] = useState(loadPanelWidth);
 	const [activeView, setActiveView] = useState<WorkPanelTab>("files");
-	const [dirs, setDirs] = useState<Record<string, DirState>>({});
-	const [expanded, setExpanded] = useState<Set<string>>(new Set());
-	const [query, setQuery] = useState("");
-	const [searchResults, setSearchResults] = useState<string[] | null>(null);
-	const [fileState, setFileState] = useState<FileState | null>(null);
-	const [reloadSeq, setReloadSeq] = useState(0);
-	const [wrapLines, setWrapLines] = useState(true);
-	const [copiedViewer, setCopiedViewer] = useState(false);
+	const [fileOpenRequest, setFileOpenRequest] = useState<{ path: string; nonce: number } | null>(null);
 	const [terminalMounted, setTerminalMounted] = useState(false);
 	const historyKey = changeHistoryStorageKey(projectRoot, workItemId, agentRole, turnId);
 	const [changeHistory, setChangeHistory] = useState<{ key: string; entries: WorkPanelEntry[] }>(() => ({
 		key: historyKey,
 		entries: loadPersistedChangeEntries(projectRoot, workItemId, agentRole, turnId, turnStartedAt),
 	}));
-	// null = 跟随最新工具产物；"" = 显式回到文件树。
-	const [manualPath, setManualPath] = useState<string | null>(null);
-	const loadedRef = useRef<Set<string>>(new Set());
-
 	const projectedEntries = useMemo(
 		() => toolItems.map(projectToolToPanel).filter((entry): entry is WorkPanelEntry => entry !== null),
 		[toolItems],
@@ -462,110 +413,6 @@ export const WorkPanel = memo(function WorkPanel({
 		}
 		return null;
 	}, [toolItems]);
-	const activePath = manualPath === "" ? null : (manualPath ?? followPath);
-
-	const loadDir = useCallback(
-		async (relative: string) => {
-			if (loadedRef.current.has(relative)) return;
-			if (!("codepiddy" in window)) {
-				setDirs((current) => ({ ...current, [relative]: { entries: [], error: true } }));
-				return;
-			}
-			loadedRef.current.add(relative);
-			try {
-				const entries = await window.codepiddy.listWorkspaceDir(projectRoot, relative);
-				setDirs((current) => ({ ...current, [relative]: { entries } }));
-			} catch {
-				loadedRef.current.delete(relative);
-				setDirs((current) => ({ ...current, [relative]: { entries: [], error: true } }));
-			}
-		},
-		[projectRoot],
-	);
-
-	// 工作区切换：重置全部浏览状态。
-	useEffect(() => {
-		loadedRef.current = new Set();
-		setActiveView("files");
-		setDirs({});
-		setExpanded(new Set());
-		setManualPath(null);
-		setFileState(null);
-		setQuery("");
-		setSearchResults(null);
-		setWrapLines(true);
-		setCopiedViewer(false);
-		setTerminalMounted(false);
-		void loadDir("");
-	}, [loadDir]);
-
-	// 选中文件（含跟随打开）时展开祖先目录并读文件。
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reloadSeq 不参与读取，只作为「刷新」按钮的重跑信号
-	useEffect(() => {
-		if (!activePath) {
-			setFileState(null);
-			return;
-		}
-		const ancestors: string[] = [];
-		const parts = activePath.split("/").slice(0, -1);
-		let acc = "";
-		for (const part of parts) {
-			acc = acc ? `${acc}/${part}` : part;
-			ancestors.push(acc);
-		}
-		setExpanded((current) => new Set([...current, ...ancestors]));
-		for (const dir of ancestors) void loadDir(dir);
-		if (!("codepiddy" in window)) {
-			setFileState({ status: "error" });
-			return;
-		}
-		let cancelled = false;
-		setFileState({ status: "loading" });
-		window.codepiddy
-			.readWorkspaceFile(projectRoot, activePath)
-			.then((content) => {
-				if (!cancelled) setFileState({ status: "ready", content });
-			})
-			.catch(() => {
-				if (!cancelled) setFileState({ status: "error" });
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [activePath, projectRoot, loadDir, reloadSeq]);
-
-	// 文件名搜索（复用既有 searchProjectFiles）。
-	useEffect(() => {
-		const keyword = query.trim();
-		if (!keyword) {
-			setSearchResults(null);
-			return;
-		}
-		if (!("codepiddy" in window)) {
-			setSearchResults([]);
-			return;
-		}
-		const timer = window.setTimeout(() => {
-			window.codepiddy
-				.searchProjectFiles(projectRoot, keyword)
-				.then(setSearchResults)
-				.catch(() => setSearchResults([]));
-		}, 200);
-		return () => window.clearTimeout(timer);
-	}, [query, projectRoot]);
-
-	const toggleDir = useCallback(
-		(relative: string) => {
-			setExpanded((current) => {
-				const next = new Set(current);
-				if (next.has(relative)) next.delete(relative);
-				else next.add(relative);
-				return next;
-			});
-			void loadDir(relative);
-		},
-		[loadDir],
-	);
 
 	const startResize = useCallback(
 		(event: ReactMouseEvent) => {
@@ -590,237 +437,22 @@ export const WorkPanel = memo(function WorkPanel({
 		[width],
 	);
 
-	function refreshFiles(): void {
-		const reopen = [...expanded, ""];
-		loadedRef.current = new Set();
-		setDirs({});
-		setReloadSeq((seq) => seq + 1);
-		for (const dir of reopen) void loadDir(dir);
-	}
-
 	function openFile(path: string): void {
 		setActiveView("files");
-		setManualPath(path);
+		setFileOpenRequest({ path, nonce: Date.now() });
 	}
 
-	async function copyViewerValue(): Promise<void> {
-		const value =
-			fileState?.status === "ready" && fileState.content.kind === "text" ? fileState.content.content : activePath;
-		if (!value) return;
-		try {
-			await navigator.clipboard.writeText(value);
-			setCopiedViewer(true);
-			window.setTimeout(() => setCopiedViewer(false), 1400);
-		} catch {}
-	}
-
-	const renderDir = (relative: string, depth: number): ReactNode => {
-		const state = dirs[relative];
-		if (!state) {
-			return (
-				<output
-					className="file-tree-note is-loading"
-					style={{ "--tree-depth": depth } as CSSProperties}
-					key={`${relative}:loading`}
-				>
-					加载中…
-				</output>
-			);
-		}
-		if (state.entries.length === 0) {
-			return (
-				<div
-					className={`file-tree-note ${state.error ? "is-error" : "is-empty"}`}
-					style={{ "--tree-depth": depth } as CSSProperties}
-					key={`${relative}:empty`}
-					role={state.error ? "alert" : undefined}
-				>
-					{state.error ? "目录读取失败" : "空目录"}
-				</div>
-			);
-		}
-		return state.entries.map((entry) => {
-			const child = relative ? `${relative}/${entry.name}` : entry.name;
-			if (entry.kind === "dir") {
-				const open = expanded.has(child);
-				return (
-					<div key={child}>
-						<button
-							type="button"
-							className="file-tree-row"
-							data-kind="dir"
-							style={{ "--tree-depth": depth } as CSSProperties}
-							onClick={() => toggleDir(child)}
-						>
-							<span className={`file-tree-caret${open ? " open" : ""}`} aria-hidden="true">
-								<ChevronRight size={12} strokeWidth={2} />
-							</span>
-							<PanelGlyph kind="dir" />
-							<span className="file-tree-name">{entry.name}</span>
-						</button>
-						{open ? renderDir(child, depth + 1) : null}
-					</div>
-				);
-			}
-			return (
-				<button
-					key={child}
-					type="button"
-					className={`file-tree-row${activePath === child ? " active" : ""}`}
-					data-kind="file"
-					style={{ "--tree-depth": depth } as CSSProperties}
-					onClick={() => setManualPath(child)}
-					title={child}
-				>
-					<PanelGlyph kind="file" />
-					<span className="file-tree-name">{entry.name}</span>
-					<span className="file-tree-size">{formatPanelSize(entry.size)}</span>
-				</button>
-			);
-		});
-	};
-
-	const renderPreview = (): ReactNode => {
-		if (!fileState || fileState.status === "loading") {
-			return (
-				<output className="file-viewer-state is-loading" aria-live="polite">
-					<span className="sr-only">正在读取文件</span>
-					<span className="file-viewer-skeleton" aria-hidden="true">
-						<span />
-						<span />
-						<span />
-						<span />
-					</span>
-				</output>
-			);
-		}
-		if (fileState.status === "error")
-			return (
-				<StateBlock tone="error" title="文件读取失败">
-					文件可能已被移动或删除，刷新目录树后重试。
-				</StateBlock>
-			);
-		const { content } = fileState;
-		if (content.kind === "image" && content.dataUrl)
-			return (
-				<div className="file-viewer-image">
-					<img src={content.dataUrl} alt={activePath ?? ""} />
-				</div>
-			);
-		if (content.kind === "text" && content.content !== undefined) {
-			if (activePath && isMarkdownPath(activePath))
-				return (
-					<div className="file-viewer-markdown">
-						<MessageContent text={content.content} />
-					</div>
-				);
-			return (
-				<div className={`file-lines${wrapLines ? " wrapped" : ""}`}>
-					{content.content.split("\n").map((line, index) => (
-						// biome-ignore lint/suspicious/noArrayIndexKey: 文件视图的行身份就是行号，内容不会重排；按内容做 key 反而会因重复行/空行撞 key
-						<div className="file-line" key={`line-${index}`}>
-							<span className="file-line-no">{index + 1}</span>
-							<span className="file-line-text">{line || " "}</span>
-						</div>
-					))}
-				</div>
-			);
-		}
-		return (
-			<div className={`work-panel-empty ${content.kind === "tooLarge" ? "is-warning" : "is-muted"}`}>
-				<div className="state-mark">
-					<FileQuestion size={18} strokeWidth={2} aria-hidden="true" />
-				</div>
-				<strong>{content.kind === "tooLarge" ? "文件过大无法预览" : "二进制文件无法预览"}</strong>
-				<p>
-					{formatPanelSize(content.size)}
-					{content.kind === "binary" ? " · docx/xlsx/pdf 等格式暂不支持打开" : ""}
-				</p>
-			</div>
-		);
-	};
-
-	const renderFilesView = (): ReactNode => {
-		if (activePath) {
-			const textContent =
-				fileState?.status === "ready" && fileState.content.kind === "text" ? fileState.content.content : null;
-			return (
-				<div className="work-panel-view file-browser">
-					<div className="file-viewer">
-						<div className="file-viewer-header">
-							<PanelIconButton label="返回文件树" onClick={() => setManualPath("")}>
-								<ChevronLeft size={15} strokeWidth={2} />
-							</PanelIconButton>
-							<span className="file-viewer-title">
-								<strong title={activePath}>{basename(activePath)}</strong>
-								<small title={activePath}>{dirname(activePath) || "."}</small>
-							</span>
-							<div className="file-viewer-actions">
-								{textContent !== null ? (
-									<PanelIconButton
-										label={wrapLines ? "关闭自动换行" : "开启自动换行"}
-										active={wrapLines}
-										onClick={() => setWrapLines((current) => !current)}
-									>
-										<WrapText size={14} strokeWidth={2} />
-									</PanelIconButton>
-								) : null}
-								<PanelIconButton
-									label={textContent !== null ? "复制文件内容" : "复制文件路径"}
-									onClick={() => void copyViewerValue()}
-								>
-									{copiedViewer ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={2} />}
-								</PanelIconButton>
-								{fileState?.status === "ready" ? (
-									<span className="file-viewer-size">{formatPanelSize(fileState.content.size)}</span>
-								) : null}
-							</div>
-						</div>
-						<div className="file-viewer-body">{renderPreview()}</div>
-					</div>
-				</div>
-			);
-		}
-
-		return (
-			<div className="work-panel-view file-browser">
-				<div className="work-panel-search">
-					<Search size={14} strokeWidth={2} aria-hidden="true" />
-					<input
-						type="search"
-						value={query}
-						placeholder="按文件名搜索…"
-						aria-label="按文件名搜索"
-						onChange={(event) => setQuery(event.target.value)}
-					/>
-				</div>
-				<div className="file-tree">
-					{query.trim() && searchResults !== null ? (
-						searchResults.length === 0 ? (
-							<div className="file-tree-note">无匹配文件</div>
-						) : (
-							searchResults.map((rel) => (
-								<button
-									key={rel}
-									type="button"
-									className={`file-tree-row${activePath === rel ? " active" : ""}`}
-									data-kind="file"
-									style={{ "--tree-depth": 0 } as CSSProperties}
-									onClick={() => setManualPath(rel)}
-									title={rel}
-								>
-									<PanelGlyph kind="file" />
-									<span className="file-tree-name">{rel}</span>
-								</button>
-							))
-						)
-					) : (
-						renderDir("", 0)
-					)}
-				</div>
-			</div>
-		);
-	};
+	const renderFilesView = (): ReactNode => (
+		<div className="work-panel-view file-browser">
+			<WorkspaceFilesView
+				projectRoot={projectRoot}
+				projectId={projectId}
+				followPath={followPath}
+				requestedPath={fileOpenRequest}
+				onInsertMention={onInsertMention}
+			/>
+		</div>
+	);
 
 	const renderChangesView = (): ReactNode => {
 		if (changeGroups.length === 0) {
@@ -898,18 +530,7 @@ export const WorkPanel = memo(function WorkPanel({
 						);
 					})}
 				</div>
-				<div className="work-panel-actions">
-					{activeView === "files" && manualPath !== null ? (
-						<PanelIconButton label="跟随最新文件" onClick={() => setManualPath(null)}>
-							<LocateFixed size={14} strokeWidth={2} />
-						</PanelIconButton>
-					) : null}
-					{activeView === "files" ? (
-						<PanelIconButton label="刷新文件树" onClick={refreshFiles}>
-							<RefreshCw size={14} strokeWidth={2} />
-						</PanelIconButton>
-					) : null}
-				</div>
+				<div className="work-panel-actions" />
 			</header>
 			<div
 				className="work-panel-body"

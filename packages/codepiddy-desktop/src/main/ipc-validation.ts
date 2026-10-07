@@ -48,6 +48,12 @@ import type {
 	TerminalStartInput,
 	TerminalWriteInput,
 	ToolSettings,
+	WorkspaceCopyEntryInput,
+	WorkspaceCreateEntryInput,
+	WorkspaceDeleteEntryInput,
+	WorkspaceRenameEntryInput,
+	WorkspaceRevealEntryInput,
+	WorkspaceWriteFileInput,
 } from "@codepiddy/shared";
 
 const AGENT_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
@@ -405,6 +411,78 @@ export function parseTerminalId(value: unknown): string {
 
 export function parseBoundedText(value: unknown, label: string, maximum: number, allowEmpty = false): string {
 	return text(value, label, maximum, allowEmpty);
+}
+
+function workspaceRelativePath(value: unknown, label: string): string {
+	const result = text(value, label, 1000).replace(/\\/g, "/");
+	if (path.isAbsolute(result) || result.startsWith("/")) throw new Error(`${label}必须是项目内相对路径`);
+	const normalized = path.posix.normalize(result);
+	if (normalized === ".." || normalized.startsWith("../") || normalized.includes("/../")) {
+		throw new Error(`${label}不能超出项目范围`);
+	}
+	return normalized.replace(/^\.\/+/, "");
+}
+
+export function parseWorkspaceWriteFileInput(value: unknown): WorkspaceWriteFileInput {
+	const input = record(value, "Workspace Write");
+	return {
+		projectId: projectId(input.projectId),
+		projectRoot: projectRoot(input.projectRoot),
+		relativePath: workspaceRelativePath(input.relativePath, "文件路径"),
+		content: rawText(input.content, "文件内容", 5_000_000, true),
+	};
+}
+
+export function parseWorkspaceCreateEntryInput(value: unknown): WorkspaceCreateEntryInput {
+	const input = record(value, "Workspace Create");
+	if (input.kind !== "file" && input.kind !== "dir") throw new Error("创建类型无效");
+	return {
+		projectId: projectId(input.projectId),
+		projectRoot: projectRoot(input.projectRoot),
+		relativePath: workspaceRelativePath(input.relativePath, "路径"),
+		kind: input.kind,
+	};
+}
+
+export function parseWorkspaceRenameEntryInput(value: unknown): WorkspaceRenameEntryInput {
+	const input = record(value, "Workspace Rename");
+	return {
+		projectId: projectId(input.projectId),
+		projectRoot: projectRoot(input.projectRoot),
+		relativePath: workspaceRelativePath(input.relativePath, "原路径"),
+		nextRelativePath: workspaceRelativePath(input.nextRelativePath, "新路径"),
+	};
+}
+
+export function parseWorkspaceDeleteEntryInput(value: unknown): WorkspaceDeleteEntryInput {
+	const input = record(value, "Workspace Delete");
+	return {
+		projectId: projectId(input.projectId),
+		projectRoot: projectRoot(input.projectRoot),
+		relativePath: workspaceRelativePath(input.relativePath, "路径"),
+	};
+}
+
+export function parseWorkspaceCopyEntryInput(value: unknown): WorkspaceCopyEntryInput {
+	const input = record(value, "Workspace Copy");
+	if (typeof input.overwrite !== "boolean") throw new Error("覆盖标记必须是布尔值");
+	return {
+		projectId: projectId(input.projectId),
+		projectRoot: projectRoot(input.projectRoot),
+		sourceRelativePath: workspaceRelativePath(input.sourceRelativePath, "源路径"),
+		targetRelativePath: workspaceRelativePath(input.targetRelativePath, "目标路径"),
+		overwrite: input.overwrite,
+	};
+}
+
+export function parseWorkspaceRevealEntryInput(value: unknown): WorkspaceRevealEntryInput {
+	const input = record(value, "Workspace Reveal");
+	if (input.kind !== "file" && input.kind !== "dir") throw new Error("条目类型无效");
+	return {
+		projectRoot: projectRoot(input.projectRoot),
+		relativePath: workspaceRelativePath(input.relativePath, "路径"),
+		kind: input.kind,
+	};
 }
 
 export function parseSwitchAgentSessionInput(value: unknown): SwitchAgentSessionInput {

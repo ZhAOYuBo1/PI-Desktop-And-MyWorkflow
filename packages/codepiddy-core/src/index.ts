@@ -20,4 +20,14 @@ export {
 	ensureDefaultRoleProfiles,
 	readRoleProfile,
 } from "./role-profiles.ts";
-export { listWorkspaceDir, readWorkspaceFile } from "./workspace-fs.ts";
+export {
+	copyWorkspaceEntry,
+	createWorkspaceEntry,
+	deleteWorkspaceEntry,
+	listWorkspaceDir,
+	readWorkspaceFile,
+	renameWorkspaceEntry,
+	resolveWorkspaceEntryPath,
+	statWorkspaceFile,
+	writeWorkspaceFile,
+} from "./workspace-fs.ts";

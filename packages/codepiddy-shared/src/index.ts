@@ -487,6 +487,13 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	searchProjectFiles(projectRoot: string, query: string): Promise<string[]>;
 	listWorkspaceDir(projectRoot: string, relativeDir: string): Promise<WorkspaceDirEntry[]>;
 	readWorkspaceFile(projectRoot: string, relativePath: string): Promise<WorkspaceFileContent>;
+	statWorkspaceFile(projectRoot: string, relativePath: string): Promise<WorkspaceFileMetadata>;
+	writeWorkspaceFile(input: WorkspaceWriteFileInput): Promise<WorkspaceFileMetadata>;
+	createWorkspaceEntry(input: WorkspaceCreateEntryInput): Promise<WorkspaceMutationResult>;
+	renameWorkspaceEntry(input: WorkspaceRenameEntryInput): Promise<WorkspaceMutationResult>;
+	deleteWorkspaceEntry(input: WorkspaceDeleteEntryInput): Promise<WorkspaceMutationResult>;
+	copyWorkspaceEntry(input: WorkspaceCopyEntryInput): Promise<WorkspaceMutationResult>;
+	revealWorkspaceEntry(input: WorkspaceRevealEntryInput): Promise<void>;
 	startTerminal(input: TerminalStartInput): Promise<TerminalSessionInfo>;
 	writeTerminal(input: TerminalWriteInput): Promise<void>;
 	resizeTerminal(input: TerminalResizeInput): Promise<void>;
@@ -525,6 +532,58 @@ export interface WorkspaceFileContent {
 	content?: string;
 	/** kind 为 image 时的 dataUrl。 */
 	dataUrl?: string;
+}
+
+export interface WorkspaceFileMetadata {
+	size: number;
+	mtimeMs: number;
+}
+
+export interface WorkspaceMutationResult {
+	relativePath: string;
+	/** 仅复制操作使用：目标已存在且未请求覆盖。 */
+	exists?: boolean;
+}
+
+export interface WorkspaceWriteFileInput {
+	projectId: string;
+	projectRoot: string;
+	relativePath: string;
+	content: string;
+}
+
+export interface WorkspaceCreateEntryInput {
+	projectId: string;
+	projectRoot: string;
+	relativePath: string;
+	kind: "file" | "dir";
+}
+
+export interface WorkspaceRenameEntryInput {
+	projectId: string;
+	projectRoot: string;
+	relativePath: string;
+	nextRelativePath: string;
+}
+
+export interface WorkspaceDeleteEntryInput {
+	projectId: string;
+	projectRoot: string;
+	relativePath: string;
+}
+
+export interface WorkspaceCopyEntryInput {
+	projectId: string;
+	projectRoot: string;
+	sourceRelativePath: string;
+	targetRelativePath: string;
+	overwrite: boolean;
+}
+
+export interface WorkspaceRevealEntryInput {
+	projectRoot: string;
+	relativePath: string;
+	kind: "file" | "dir";
 }
 
 export interface TerminalStartInput {

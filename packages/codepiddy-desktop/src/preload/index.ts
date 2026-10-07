@@ -46,6 +46,12 @@ import type {
 	TerminalStartInput,
 	TerminalWriteInput,
 	ToolSettings,
+	WorkspaceCopyEntryInput,
+	WorkspaceCreateEntryInput,
+	WorkspaceDeleteEntryInput,
+	WorkspaceRenameEntryInput,
+	WorkspaceRevealEntryInput,
+	WorkspaceWriteFileInput,
 } from "@codepiddy/shared";
 import { contextBridge, ipcRenderer } from "electron";
 
@@ -157,6 +163,13 @@ const channels = {
 	searchProjectFiles: "codepiddy:project:files:search",
 	listWorkspaceDir: "codepiddy:workspace:dir:list",
 	readWorkspaceFile: "codepiddy:workspace:file:read",
+	statWorkspaceFile: "codepiddy:workspace:file:stat",
+	writeWorkspaceFile: "codepiddy:workspace:file:write",
+	createWorkspaceEntry: "codepiddy:workspace:entry:create",
+	renameWorkspaceEntry: "codepiddy:workspace:entry:rename",
+	deleteWorkspaceEntry: "codepiddy:workspace:entry:delete",
+	copyWorkspaceEntry: "codepiddy:workspace:entry:copy",
+	revealWorkspaceEntry: "codepiddy:workspace:entry:reveal",
 	startTerminal: "codepiddy:terminal:start",
 	writeTerminal: "codepiddy:terminal:write",
 	resizeTerminal: "codepiddy:terminal:resize",
@@ -249,6 +262,14 @@ const api: CodePIddyClientApi = {
 		ipcRenderer.invoke(channels.listWorkspaceDir, projectRoot, relativeDir),
 	readWorkspaceFile: (projectRoot: string, relativePath: string) =>
 		ipcRenderer.invoke(channels.readWorkspaceFile, projectRoot, relativePath),
+	statWorkspaceFile: (projectRoot: string, relativePath: string) =>
+		ipcRenderer.invoke(channels.statWorkspaceFile, projectRoot, relativePath),
+	writeWorkspaceFile: (input: WorkspaceWriteFileInput) => ipcRenderer.invoke(channels.writeWorkspaceFile, input),
+	createWorkspaceEntry: (input: WorkspaceCreateEntryInput) => ipcRenderer.invoke(channels.createWorkspaceEntry, input),
+	renameWorkspaceEntry: (input: WorkspaceRenameEntryInput) => ipcRenderer.invoke(channels.renameWorkspaceEntry, input),
+	deleteWorkspaceEntry: (input: WorkspaceDeleteEntryInput) => ipcRenderer.invoke(channels.deleteWorkspaceEntry, input),
+	copyWorkspaceEntry: (input: WorkspaceCopyEntryInput) => ipcRenderer.invoke(channels.copyWorkspaceEntry, input),
+	revealWorkspaceEntry: (input: WorkspaceRevealEntryInput) => ipcRenderer.invoke(channels.revealWorkspaceEntry, input),
 	startTerminal: (input: TerminalStartInput) => ipcRenderer.invoke(channels.startTerminal, input),
 	writeTerminal: (input: TerminalWriteInput) => ipcRenderer.invoke(channels.writeTerminal, input),
 	resizeTerminal: (input: TerminalResizeInput) => ipcRenderer.invoke(channels.resizeTerminal, input),

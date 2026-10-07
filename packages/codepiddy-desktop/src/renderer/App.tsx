@@ -5963,11 +5963,21 @@ export function App() {
 							{workPanelVisible && project ? (
 								<WorkPanel
 									projectRoot={project.rootPath}
+									projectId={project.id}
 									workItemId={selectedWorkItem.id}
 									agentRole={selection.role}
 									turnId={latestTurn?.id ?? "turn-0"}
 									turnStartedAt={latestTurn?.startedAt}
 									toolItems={latestTurnToolItems}
+									onInsertMention={(path) => {
+										if (!agentId) return;
+										setDrafts((current) => {
+											const draft = current[agentId] ?? "";
+											const separator = draft && !draft.endsWith(" ") ? " " : "";
+											return { ...current, [agentId]: `${draft}${separator}@${path} ` };
+										});
+										composerInputRef.current?.focus();
+									}}
 								/>
 							) : null}
 						</div>

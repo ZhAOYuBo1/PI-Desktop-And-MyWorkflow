@@ -8,8 +8,11 @@ import { pathToFileURL } from "node:url";
 import {
 	AgentRegistry,
 	archiveWorkItem,
+	copyWorkspaceEntry,
 	createWorkItem,
+	createWorkspaceEntry,
 	deleteWorkItem,
+	deleteWorkspaceEntry,
 	listWorkspaceDir,
 	openProject,
 	PiRpcProcess,
@@ -17,9 +20,13 @@ import {
 	readRoleProfile,
 	readWorkspaceFile,
 	renameWorkItem,
+	renameWorkspaceEntry,
+	resolveWorkspaceEntryPath,
 	restoreWorkItem,
 	type StoredAgentInstance,
 	searchProjectFiles,
+	statWorkspaceFile,
+	writeWorkspaceFile,
 } from "@codepiddy/core";
 import type {
 	AgentBuiltinCommandResult,
@@ -110,6 +117,12 @@ import {
 	parseTerminalStartInput,
 	parseTerminalWriteInput,
 	parseToolSettings,
+	parseWorkspaceCopyEntryInput,
+	parseWorkspaceCreateEntryInput,
+	parseWorkspaceDeleteEntryInput,
+	parseWorkspaceRenameEntryInput,
+	parseWorkspaceRevealEntryInput,
+	parseWorkspaceWriteFileInput,
 } from "./ipc-validation.ts";
 import { LlamaCppManager } from "./llama-cpp-manager.ts";
 import { PiAuthManager } from "./pi-auth.ts";
@@ -231,6 +244,13 @@ const channels = {
 	searchProjectFiles: "codepiddy:project:files:search",
 	listWorkspaceDir: "codepiddy:workspace:dir:list",
 	readWorkspaceFile: "codepiddy:workspace:file:read",
+	statWorkspaceFile: "codepiddy:workspace:file:stat",
+	writeWorkspaceFile: "codepiddy:workspace:file:write",
+	createWorkspaceEntry: "codepiddy:workspace:entry:create",
+	renameWorkspaceEntry: "codepiddy:workspace:entry:rename",
+	deleteWorkspaceEntry: "codepiddy:workspace:entry:delete",
+	copyWorkspaceEntry: "codepiddy:workspace:entry:copy",
+	revealWorkspaceEntry: "codepiddy:workspace:entry:reveal",
 	startTerminal: "codepiddy:terminal:start",
 	writeTerminal: "codepiddy:terminal:write",
 	resizeTerminal: "codepiddy:terminal:resize",
@@ -2242,6 +2262,12 @@ function registerIpcHandlers(
 		return { ...input, projectRoot: requireOpenProjectRoot(input.projectRoot) };
 	};
 	const promptTemplateManager = new PromptTemplateManager(resolvePiAgentDir());
+	const assertWorkspaceMutationAllowed = async (rawProjectId: string): Promise<void> => {
+		const status = await agentManager.getWriteLeaseStatus(rawProjectId);
+		if (status.lease && !status.stale) {
+			throw new Error("当前 Agent 正在写入项目；请等待本轮完成或停止 Agent 后再修改文件");
+		}
+	};
 
 	ipcMain.handle(channels.listRecentProjects, () => recentProjects.list());
 	ipcMain.handle(channels.getStartupProject, async () => {
@@ -2450,6 +2476,50 @@ function registerIpcHandlers(
 	ipcMain.handle(channels.readWorkspaceFile, (_event, rawProjectRoot: unknown, rawPath: unknown) =>
 		readWorkspaceFile(requireOpenProjectRoot(rawProjectRoot), parseBoundedText(rawPath, "文件路径", 1000)),
 	);
+	ipcMain.handle(channels.statWorkspaceFile, (_event, rawProjectRoot: unknown, rawPath: unknown) =>
+		statWorkspaceFile(requireOpenProjectRoot(rawProjectRoot), parseBoundedText(rawPath, "文件路径", 1000)),
+	);
+	ipcMain.handle(channels.writeWorkspaceFile, async (_event, raw: unknown) => {
+		const input = parseWorkspaceWriteFileInput(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		await assertWorkspaceMutationAllowed(input.projectId);
+		return writeWorkspaceFile(input.projectRoot, input.relativePath, input.content);
+	});
+	ipcMain.handle(channels.createWorkspaceEntry, async (_event, raw: unknown) => {
+		const input = parseWorkspaceCreateEntryInput(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		await assertWorkspaceMutationAllowed(input.projectId);
+		return createWorkspaceEntry(input.projectRoot, input.relativePath, input.kind);
+	});
+	ipcMain.handle(channels.renameWorkspaceEntry, async (_event, raw: unknown) => {
+		const input = parseWorkspaceRenameEntryInput(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		await assertWorkspaceMutationAllowed(input.projectId);
+		return renameWorkspaceEntry(input.projectRoot, input.relativePath, input.nextRelativePath);
+	});
+	ipcMain.handle(channels.deleteWorkspaceEntry, async (_event, raw: unknown) => {
+		const input = parseWorkspaceDeleteEntryInput(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		await assertWorkspaceMutationAllowed(input.projectId);
+		return deleteWorkspaceEntry(input.projectRoot, input.relativePath);
+	});
+	ipcMain.handle(channels.copyWorkspaceEntry, async (_event, raw: unknown) => {
+		const input = parseWorkspaceCopyEntryInput(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		await assertWorkspaceMutationAllowed(input.projectId);
+		return copyWorkspaceEntry(input.projectRoot, input.sourceRelativePath, input.targetRelativePath, input.overwrite);
+	});
+	ipcMain.handle(channels.revealWorkspaceEntry, async (_event, raw: unknown) => {
+		const input = parseWorkspaceRevealEntryInput(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		const absolute = await resolveWorkspaceEntryPath(input.projectRoot, input.relativePath);
+		if (input.kind === "dir") {
+			const error = await shell.openPath(absolute);
+			if (error) throw new Error(error);
+			return;
+		}
+		shell.showItemInFolder(absolute);
+	});
 	ipcMain.handle(channels.startTerminal, (event, raw: unknown): TerminalSessionInfo => {
 		const input = parseTerminalStartInput(raw);
 		const projectRoot = requireOpenProjectRoot(input.projectRoot);
