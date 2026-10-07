@@ -22,13 +22,13 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-62 已提交并推送到 `origin/main`；批次 62 代码提交 `6815fc026`，另一个 session 的 bugfix 提交 `c7174fadc`，当前 HEAD 以 `git log -1` 为准，工作树干净。
-批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`。
-批次 62 新增设置页「常规 > 工具」：`defaultTools` 控制新 Agent 默认内置工具，未勾选的内置工具通过 `--exclude-tools` 从工具注册表真正排除，Codemode 也不能调用；工具发现与曝光只读展示 MCP 服务级 / 工具级 exposure，并提供 MCP 配置入口。保存工具设置后空闲 Agent 自动重连；MCP 服务保存、删除、项目覆盖、登录和退出后也会自动重连空闲 Agent，运行中 Agent 只提示延后生效。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-63 已提交到本地 `main`，`origin/main` 尚未同步；批次 63 代码提交 `8a9231079`，文档整理提交紧随其后，当前 HEAD 以 `git log -1` 为准，工作树干净。
+批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`。
+批次 63 新增设置页「Agent > Prompt 模板」：客户端管理用户 `~/.pi/agent/prompts/` 和项目 `.pi/prompts/` 下的 Markdown 模板，支持新增、编辑、重命名、删除、打开目录、`description` / `argument-hint` / 正文编辑，并把 `/模板名` 插入当前 Agent 输入框。模板文件保存或删除后，空闲 Agent 自动重连并刷新 `/` 命令菜单；运行中 Agent 只提示停止或重连后生效。`/name` 仍是 Session 重命名，和模板名称不是同一功能。
 另一个 session 已提交 `c7174fadc` 修复会话名称重启覆盖与删除会话交互，`b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
-阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming、第 25 项上下文压缩、第 26 项 Codemode、第 27 项 Tool Search / Tool Exposure 都已完成。下一步从阶段 4 第 28 项开始：Prompt Templates。
+阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming、第 25 项上下文压缩、第 26 项 Codemode、第 27 项 Tool Search / Tool Exposure、第 28 项 Prompt Templates 都已完成。下一步从阶段 4 第 29 项开始：Pi Packages。
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
-字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode 和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
+字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode、Prompt 模板和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
 当前 HEAD 以 `git log -1` 为准。
@@ -62,8 +62,14 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-06 批次 62：工具设置与 MCP 自动刷新，已提交并推送）
+## 当前状态（2026-10-07 批次 63：Prompt 模板，已提交到本地 main）
 
+- 批次 63 代码提交：`8a9231079 feat(desktop): add prompt template management`；文档整理提交紧随其后。
+- 设置页新增「Agent > Prompt 模板」：管理用户模板 `~/.pi/agent/prompts/` 和项目模板 `.pi/prompts/`；支持新增、编辑、重命名、删除、打开目录，以及 `description`、`argument-hint` 和模板正文编辑。
+- 模板名称即命令名：`review.md` 对应 `/review`。设置页的“使用”和“保存并插入”会把 `/模板名 ` 插入当前 Agent 输入框，已有草稿会作为参数接在模板命令后面。
+- 模板文件保存或删除后，空闲 Agent 自动重连并重新拉取 `/` 命令菜单；运行中或等待授权的 Agent 不强制中断，只提示停止或重连后生效。
+- `/name` 仍然是 Pi Session 重命名命令，和 Prompt 模板名称不是同一功能；不要把模板管理接到 `/name`。
+- Prompt 模板完全由外壳文件接口实现，未修改 Pi core。验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、模板单测 4 项、`?demo=1` 桌面 / 窄窗 / 保存 / 插入检查通过；真实 Electron 已重启。
 - 批次 62 代码提交：`6815fc026 feat(desktop): add tool settings and MCP refresh`；另一个 session 的 bugfix 提交：`c7174fadc fix(desktop): 修复会话名称重启覆盖与删除交互`。
 - 设置页新增「常规 > 工具」：支持 Pi 原生 `settings.json` 的 `defaultTools`；默认集合为 `read / bash / edit / write`，勾选后切换为自定义集合，也可恢复 Pi 默认或清空内置工具。
 - 未勾选的内置工具在 Agent 启动时额外通过 `--exclude-tools` 从工具注册表排除，Codemode 也不能调用；扩展工具和 MCP 工具不受影响。这一条修复了“界面显示未启用，但 Codemode 仍能调用”的假生效问题。
@@ -166,17 +172,18 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 已提交：批次 60 上下文压缩设置 `db4e91195`
 - 已提交：批次 61 Codemode 设置与 Provider 模型刷新 `ec4dde669`
 - 已提交：批次 62 工具设置与 MCP 自动刷新 `6815fc026`
+- 已提交：批次 63 Prompt 模板管理 `8a9231079`
 - 已提交：另一个 session 的会话名称重启覆盖与删除交互 bugfix `c7174fadc`
 - 已提交：另一个 session 的定位条 / 常用模型 / 消息模型显示 bugfix：`fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`
 
-批次 1-62 已提交并推送到 `origin/main`。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
+批次 1-63 已提交到本地 `main`，`origin/main` 尚未同步。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
 
 ### 下一步
 
-阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态，批次 59 已收口云朵图标和 Provider 登录弹窗嵌套滚动条，批次 60 已实现自动压缩 / 分支摘要 / per-model compaction overrides，批次 61 已实现 Codemode 设置、运行结果视图和 Provider 模型刷新，批次 62 已实现工具设置与 MCP 自动刷新。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 28 项：
+阶段 3 的 16-23 项已实现，批次 54 已补客户端诊断包和统一组件规则，批次 55-57 已修复会话历史 / 滚动定位、Modal 焦点环和定位条窗口化，批次 58 已实现 Cache Warming 设置与最近一次决策状态，批次 59 已收口云朵图标和 Provider 登录弹窗嵌套滚动条，批次 60 已实现自动压缩 / 分支摘要 / per-model compaction overrides，批次 61 已实现 Codemode 设置、运行结果视图和 Provider 模型刷新，批次 62 已实现工具设置与 MCP 自动刷新，批次 63 已实现 Prompt 模板管理和保存后的 Agent / 命令菜单刷新。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 29 项：
 
-1. Prompt Templates。
-2. Pi Packages、Shell aliases、Telemetry。
+1. Pi Packages。
+2. Shell aliases、Telemetry。
 3. 自定义 Provider / 虚拟模型 / classifier / image models。
 
 继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
@@ -1202,6 +1209,16 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 修复“工具显示未启用但实际仍能调用”的根因：`defaultTools` 只控制直接激活，不能约束 Codemode 的工具注册表；`--exclude-tools` 才是完整隔离。
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、工具设置单测 5 项、`?demo=1` 桌面 / 窄窗截图与交互检查通过；真实 Agent 启动参数已确认包含 `--exclude-tools`；真实 Electron 已重启。
 
+### 2026-10-07 批次 63：Prompt 模板管理（已提交到本地 main）
+
+- 代码提交：`8a9231079 feat(desktop): add prompt template management`。
+- 设置页新增「Agent > Prompt 模板」：管理用户 `~/.pi/agent/prompts/` 和项目 `.pi/prompts/` 下的 Markdown 模板，支持新增、编辑、重命名、删除和打开模板目录。
+- 模板编辑器支持 `description`、`argument-hint` 和正文；模板文件名就是命令名，例如 `review.md` 对应 `/review`。
+- 设置页提供“使用”和“保存并插入”，会把 `/模板名 ` 插入当前 Agent 输入框；已有草稿作为参数接在命令后。`/name` 仍只用于 Session 重命名。
+- 保存或删除后，空闲 Agent 自动重连并刷新 `/` 命令菜单；运行中或等待授权的 Agent 不强制中断，只提示停止或重连后生效。
+- 实现完全在 `packages/codepiddy-desktop` 和 `packages/codepiddy-shared`，未修改 Pi core。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、模板单测 4 项、`?demo=1` 桌面 / 窄窗 / 保存 / 插入流程检查通过；真实 Electron 已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1243,10 +1260,11 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 37. [x] **上下文压缩设置**：批次 60 已实现自动压缩、分支摘要和 per-model compaction overrides，提交 `db4e91195`。下一步进入阶段 4 第 26 项 Codemode 设置和运行结果视图。
 38. [x] **Codemode 设置与 Provider 模型刷新**：批次 61 已实现 Codemode `mode / inlineBudget` 设置、转录流运行结果视图，以及 Provider 新增/删除后的 Agent 模型目录刷新，提交 `ec4dde669`。下一步进入阶段 4 第 27 项 Tool Search / Tool Exposure。
 39. [x] **工具设置与 MCP 自动刷新**：批次 62 已实现 `defaultTools` 严格内置工具隔离、工具发现与曝光只读汇总、工具设置 / MCP 配置保存后的空闲 Agent 自动重连，提交 `6815fc026`。同期另一个 session 提交 `c7174fadc` 修复会话名称重启覆盖与删除交互。下一步进入阶段 4 第 28 项 Prompt Templates。
+40. [x] **Prompt 模板管理**：批次 63 已实现用户 / 项目模板增删改、`/模板名` 插入、空闲 Agent 自动重连和命令菜单刷新，提交 `8a9231079`。下一步进入阶段 4 第 29 项 Pi Packages。
 
 ## 提交状态
 
-批次 55-62 已推送到 `origin/main`。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`、`c7174fadc`。提交哈希以 `git log -1` 为准。
+批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板和本次文档整理仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`、`c7174fadc`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1307,7 +1325,8 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 | 2026-10-06 | 内置工具用 `defaultTools` 控制直接激活，并用 `--exclude-tools` 排除未勾选项 | `defaultTools` 单独使用无法阻止 Codemode 调用已注册工具 |
 | 2026-10-06 | MCP exposure 继续只在 MCP 服务页配置，工具页只读汇总 | 避免为同一配置维护第二套 UI；配置来源保持单一 |
 | 2026-10-06 | 工具设置和 MCP 配置保存后，空闲 Agent 自动重连，运行中 Agent 延后生效 | 配置是 Agent 启动参数，必须重建进程才能保证工具索引和注册表及时生效 |
+| 2026-10-07 | Prompt 模板由客户端管理用户 / 项目 Markdown 文件，模板名就是 `/命令名`；保存或删除后空闲 Agent 自动重连并刷新命令菜单 | Pi 不提供模板管理 RPC；模板在 Agent 启动时加载，运行中的 Session 不会自动重载 |
 
 ## 待用户确认
 
-- 暂无，批次 1-62 已验收并推送。
+- 暂无，批次 1-63 已验收；批次 63 和本次文档整理尚在本地 `main`，未推送。
