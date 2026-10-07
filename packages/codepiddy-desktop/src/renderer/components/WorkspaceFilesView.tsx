@@ -1,4 +1,4 @@
-import type { WorkspaceDirEntry, WorkspaceFileContent } from "@codepiddy/shared";
+import { WORKSPACE_TRASH_DIR_NAME, type WorkspaceDirEntry, type WorkspaceFileContent } from "@codepiddy/shared";
 import {
 	ChevronRight,
 	Copy,
@@ -16,6 +16,7 @@ import {
 	Save,
 	Search,
 	Settings2,
+	Undo2,
 	WrapText,
 	X,
 } from "lucide-react";
@@ -35,6 +36,7 @@ const HIGHLIGHT_MAX_BYTES = 64 * 1024;
 const TAB_DRAG_TYPE = "application/x-codepiddy-workspace-tab";
 const MIN_TREE_WIDTH = 150;
 const MIN_PREVIEW_WIDTH = 220;
+const UNDO_LIMIT = 30;
 
 type EntryKind = "file" | "dir";
 
@@ -62,6 +64,15 @@ interface ClipboardState {
 	mode: "copy" | "cut";
 	paths: string[];
 }
+
+type UndoEntry =
+	| { kind: "copy"; label: string; from: string; to: string; parent: string }
+	| { kind: "move"; label: string; from: string; to: string; parent: string }
+	| { kind: "rename"; label: string; from: string; to: string; parent: string }
+	| { kind: "create"; label: string; path: string; parent: string }
+	| { kind: "delete"; label: string; path: string; trash: string; parent: string };
+
+const undoStacks = new Map<string, UndoEntry[]>();
 
 interface ContextMenuState {
 	x: number;
@@ -181,6 +192,26 @@ function pathIsInside(parent: string, candidate: string): boolean {
 	const normalizedParent = normalizePath(parent).toLowerCase();
 	const normalizedCandidate = normalizePath(candidate).toLowerCase();
 	return normalizedCandidate === normalizedParent || normalizedCandidate.startsWith(`${normalizedParent}/`);
+}
+
+function mapWorkspacePath(value: string, from: string, to: string): string {
+	if (value === from) return to;
+	if (pathIsInside(from, value)) return `${to}${value.slice(from.length)}`;
+	return value;
+}
+
+function pathDepth(value: string): number {
+	return normalizePath(value).split("/").filter(Boolean).length;
+}
+
+function isMissingPathError(error: unknown): boolean {
+	const code =
+		typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+			? error.code
+			: "";
+	if (code === "ENOENT") return true;
+	const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+	return message.includes("does not exist") || message.includes("not found") || message.includes("不存在");
 }
 
 function fileCategory(path: string): string {
@@ -332,6 +363,9 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 	const [query, setQuery] = useState("");
 	const [searchResults, setSearchResults] = useState<string[] | null>(null);
 	const [selected, setSelected] = useState<Record<string, EntryKind>>({});
+	const [undoByProject, setUndoByProject] = useState<Record<string, UndoEntry[]>>(() =>
+		Object.fromEntries(undoStacks.entries()),
+	);
 	const [clipboard, setClipboard] = useState<ClipboardState | null>(null);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 	const [dialog, setDialog] = useState<DialogState | null>(null);
@@ -351,6 +385,8 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 	const treeResizeLatestRef = useRef(0);
 	const dialogInputRef = useRef<HTMLInputElement>(null);
 	const contextMenuRef = useRef<HTMLDivElement>(null);
+
+	const undoEntries = undoByProject[projectRoot] ?? undoStacks.get(projectRoot) ?? [];
 
 	useEffect(() => {
 		filesRef.current = files;
@@ -597,13 +633,16 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 		return () => window.cancelAnimationFrame(frame);
 	}, [dialog]);
 
-	const refreshFiles = useCallback(() => {
-		loadedDirsRef.current = new Set();
-		setDirs({});
-		void loadDir("", true);
-		for (const directory of expanded) void loadDir(directory, true);
-		for (const path of tabs) void loadFile(path, true);
-	}, [expanded, loadDir, loadFile, tabs]);
+	const refreshFiles = useCallback(
+		(nextTabs: string[] = tabs, reloadTabs = true) => {
+			loadedDirsRef.current = new Set();
+			setDirs({});
+			void loadDir("", true);
+			for (const directory of expanded) void loadDir(directory, true);
+			if (reloadTabs) for (const path of nextTabs) void loadFile(path, true);
+		},
+		[expanded, loadDir, loadFile, tabs],
+	);
 
 	const closeTab = useCallback(
 		(path: string) => {
@@ -734,6 +773,97 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 
 	const selectedPaths = useMemo(() => Object.keys(selected), [selected]);
 
+	const retargetOpenPaths = useCallback((from: string, to: string) => {
+		const nextTabs = tabsRef.current.map((tab) => mapWorkspacePath(tab, from, to));
+		tabsRef.current = nextTabs;
+		setTabs(nextTabs);
+		setActivePath((current) => (current ? mapWorkspacePath(current, from, to) : current));
+		setFiles((current) => {
+			const next: Record<string, FileTabState> = {};
+			for (const [path, state] of Object.entries(current)) {
+				next[mapWorkspacePath(path, from, to)] = state;
+			}
+			filesRef.current = next;
+			return next;
+		});
+		setExpanded((current) => {
+			const next = new Set<string>();
+			for (const path of current) next.add(mapWorkspacePath(path, from, to));
+			return next;
+		});
+	}, []);
+
+	const closeTabsUnder = useCallback((path: string) => {
+		setTabs((current) => {
+			const index = current.findIndex((tab) => tab === path || pathIsInside(path, tab));
+			const next = current.filter((tab) => tab !== path && !pathIsInside(path, tab));
+			if (index >= 0) setActivePath(next[Math.min(index, next.length - 1)] ?? null);
+			return next;
+		});
+	}, []);
+
+	const removeWorkspacePath = useCallback(
+		async (relativePath: string) => {
+			if (!("codepiddy" in window)) return;
+			await window.codepiddy.deleteWorkspaceEntry({ projectId, projectRoot, relativePath });
+		},
+		[projectId, projectRoot],
+	);
+
+	const trashPath = useCallback(
+		async (relativePath: string): Promise<{ trash: string; parent: string }> => {
+			if (!("codepiddy" in window)) throw new Error("演示模式不能移动文件");
+			const parent = dirname(relativePath);
+			const trashDir = joinPath(parent, WORKSPACE_TRASH_DIR_NAME);
+			try {
+				await window.codepiddy.createWorkspaceEntry({
+					projectId,
+					projectRoot,
+					relativePath: trashDir,
+					kind: "dir",
+				});
+			} catch {
+				// The hidden trash directory already exists after the first delete.
+			}
+			const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}-${basename(relativePath)}`;
+			const trash = joinPath(trashDir, unique);
+			const result = await window.codepiddy.renameWorkspaceEntry({
+				projectId,
+				projectRoot,
+				relativePath,
+				nextRelativePath: trash,
+			});
+			return { trash: result.relativePath, parent };
+		},
+		[projectId, projectRoot],
+	);
+
+	const recordUndo = useCallback(
+		(entry: UndoEntry) => {
+			const current = undoStacks.get(projectRoot) ?? [];
+			const next = [...current, entry];
+			const evicted = next.length > UNDO_LIMIT ? next.shift() : undefined;
+			undoStacks.set(projectRoot, next);
+			setUndoByProject((projects) => ({ ...projects, [projectRoot]: next }));
+			if (evicted?.kind === "delete") {
+				void removeWorkspacePath(evicted.trash).catch(() => {
+					// The trash entry may already be gone; eviction is best effort.
+				});
+			}
+		},
+		[projectRoot, removeWorkspacePath],
+	);
+
+	const popUndo = useCallback((): UndoEntry | undefined => {
+		const current = undoStacks.get(projectRoot) ?? [];
+		const entry = current.at(-1);
+		if (!entry) return undefined;
+		const next = current.slice(0, -1);
+		undoStacks.set(projectRoot, next);
+		setUndoByProject((projects) => ({ ...projects, [projectRoot]: next }));
+		return entry;
+	}, [projectRoot]);
+
 	const moveEntries = useCallback(
 		async (paths: string[], targetDir: string) => {
 			const filtered = paths.filter((path) => {
@@ -756,17 +886,13 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 						nextRelativePath: target,
 					});
 					moved += 1;
-					setTabs((current) => current.map((tab) => (tab === path ? result.relativePath : tab)));
-					setActivePath((current) => (current === path ? result.relativePath : current));
-					setExpanded((current) => {
-						const next = new Set(current);
-						for (const item of [...next]) {
-							if (pathIsInside(path, item)) {
-								next.delete(item);
-								next.add(`${result.relativePath}${item.slice(path.length)}`);
-							}
-						}
-						return next;
+					retargetOpenPaths(path, result.relativePath);
+					recordUndo({
+						kind: "move",
+						label: `移动 ${basename(path)}`,
+						from: path,
+						to: result.relativePath,
+						parent: targetDir,
 					});
 				} catch (error) {
 					showSettingsToast(error instanceof Error ? error.message : `移动 ${basename(path)} 失败`, "error");
@@ -775,10 +901,10 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 			if (moved > 0) {
 				setSelected({});
 				showSettingsToast(`已移动 ${moved} 项`, "success");
-				refreshFiles();
+				refreshFiles(tabsRef.current, false);
 			}
 		},
-		[projectId, projectRoot, refreshFiles],
+		[projectId, projectRoot, recordUndo, refreshFiles, retargetOpenPaths],
 	);
 
 	const copyEntries = useCallback(
@@ -804,6 +930,15 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 						continue;
 					}
 					copied += 1;
+					if (!overwrite) {
+						recordUndo({
+							kind: "copy",
+							label: `复制 ${basename(path)}`,
+							from: path,
+							to: result.relativePath,
+							parent: targetDir,
+						});
+					}
 				} catch (error) {
 					showSettingsToast(error instanceof Error ? error.message : `复制 ${basename(path)} 失败`, "error");
 				}
@@ -814,7 +949,7 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 			}
 			return collision;
 		},
-		[projectId, projectRoot, refreshFiles],
+		[projectId, projectRoot, recordUndo, refreshFiles],
 	);
 
 	const pasteInto = useCallback(
@@ -837,24 +972,87 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 				showSettingsToast("演示模式不能删除文件", "error");
 				return;
 			}
+			const entries = paths
+				.map((path) => ({ path, kind: selected[path] ?? "file" }))
+				.sort((left, right) => pathDepth(right.path) - pathDepth(left.path));
 			let deleted = 0;
-			for (const path of paths) {
+			const trashedPrefixes: string[] = [];
+			for (const { path, kind } of entries) {
+				if (trashedPrefixes.some((prefix) => pathIsInside(prefix, path))) continue;
 				try {
-					await window.codepiddy.deleteWorkspaceEntry({ projectId, projectRoot, relativePath: path });
+					const { trash, parent } = await trashPath(path);
 					deleted += 1;
-					setTabs((current) => current.filter((tab) => tab !== path && !pathIsInside(path, tab)));
+					if (kind === "dir") trashedPrefixes.push(path);
+					closeTabsUnder(path);
+					recordUndo({
+						kind: "delete",
+						label: `删除 ${basename(path)}`,
+						path,
+						trash,
+						parent,
+					});
 				} catch (error) {
 					showSettingsToast(error instanceof Error ? error.message : `删除 ${basename(path)} 失败`, "error");
 				}
 			}
 			if (deleted > 0) {
 				setSelected({});
-				showSettingsToast(`已删除 ${deleted} 项`, "success");
+				showSettingsToast(`已移入回收站 ${deleted} 项`, "success");
 				refreshFiles();
 			}
 		},
-		[projectId, projectRoot, refreshFiles],
+		[closeTabsUnder, recordUndo, refreshFiles, selected, trashPath],
 	);
+
+	const performUndo = useCallback(async () => {
+		const entry = popUndo();
+		if (!entry) return;
+		try {
+			if (entry.kind === "copy") {
+				await removeWorkspacePath(entry.to);
+				closeTabsUnder(entry.to);
+			} else if (entry.kind === "move" || entry.kind === "rename") {
+				if (!("codepiddy" in window)) throw new Error("演示模式不能撤销文件操作");
+				const result = await window.codepiddy.renameWorkspaceEntry({
+					projectId,
+					projectRoot,
+					relativePath: entry.to,
+					nextRelativePath: entry.from,
+				});
+				retargetOpenPaths(entry.to, result.relativePath);
+				expandAncestors(entry.from);
+			} else if (entry.kind === "create") {
+				await trashPath(entry.path);
+				closeTabsUnder(entry.path);
+			} else if (entry.kind === "delete") {
+				if (!("codepiddy" in window)) throw new Error("演示模式不能撤销文件操作");
+				const result = await window.codepiddy.renameWorkspaceEntry({
+					projectId,
+					projectRoot,
+					relativePath: entry.trash,
+					nextRelativePath: entry.path,
+				});
+				expandAncestors(result.relativePath);
+			}
+			setSelected({});
+			refreshFiles(tabsRef.current, !(entry.kind === "move" || entry.kind === "rename"));
+			showSettingsToast(`已撤销：${entry.label}`, "success");
+		} catch (error) {
+			if (!(entry.kind === "delete" && isMissingPathError(error))) recordUndo(entry);
+			showSettingsToast(error instanceof Error ? error.message : `撤销“${entry.label}”失败`, "error");
+		}
+	}, [
+		closeTabsUnder,
+		expandAncestors,
+		popUndo,
+		projectId,
+		projectRoot,
+		recordUndo,
+		refreshFiles,
+		removeWorkspacePath,
+		retargetOpenPaths,
+		trashPath,
+	]);
 
 	const selectAllVisible = useCallback(() => {
 		const next: Record<string, EntryKind> = {};
@@ -909,13 +1107,19 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 				} else {
 					refreshFiles();
 				}
+				recordUndo({
+					kind: "create",
+					label: `${kind === "file" ? "新建文件" : "新建文件夹"} ${trimmed}`,
+					path: result.relativePath,
+					parent,
+				});
 				if (kind === "file") openTab(result.relativePath);
 				showSettingsToast(kind === "file" ? "文件已创建" : "文件夹已创建", "success");
 			} catch (error) {
 				showSettingsToast(error instanceof Error ? error.message : "创建失败", "error");
 			}
 		},
-		[loadDir, openTab, projectId, projectRoot, refreshFiles],
+		[loadDir, openTab, projectId, projectRoot, recordUndo, refreshFiles],
 	);
 
 	const renameEntry = useCallback(
@@ -937,16 +1141,22 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 					relativePath,
 					nextRelativePath: target,
 				});
-				setTabs((current) => current.map((tab) => (tab === relativePath ? result.relativePath : tab)));
-				setActivePath((current) => (current === relativePath ? result.relativePath : current));
+				retargetOpenPaths(relativePath, result.relativePath);
+				recordUndo({
+					kind: "rename",
+					label: `重命名 ${basename(relativePath)}`,
+					from: relativePath,
+					to: result.relativePath,
+					parent: dirname(relativePath),
+				});
 				setSelected({});
-				refreshFiles();
+				refreshFiles(tabsRef.current, false);
 				showSettingsToast("重命名完成", "success");
 			} catch (error) {
 				showSettingsToast(error instanceof Error ? error.message : "重命名失败", "error");
 			}
 		},
-		[projectId, projectRoot, refreshFiles],
+		[projectId, projectRoot, recordUndo, refreshFiles, retargetOpenPaths],
 	);
 
 	const onTreeKeyDown = useCallback(
@@ -974,6 +1184,12 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 				selectAllVisible();
 				return;
 			}
+			if (modifier && key === "z" && !event.shiftKey) {
+				if (undoEntries.length === 0) return;
+				event.preventDefault();
+				void performUndo();
+				return;
+			}
 			if (event.key === "Delete" && selectedPaths.length > 0) {
 				event.preventDefault();
 				setDialog({ type: "delete", paths: selectedPaths });
@@ -984,7 +1200,7 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 				setContextMenu(null);
 			}
 		},
-		[clipboard, pasteInto, selectAllVisible, selected, selectedPaths],
+		[clipboard, pasteInto, performUndo, selectAllVisible, selected, selectedPaths, undoEntries.length],
 	);
 
 	const renderRow = (entry: WorkspaceDirEntry, relativeDir: string, depth: number): ReactNode => {
@@ -1362,6 +1578,11 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 			{ label: "粘贴", disabled: !clipboard, onClick: () => void pasteInto(singleDir) },
 			"divider",
 			{ label: "全选", onClick: selectAllVisible },
+			{
+				label: undoEntries.length > 0 ? `撤销：${undoEntries.at(-1)?.label}` : "撤销",
+				disabled: undoEntries.length === 0,
+				onClick: () => void performUndo(),
+			},
 			{ label: "刷新", onClick: refreshFiles },
 			"divider",
 			{ label: "复制路径", onClick: () => void copyValue(singleDir || ".", "相对路径已复制") },
@@ -1375,7 +1596,7 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 			return (
 				<ModalShell
 					title="删除文件"
-					description={`将永久删除 ${dialog.paths.length} 项，此操作不能撤销。`}
+					description={`将把 ${dialog.paths.length} 项移入隐藏回收目录，可在本次会话中撤销。`}
 					onClose={() => setDialog(null)}
 					width="sm"
 					footer={
@@ -1502,6 +1723,13 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 						onChange={(event) => setQuery(event.target.value)}
 					/>
 				</div>
+				<PanelIconButton
+					label={undoEntries.length > 0 ? `撤销：${undoEntries.at(-1)?.label}` : "撤销"}
+					disabled={undoEntries.length === 0}
+					onClick={() => void performUndo()}
+				>
+					<Undo2 size={14} strokeWidth={2} />
+				</PanelIconButton>
 				<PanelIconButton label="刷新文件树" onClick={refreshFiles}>
 					<RefreshCw size={14} strokeWidth={2} />
 				</PanelIconButton>

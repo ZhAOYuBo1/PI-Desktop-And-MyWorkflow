@@ -1,7 +1,9 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { WORKSPACE_TRASH_DIR_NAME } from "@codepiddy/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { searchProjectFiles } from "../../codepiddy-core/src/file-search.ts";
 import {
 	copyWorkspaceEntry,
 	createWorkspaceEntry,
@@ -59,5 +61,15 @@ describe("workspace file operations", () => {
 		const fileStat = await stat(path.join(projectRoot, "meta.txt"));
 		expect(metadata.size).toBe(fileStat.size);
 		expect(metadata.mtimeMs).toBe(fileStat.mtimeMs);
+	});
+
+	it("hides the workspace trash directory from listings and search", async () => {
+		await createWorkspaceEntry(projectRoot, WORKSPACE_TRASH_DIR_NAME, "dir");
+		await writeFile(path.join(projectRoot, WORKSPACE_TRASH_DIR_NAME, "deleted.txt"), "hidden", "utf8");
+		await writeFile(path.join(projectRoot, "visible.txt"), "visible", "utf8");
+
+		expect((await listWorkspaceDir(projectRoot, "")).map((entry) => entry.name)).toEqual(["visible.txt"]);
+		expect(await searchProjectFiles(projectRoot, "deleted")).toEqual([]);
+		expect(await searchProjectFiles(projectRoot, "visible")).toEqual(["visible.txt"]);
 	});
 });

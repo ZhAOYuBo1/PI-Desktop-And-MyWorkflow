@@ -6,6 +6,7 @@ import type {
 	WorkspaceFileMetadata,
 	WorkspaceMutationResult,
 } from "@codepiddy/shared";
+import { WORKSPACE_TRASH_DIR_NAME } from "@codepiddy/shared";
 
 const TEXT_LIMIT_BYTES = 512 * 1024;
 const IMAGE_LIMIT_BYTES = 8 * 1024 * 1024;
@@ -84,6 +85,7 @@ export async function listWorkspaceDir(projectRoot: string, relativeDir: string)
 	const dirents = await readdir(directory, { withFileTypes: true });
 	const entries: WorkspaceDirEntry[] = [];
 	for (const dirent of dirents) {
+		if (dirent.name === WORKSPACE_TRASH_DIR_NAME) continue;
 		if (dirent.isDirectory()) {
 			entries.push({ name: dirent.name, kind: "dir", size: 0 });
 			continue;

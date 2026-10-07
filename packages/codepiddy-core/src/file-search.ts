@@ -1,8 +1,18 @@
 import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import { WORKSPACE_TRASH_DIR_NAME } from "@codepiddy/shared";
 
-const ignoredDirectories = new Set([".git", "node_modules", "dist", "build", "coverage", ".next", ".cache"]);
+const ignoredDirectories = new Set([
+	".git",
+	"node_modules",
+	"dist",
+	"build",
+	"coverage",
+	".next",
+	".cache",
+	WORKSPACE_TRASH_DIR_NAME,
+]);
 
 export async function searchProjectFiles(projectRoot: string, query: string, limit = 50): Promise<string[]> {
 	const root = path.resolve(projectRoot);

@@ -516,6 +516,8 @@ export interface PendingPermissionRequest extends AgentInstanceLocator {
 }
 
 // 工作区文件系统直读（desktop-work-panel 文件管理器的数据源）。
+export const WORKSPACE_TRASH_DIR_NAME = ".codepiddy-trash";
+
 export interface WorkspaceDirEntry {
 	name: string;
 	kind: "dir" | "file";
