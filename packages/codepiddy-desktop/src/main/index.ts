@@ -90,6 +90,9 @@ import {
 	parseProjectId,
 	parseProjectRoot,
 	parseProjectUiState,
+	parsePromptTemplateFolderInput,
+	parsePromptTemplateInput,
+	parsePromptTemplateLocator,
 	parseProviderInput,
 	parseRenameWorkItemInput,
 	parseResetAgentInput,
@@ -113,6 +116,7 @@ import { PiAuthManager } from "./pi-auth.ts";
 import { loadPiBuiltinCommands, mergePiCommands } from "./pi-builtin-commands.ts";
 import { type InstalledPiRuntime, PiRuntimeUpdater } from "./pi-runtime-updater.ts";
 import { PiTrustManager } from "./pi-trust.ts";
+import { PromptTemplateManager } from "./prompt-templates.ts";
 import { RecentProjectStore } from "./recent-project-store.ts";
 import { AppSettingsStore, resolvePiAgentDir } from "./settings-store.ts";
 import { SingleFlightMap } from "./single-flight.ts";
@@ -179,6 +183,10 @@ const channels = {
 	settingsListSkills: "codepiddy:settings:skills:list",
 	settingsGetRoleSkills: "codepiddy:settings:role-skills:get",
 	settingsSetRoleSkills: "codepiddy:settings:role-skills:set",
+	settingsListPromptTemplates: "codepiddy:settings:prompt-templates:list",
+	settingsSavePromptTemplate: "codepiddy:settings:prompt-templates:save",
+	settingsDeletePromptTemplate: "codepiddy:settings:prompt-templates:delete",
+	settingsOpenPromptTemplateFolder: "codepiddy:settings:prompt-templates:open-folder",
 	settingsOpenPiConfig: "codepiddy:settings:pi-config:open",
 	settingsOpenPermissionPolicy: "codepiddy:settings:permission-policy:open",
 	settingsOpenProjectSkills: "codepiddy:settings:project-skills:open",
@@ -2233,6 +2241,7 @@ function registerIpcHandlers(
 		const input = parseArchiveWorkItemInput(raw);
 		return { ...input, projectRoot: requireOpenProjectRoot(input.projectRoot) };
 	};
+	const promptTemplateManager = new PromptTemplateManager(resolvePiAgentDir());
 
 	ipcMain.handle(channels.listRecentProjects, () => recentProjects.list());
 	ipcMain.handle(channels.getStartupProject, async () => {
@@ -2654,6 +2663,28 @@ function registerIpcHandlers(
 		if (input.skillIds.some((skillId) => !allowedIds.has(skillId)))
 			throw new Error("Skill ID 不存在或不在允许目录中");
 		return settingsStore.setRoleSkillAssignments(input);
+	});
+	ipcMain.handle(channels.settingsListPromptTemplates, (_event, rawProjectRoot?: unknown) => {
+		const projectRoot = rawProjectRoot === undefined ? undefined : requireOpenProjectRoot(rawProjectRoot);
+		return promptTemplateManager.list(projectRoot);
+	});
+	ipcMain.handle(channels.settingsSavePromptTemplate, (_event, raw: unknown) => {
+		const input = parsePromptTemplateInput(raw);
+		if (input.scope === "project") input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		return promptTemplateManager.save(input);
+	});
+	ipcMain.handle(channels.settingsDeletePromptTemplate, (_event, raw: unknown) => {
+		const input = parsePromptTemplateLocator(raw);
+		if (input.scope === "project") input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		return promptTemplateManager.delete(input);
+	});
+	ipcMain.handle(channels.settingsOpenPromptTemplateFolder, async (_event, raw: unknown) => {
+		const input = parsePromptTemplateFolderInput(raw);
+		if (input.scope === "project") input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		const directory = promptTemplateManager.resolveDirectory(input.scope, input.projectRoot);
+		await mkdir(directory, { recursive: true });
+		const error = await shell.openPath(directory);
+		if (error) throw new Error(error);
 	});
 	ipcMain.handle(channels.settingsOpenPiConfig, async () => {
 		const directory = path.join(app.getPath("home"), ".pi", "agent");

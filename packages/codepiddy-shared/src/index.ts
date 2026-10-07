@@ -463,6 +463,10 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	listAgentSkills(projectRoot?: string): Promise<AgentSkillSummary[]>;
 	getRoleSkillAssignments(): Promise<RoleSkillAssignments>;
 	setRoleSkillAssignments(input: SetRoleSkillAssignmentsInput): Promise<RoleSkillAssignments>;
+	listPromptTemplates(projectRoot?: string): Promise<PromptTemplateSummary[]>;
+	savePromptTemplate(input: PromptTemplateInput): Promise<PromptTemplateSummary[]>;
+	deletePromptTemplate(input: PromptTemplateLocator): Promise<PromptTemplateSummary[]>;
+	openPromptTemplateFolder(input: Pick<PromptTemplateLocator, "scope" | "projectRoot">): Promise<void>;
 	openPiConfigFolder(): Promise<void>;
 	openPermissionPolicyFolder(): Promise<void>;
 	openProjectSkillsFolder(projectRoot: string): Promise<void>;
@@ -918,6 +922,34 @@ export interface SetRoleSkillAssignmentsInput {
 	role: AgentRole;
 	skillIds: string[];
 	projectRoot?: string;
+}
+
+export const PROMPT_TEMPLATE_SCOPES = ["user", "project"] as const;
+export type PromptTemplateScope = (typeof PROMPT_TEMPLATE_SCOPES)[number];
+
+export interface PromptTemplateSummary {
+	name: string;
+	description: string;
+	argumentHint: string | null;
+	content: string;
+	scope: PromptTemplateScope;
+	filePath: string;
+}
+
+export interface PromptTemplateInput {
+	scope: PromptTemplateScope;
+	projectRoot?: string;
+	originalName?: string;
+	name: string;
+	description: string;
+	argumentHint: string;
+	content: string;
+}
+
+export interface PromptTemplateLocator {
+	scope: PromptTemplateScope;
+	projectRoot?: string;
+	name: string;
 }
 
 export const CUSTOM_PROVIDER_APIS = [

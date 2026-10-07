@@ -28,6 +28,9 @@ import type {
 	PermissionState,
 	PiBuiltinToolName,
 	ProjectUiState,
+	PromptTemplateInput,
+	PromptTemplateLocator,
+	PromptTemplateScope,
 	ProviderInput,
 	ProviderModelSummary,
 	RenameWorkItemInput,
@@ -77,6 +80,14 @@ function text(value: unknown, label: string, maximum: number, allowEmpty = false
 	if (result.length > maximum) throw new Error(`${label} 超过最大长度 ${maximum}`);
 	if (result.includes("\0")) throw new Error(`${label} 包含非法字符`);
 	return result;
+}
+
+function rawText(value: unknown, label: string, maximum: number, allowEmpty = false): string {
+	if (typeof value !== "string") throw new Error(`${label} 必须是字符串`);
+	if (!allowEmpty && !value.trim()) throw new Error(`${label} 不能为空`);
+	if (value.length > maximum) throw new Error(`${label} 超过最大长度 ${maximum}`);
+	if (value.includes("\0")) throw new Error(`${label} 包含非法字符`);
+	return value;
 }
 
 function nonNegativeSafeInteger(value: unknown, label: string): number {
@@ -760,4 +771,65 @@ export function parseToolSettings(value: unknown): ToolSettings {
 	const defaultTools = [...new Set(input.defaultTools)];
 	if (!defaultTools.every(isPiBuiltinToolName)) throw new Error("内置工具列表包含无效工具名");
 	return { defaultTools };
+}
+
+function promptTemplateScope(value: unknown): PromptTemplateScope {
+	if (value === "user" || value === "project") return value;
+	throw new Error("模板范围无效");
+}
+
+function promptTemplateName(value: unknown): string {
+	const name = text(value, "模板名称", 80);
+	if (name === "." || name === "..") throw new Error("模板名称无效");
+	if (/[<>:"/\\|?*\u0000-\u001f]/u.test(name)) throw new Error("模板名称包含非法字符");
+	if (/[. ]$/u.test(name)) throw new Error("模板名称不能以点或空格结尾");
+	return name;
+}
+
+export function parsePromptTemplateInput(value: unknown): PromptTemplateInput {
+	const input = record(value, "Prompt Template");
+	const scope = promptTemplateScope(input.scope);
+	const projectRoot =
+		input.projectRoot === undefined || input.projectRoot === null
+			? undefined
+			: path.resolve(text(input.projectRoot, "项目路径", 2048));
+	if (scope === "project" && !projectRoot) throw new Error("项目模板需要项目路径");
+	return {
+		scope,
+		...(projectRoot ? { projectRoot } : {}),
+		...(input.originalName === undefined ? {} : { originalName: promptTemplateName(input.originalName) }),
+		name: promptTemplateName(input.name),
+		description: rawText(input.description, "模板说明", 500, true),
+		argumentHint: rawText(input.argumentHint, "参数提示", 200, true),
+		content: rawText(input.content, "模板内容", 200_000),
+	};
+}
+
+export function parsePromptTemplateLocator(value: unknown): PromptTemplateLocator {
+	const input = record(value, "Prompt Template");
+	const scope = promptTemplateScope(input.scope);
+	const projectRoot =
+		input.projectRoot === undefined || input.projectRoot === null
+			? undefined
+			: path.resolve(text(input.projectRoot, "项目路径", 2048));
+	if (scope === "project" && !projectRoot) throw new Error("项目模板需要项目路径");
+	return {
+		scope,
+		...(projectRoot ? { projectRoot } : {}),
+		name: promptTemplateName(input.name),
+	};
+}
+
+export function parsePromptTemplateFolderInput(value: unknown): Pick<PromptTemplateLocator, "scope" | "projectRoot"> {
+	const input = record(value, "Prompt Template Folder");
+	const scope = promptTemplateScope(input.scope);
+	const projectRoot =
+		input.projectRoot === undefined || input.projectRoot === null
+			? undefined
+			: path.resolve(text(input.projectRoot, "项目路径", 2048));
+	if (scope === "project" && !projectRoot) throw new Error("项目模板需要项目路径");
+	return {
+		scope,
+		...(projectRoot ? { projectRoot } : {}),
+	};
 }

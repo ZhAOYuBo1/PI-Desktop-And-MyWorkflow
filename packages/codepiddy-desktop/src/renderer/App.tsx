@@ -26,6 +26,7 @@ import type {
 	ProjectTrustStatus,
 	ProjectUiState,
 	ProjectWriteLeaseStatus,
+	PromptTemplateSummary,
 	RecentProject,
 	RoleSkillAssignments,
 	SettingsStatus,
@@ -56,6 +57,7 @@ import { ModelScopeSettings } from "./components/ModelScopeSettings.tsx";
 import { MessageContent } from "./components/message-content.tsx";
 import { ModalShell } from "./components/modal-shell.tsx";
 import { ProjectTrustSettings } from "./components/ProjectTrustSettings.tsx";
+import { PromptTemplateSettings } from "./components/PromptTemplateSettings.tsx";
 import { ProviderSettings } from "./components/ProviderSettings.tsx";
 import { ProviderIcon } from "./components/provider-icon.tsx";
 import { type SessionCreateDraft, SessionCreateForm } from "./components/SessionCreateForm.tsx";
@@ -1337,7 +1339,8 @@ type SettingsSectionId =
 	| "search"
 	| "share"
 	| "permissions"
-	| "skills";
+	| "skills"
+	| "prompts";
 
 const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: string; icon: AppIconName }[] }[] = [
 	{
@@ -1367,6 +1370,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 		items: [
 			{ id: "permissions", label: "默认权限", icon: "shield" },
 			{ id: "skills", label: "Agent Skills", icon: "sparkles" },
+			{ id: "prompts", label: "Prompt 模板", icon: "message-question" },
 		],
 	},
 ];
@@ -2067,6 +2071,38 @@ export function App() {
 		if (activeAgentLocator) lastActiveAgentLocatorRef.current = activeAgentLocator;
 	}, [activeAgentLocator]);
 
+	const insertPromptTemplate = useCallback(
+		(template: PromptTemplateSummary): void => {
+			const locator = activeAgentLocator ?? lastActiveAgentLocatorRef.current;
+			if (!project || !locator) {
+				showSettingsToast("请先打开一个 Agent 会话，再使用 Prompt 模板", "error");
+				return;
+			}
+			for (const lane of project.lanes) {
+				for (const item of lane.workItems) {
+					const slot = item.agentSlots.find(
+						(candidate) => candidate.currentInstanceId === locator.agentInstanceId,
+					);
+					if (!slot) continue;
+					setSelection({ type: "agent", lane: lane.kind, workItemId: item.id, role: slot.role });
+					setDrafts((current) => {
+						const currentDraft = current[locator.agentInstanceId]?.trim() ?? "";
+						return {
+							...current,
+							[locator.agentInstanceId]: currentDraft
+								? `/${template.name} ${currentDraft}`
+								: `/${template.name} `,
+						};
+					});
+					window.requestAnimationFrame(() => composerInputRef.current?.focus());
+					return;
+				}
+			}
+			showSettingsToast("当前 Agent 已不在项目树中，无法插入模板", "error");
+		},
+		[activeAgentLocator, project],
+	);
+
 	const refreshAfterProviderChange = useCallback(async (label: string): Promise<void> => {
 		setProviderSettingsRefreshToken((current) => current + 1);
 		if (demoMode || !("codepiddy" in window)) return;
@@ -2116,6 +2152,28 @@ export function App() {
 			return `工具设置已保存；刷新 Agent 失败：${clientErrorMessage(caught, "未知错误")}`;
 		}
 	}, []);
+
+	const refreshAfterPromptTemplateChange = useCallback(
+		async (action: "save" | "delete"): Promise<string> => {
+			const label = action === "delete" ? "Prompt 模板已删除" : "Prompt 模板已保存";
+			if (demoMode || !("codepiddy" in window)) return `${label}。`;
+			const locator = lastActiveAgentLocatorRef.current;
+			if (!locator) return `${label}；新启动或重连后的 Agent 生效。`;
+			const status = findAgentStatus(projectRef.current, locator);
+			if (!status) return `${label}；重新打开 Agent 后生效。`;
+			if (status === "running" || status === "waiting") {
+				return `${label}；当前 Agent 正在运行，停止或重新连接后生效。`;
+			}
+			try {
+				await window.codepiddy.reconnectAgent(locator);
+				await loadAgentCommands(locator);
+				return `${label}；当前 Agent 已重新连接，命令菜单已刷新。`;
+			} catch (caught) {
+				return `${label}；刷新 Agent 失败：${clientErrorMessage(caught, "未知错误")}`;
+			}
+		},
+		[loadAgentCommands],
+	);
 
 	const refreshAfterMcpChange = useCallback(async (): Promise<string> => {
 		if (demoMode || !("codepiddy" in window)) return "MCP 配置已更新。";
@@ -5395,6 +5453,13 @@ export function App() {
 								))}
 							</div>
 						</section>
+						<div className="settings-section-slot" hidden={settingsSection !== "prompts"}>
+							<PromptTemplateSettings
+								projectRoot={project?.rootPath ?? null}
+								onUseTemplate={insertPromptTemplate}
+								onConfigChanged={refreshAfterPromptTemplateChange}
+							/>
+						</div>
 
 						<div className="settings-section-slot" hidden={settingsSection !== "providers"}>
 							<ProviderSettings

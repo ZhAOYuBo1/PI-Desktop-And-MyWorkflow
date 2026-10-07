@@ -24,6 +24,9 @@ import type {
 	McpProjectOverrideLocator,
 	McpServerInput,
 	PermissionDefaults,
+	PromptTemplateInput,
+	PromptTemplateLocator,
+	PromptTemplateSummary,
 	ProviderInput,
 	RenameWorkItemInput,
 	ResetAgentInput,
@@ -106,6 +109,10 @@ const channels = {
 	settingsListSkills: "codepiddy:settings:skills:list",
 	settingsGetRoleSkills: "codepiddy:settings:role-skills:get",
 	settingsSetRoleSkills: "codepiddy:settings:role-skills:set",
+	settingsListPromptTemplates: "codepiddy:settings:prompt-templates:list",
+	settingsSavePromptTemplate: "codepiddy:settings:prompt-templates:save",
+	settingsDeletePromptTemplate: "codepiddy:settings:prompt-templates:delete",
+	settingsOpenPromptTemplateFolder: "codepiddy:settings:prompt-templates:open-folder",
 	settingsOpenPiConfig: "codepiddy:settings:pi-config:open",
 	settingsOpenPermissionPolicy: "codepiddy:settings:permission-policy:open",
 	settingsOpenProjectSkills: "codepiddy:settings:project-skills:open",
@@ -294,6 +301,14 @@ const api: CodePIddyClientApi = {
 	getRoleSkillAssignments: () => ipcRenderer.invoke(channels.settingsGetRoleSkills),
 	setRoleSkillAssignments: (input: SetRoleSkillAssignmentsInput) =>
 		ipcRenderer.invoke(channels.settingsSetRoleSkills, input),
+	listPromptTemplates: (projectRoot?: string): Promise<PromptTemplateSummary[]> =>
+		ipcRenderer.invoke(channels.settingsListPromptTemplates, projectRoot),
+	savePromptTemplate: (input: PromptTemplateInput): Promise<PromptTemplateSummary[]> =>
+		ipcRenderer.invoke(channels.settingsSavePromptTemplate, input),
+	deletePromptTemplate: (input: PromptTemplateLocator): Promise<PromptTemplateSummary[]> =>
+		ipcRenderer.invoke(channels.settingsDeletePromptTemplate, input),
+	openPromptTemplateFolder: (input: Pick<PromptTemplateLocator, "scope" | "projectRoot">): Promise<void> =>
+		ipcRenderer.invoke(channels.settingsOpenPromptTemplateFolder, input),
 	openPiConfigFolder: () => ipcRenderer.invoke(channels.settingsOpenPiConfig),
 	openPermissionPolicyFolder: () => ipcRenderer.invoke(channels.settingsOpenPermissionPolicy),
 	openProjectSkillsFolder: (projectRoot: string) =>
