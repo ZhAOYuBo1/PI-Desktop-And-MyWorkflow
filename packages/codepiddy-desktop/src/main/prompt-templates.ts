@@ -4,6 +4,7 @@ import type {
 	PromptTemplateInput,
 	PromptTemplateLocator,
 	PromptTemplateScope,
+	PromptTemplateSource,
 	PromptTemplateSummary,
 } from "@codepiddy/shared";
 
@@ -135,7 +136,13 @@ async function findTemplateFile(directory: string, name: string): Promise<string
 	return null;
 }
 
-async function readTemplateFile(filePath: string, scope: PromptTemplateScope): Promise<PromptTemplateSummary | null> {
+async function readTemplateFile(
+	filePath: string,
+	scope: PromptTemplateScope,
+	source: PromptTemplateSource,
+	sourceLabel: string | null,
+	readOnly: boolean,
+): Promise<PromptTemplateSummary | null> {
 	try {
 		const parsed = parsePromptTemplate(await readFile(filePath, "utf8"));
 		const name = path.basename(filePath).replace(/\.md$/iu, "");
@@ -145,6 +152,9 @@ async function readTemplateFile(filePath: string, scope: PromptTemplateScope): P
 			argumentHint: parsed.argumentHint || null,
 			content: parsed.body,
 			scope,
+			source,
+			sourceLabel,
+			readOnly,
 			filePath,
 		};
 	} catch {
@@ -163,13 +173,18 @@ async function listTemplatesFromDirectory(
 				if (!entry.name.toLowerCase().endsWith(".md")) return [];
 				const filePath = path.join(directory, entry.name);
 				if (!entry.isFile() && !entry.isSymbolicLink()) return [];
-				return [readTemplateFile(filePath, scope)];
+				return [readTemplateFile(filePath, scope, scope, null, false)];
 			}),
 		);
 		return templates.filter((template): template is PromptTemplateSummary => template !== null);
 	} catch {
 		return [];
 	}
+}
+
+export interface PackagePromptFile {
+	path: string;
+	source: string;
 }
 
 export class PromptTemplateManager {
@@ -185,21 +200,25 @@ export class PromptTemplateManager {
 		return path.join(path.resolve(projectRoot), ".pi", "prompts");
 	}
 
-	async list(projectRoot?: string): Promise<PromptTemplateSummary[]> {
+	async list(projectRoot?: string, packagePrompts: PackagePromptFile[] = []): Promise<PromptTemplateSummary[]> {
 		const groups = await Promise.all([
 			listTemplatesFromDirectory(this.resolveDirectory("user"), "user"),
 			projectRoot
 				? listTemplatesFromDirectory(this.resolveDirectory("project", projectRoot), "project")
 				: Promise.resolve([]),
+			Promise.all(
+				packagePrompts.map((prompt) => readTemplateFile(prompt.path, "user", "package", prompt.source, true)),
+			).then((templates) => templates.filter((template): template is PromptTemplateSummary => template !== null)),
 		]);
-		return groups
-			.flat()
-			.sort((left, right) =>
-				left.scope === right.scope ? left.name.localeCompare(right.name) : left.scope === "project" ? -1 : 1,
-			);
+		return groups.flat().sort((left, right) => {
+			const order: Record<PromptTemplateSource, number> = { project: 0, user: 1, package: 2 };
+			return order[left.source] === order[right.source]
+				? left.name.localeCompare(right.name)
+				: order[left.source] - order[right.source];
+		});
 	}
 
-	async save(input: PromptTemplateInput): Promise<PromptTemplateSummary[]> {
+	async save(input: PromptTemplateInput, packagePrompts: PackagePromptFile[] = []): Promise<PromptTemplateSummary[]> {
 		const scope = input.scope;
 		const name = assertTemplateName(input.name);
 		const description = assertText(input.description, "模板说明", MAX_TEMPLATE_DESCRIPTION, true).trim();
@@ -223,14 +242,17 @@ export class PromptTemplateManager {
 		}
 
 		await writeFile(targetPath, renderPromptTemplate({ description, argumentHint, content }), "utf8");
-		return this.list(input.projectRoot);
+		return this.list(input.projectRoot, packagePrompts);
 	}
 
-	async delete(input: PromptTemplateLocator): Promise<PromptTemplateSummary[]> {
+	async delete(
+		input: PromptTemplateLocator,
+		packagePrompts: PackagePromptFile[] = [],
+	): Promise<PromptTemplateSummary[]> {
 		const directory = this.resolveDirectory(input.scope, input.projectRoot);
 		const filePath = await findTemplateFile(directory, assertTemplateName(input.name));
 		if (!filePath) throw new Error("模板不存在或已被删除");
 		await unlink(filePath);
-		return this.list(input.projectRoot);
+		return this.list(input.projectRoot, packagePrompts);
 	}
 }

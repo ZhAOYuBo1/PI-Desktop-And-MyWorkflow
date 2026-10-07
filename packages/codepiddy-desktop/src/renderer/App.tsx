@@ -56,6 +56,7 @@ import { McpSettings } from "./components/McpSettings.tsx";
 import { ModelScopeSettings } from "./components/ModelScopeSettings.tsx";
 import { MessageContent } from "./components/message-content.tsx";
 import { ModalShell } from "./components/modal-shell.tsx";
+import { PiPackageSettings } from "./components/PiPackageSettings.tsx";
 import { ProjectTrustSettings } from "./components/ProjectTrustSettings.tsx";
 import { PromptTemplateSettings } from "./components/PromptTemplateSettings.tsx";
 import { ProviderSettings } from "./components/ProviderSettings.tsx";
@@ -1368,7 +1369,8 @@ type SettingsSectionId =
 	| "share"
 	| "permissions"
 	| "skills"
-	| "prompts";
+	| "prompts"
+	| "packages";
 
 const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: string; icon: AppIconName }[] }[] = [
 	{
@@ -1399,6 +1401,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 			{ id: "permissions", label: "默认权限", icon: "shield" },
 			{ id: "skills", label: "Agent Skills", icon: "sparkles" },
 			{ id: "prompts", label: "Prompt 模板", icon: "message-question" },
+			{ id: "packages", label: "Pi Packages", icon: "package" },
 		],
 	},
 ];
@@ -2213,6 +2216,35 @@ export function App() {
 	const refreshAfterPromptTemplateChange = useCallback(
 		async (action: "save" | "delete"): Promise<string> => {
 			const label = action === "delete" ? "Prompt 模板已删除" : "Prompt 模板已保存";
+			if (demoMode || !("codepiddy" in window)) return `${label}。`;
+			const locator = lastActiveAgentLocatorRef.current;
+			if (!locator) return `${label}；新启动或重连后的 Agent 生效。`;
+			const status = findAgentStatus(projectRef.current, locator);
+			if (!status) return `${label}；重新打开 Agent 后生效。`;
+			if (status === "running" || status === "waiting") {
+				return `${label}；当前 Agent 正在运行，停止或重新连接后生效。`;
+			}
+			try {
+				await window.codepiddy.reconnectAgent(locator);
+				await loadAgentCommands(locator);
+				return `${label}；当前 Agent 已重新连接，命令菜单已刷新。`;
+			} catch (caught) {
+				return `${label}；刷新 Agent 失败：${clientErrorMessage(caught, "未知错误")}`;
+			}
+		},
+		[loadAgentCommands],
+	);
+
+	const refreshAfterPiPackageChange = useCallback(
+		async (action: "install" | "remove" | "update" | "extension"): Promise<string> => {
+			const label =
+				action === "install"
+					? "Pi Package 已安装"
+					: action === "remove"
+						? "Pi Package 已移除"
+						: action === "extension"
+							? "Pi Package extension 状态已更新"
+							: "Pi Package 已更新";
 			if (demoMode || !("codepiddy" in window)) return `${label}。`;
 			const locator = lastActiveAgentLocatorRef.current;
 			if (!locator) return `${label}；新启动或重连后的 Agent 生效。`;
@@ -5515,6 +5547,12 @@ export function App() {
 								projectRoot={project?.rootPath ?? null}
 								onUseTemplate={insertPromptTemplate}
 								onConfigChanged={refreshAfterPromptTemplateChange}
+							/>
+						</div>
+						<div className="settings-section-slot" hidden={settingsSection !== "packages"}>
+							<PiPackageSettings
+								projectRoot={project?.rootPath ?? null}
+								onConfigChanged={refreshAfterPiPackageChange}
 							/>
 						</div>
 

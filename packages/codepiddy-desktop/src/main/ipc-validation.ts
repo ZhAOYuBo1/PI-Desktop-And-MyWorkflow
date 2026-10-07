@@ -27,6 +27,9 @@ import type {
 	PermissionDefaults,
 	PermissionState,
 	PiBuiltinToolName,
+	PiPackageActionInput,
+	PiPackageExtensionInput,
+	PiPackageScope,
 	ProjectUiState,
 	PromptTemplateInput,
 	PromptTemplateLocator,
@@ -849,6 +852,53 @@ export function parseToolSettings(value: unknown): ToolSettings {
 	const defaultTools = [...new Set(input.defaultTools)];
 	if (!defaultTools.every(isPiBuiltinToolName)) throw new Error("内置工具列表包含无效工具名");
 	return { defaultTools };
+}
+
+function piPackageScope(value: unknown): PiPackageScope {
+	if (value === "user" || value === "project") return value;
+	throw new Error("Pi Package 作用域无效");
+}
+
+export function parsePiPackageActionInput(value: unknown): PiPackageActionInput {
+	const input = record(value, "Pi Package Action");
+	if (input.action !== "install" && input.action !== "remove" && input.action !== "update") {
+		throw new Error("Pi Package 操作无效");
+	}
+	const scope = piPackageScope(input.scope);
+	const projectRoot =
+		input.projectRoot === undefined || input.projectRoot === null
+			? undefined
+			: path.resolve(text(input.projectRoot, "项目路径", 2048));
+	if (scope === "project" && !projectRoot) throw new Error("项目级 Pi Package 需要项目路径");
+	const source = text(input.source, "Pi Package 来源", 2048);
+	if (/[\r\n\u0000]/u.test(source)) throw new Error("Pi Package 来源包含非法字符");
+	return {
+		action: input.action,
+		source,
+		scope,
+		...(projectRoot ? { projectRoot } : {}),
+	};
+}
+
+export function parsePiPackageExtensionInput(value: unknown): PiPackageExtensionInput {
+	const input = record(value, "Pi Package Extension");
+	if (input.action !== "set-extension") throw new Error("Pi Package extension 操作无效");
+	const scope = piPackageScope(input.scope);
+	const projectRoot =
+		input.projectRoot === undefined || input.projectRoot === null
+			? undefined
+			: path.resolve(text(input.projectRoot, "项目路径", 2048));
+	if (scope === "project" && !projectRoot) throw new Error("项目级 Pi Package 需要项目路径");
+	if (typeof input.enabled !== "boolean") throw new Error("Pi Package extension 开关必须是布尔值");
+	const source = text(input.source, "Pi Package 来源", 2048);
+	if (/[\r\n\u0000]/u.test(source)) throw new Error("Pi Package 来源包含非法字符");
+	return {
+		action: "set-extension",
+		source,
+		scope,
+		enabled: input.enabled,
+		...(projectRoot ? { projectRoot } : {}),
+	};
 }
 
 function promptTemplateScope(value: unknown): PromptTemplateScope {

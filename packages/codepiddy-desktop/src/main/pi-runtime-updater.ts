@@ -411,6 +411,13 @@ export class PiRuntimeUpdater {
 		)
 			throw new Error("下载的 Pi 包名称或版本不匹配");
 		await access(runtime.cliPath);
+		await access(path.join(runtime.packageDir, "dist", "index.js"));
+		await access(path.join(runtime.packageDir, "dist", "core", "slash-commands.js"));
+		await this.assertDependencyFile(runtime.packageDir, "@earendil-works/pi-agent-core", "dist/index.js");
+		await this.assertDependencyFile(runtime.packageDir, "@earendil-works/pi-ai", "dist/compat.js");
+		await this.assertDependencyFile(runtime.packageDir, "@earendil-works/pi-tui", "dist/index.js");
+		await this.assertDependencyFile(runtime.packageDir, "@earendil-works/chord", "dist/index.js");
+		await this.assertDependencyFile(runtime.packageDir, "quickjs-wasi", "quickjs.wasm");
 		const [actualCli, actualPackage] = await Promise.all([realpath(runtime.cliPath), realpath(runtime.packageDir)]);
 		if (!actualCli.startsWith(`${actualPackage}${path.sep}`)) throw new Error("Pi 可执行文件超出安装目录");
 	}
@@ -426,6 +433,23 @@ export class PiRuntimeUpdater {
 		const runtime = { version, packageDir, cliPath: path.join(packageDir, "dist", "bundle", "cli.js") };
 		await this.validatePackage(runtime);
 		return runtime;
+	}
+
+	private async assertDependencyFile(packageDir: string, packageName: string, relativePath: string): Promise<void> {
+		const parts = packageName.split("/");
+		const candidates = [
+			path.join(packageDir, "node_modules", ...parts, relativePath),
+			path.join(path.dirname(path.dirname(packageDir)), ...parts, relativePath),
+		];
+		for (const candidate of candidates) {
+			try {
+				await access(candidate);
+				return;
+			} catch {
+				/* Try the next likely npm layout. */
+			}
+		}
+		throw new Error(`Pi runtime dependency is incomplete: ${packageName}/${relativePath}`);
 	}
 
 	private async writeActive(value: ActiveRecord): Promise<void> {

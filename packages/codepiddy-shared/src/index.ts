@@ -443,6 +443,13 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	saveContextCompactionSettings(input: ContextCompactionSettings): Promise<SettingsStatus>;
 	saveCodemodeSettings(input: CodemodeSettings): Promise<SettingsStatus>;
 	saveToolSettings(input: ToolSettings): Promise<SettingsStatus>;
+	listPiPackages(projectRoot?: string): Promise<PiPackageListResult>;
+	checkPiPackageUpdates(projectRoot?: string): Promise<PiPackageUpdateSummary[]>;
+	installPiPackage(input: PiPackageActionInput): Promise<PiPackageListResult>;
+	removePiPackage(input: PiPackageActionInput): Promise<PiPackageListResult>;
+	updatePiPackage(input: PiPackageActionInput): Promise<PiPackageListResult>;
+	setPiPackageExtensionEnabled(input: PiPackageExtensionInput): Promise<PiPackageListResult>;
+	choosePiPackageLocalPath(): Promise<string | null>;
 	listMcpServers(projectRoot?: string): Promise<McpServerSummary[]>;
 	saveMcpServer(input: McpServerInput): Promise<McpServerSummary[]>;
 	deleteMcpServer(name: string): Promise<McpServerSummary[]>;
@@ -642,6 +649,66 @@ export interface SettingsStatus {
 	contextCompaction: ContextCompactionSettings;
 	codemode: CodemodeSettings;
 	tools: ToolSettings;
+}
+
+export const PI_PACKAGE_SCOPES = ["user", "project"] as const;
+export type PiPackageScope = (typeof PI_PACKAGE_SCOPES)[number];
+
+export const PI_PACKAGE_SOURCE_TYPES = ["npm", "git", "local"] as const;
+export type PiPackageSourceType = (typeof PI_PACKAGE_SOURCE_TYPES)[number];
+
+export interface PiPackageResourceCount {
+	total: number;
+	enabled: number;
+}
+
+export interface PiPackageResourceSummary {
+	extensions: PiPackageResourceCount;
+	skills: PiPackageResourceCount;
+	prompts: PiPackageResourceCount;
+	themes: PiPackageResourceCount;
+}
+
+export interface PiPackageSummary {
+	source: string;
+	scope: PiPackageScope;
+	sourceType: PiPackageSourceType;
+	displayName: string;
+	version: string | null;
+	installedPath: string | null;
+	installed: boolean;
+	filtered: boolean;
+	resources: PiPackageResourceSummary;
+	/** 是否允许 CodePIddy Agent 显式加载这个包的 extension。 */
+	extensionEnabled: boolean;
+}
+
+export interface PiPackageUpdateSummary {
+	source: string;
+	displayName: string;
+	sourceType: Exclude<PiPackageSourceType, "local">;
+	scope: PiPackageScope;
+}
+
+export interface PiPackageListResult {
+	packages: PiPackageSummary[];
+	updates: PiPackageUpdateSummary[];
+	projectTrusted: boolean;
+}
+
+export interface PiPackageActionInput {
+	action: "install" | "remove" | "update";
+	source: string;
+	scope: PiPackageScope;
+	projectRoot?: string;
+}
+
+export interface PiPackageExtensionInput {
+	action: "set-extension";
+	source: string;
+	scope: PiPackageScope;
+	enabled: boolean;
+	projectRoot?: string;
 }
 
 export type McpTransport = "stdio" | "http";
@@ -967,7 +1034,7 @@ export function findPermissionDecisionChoice(label: string): PermissionDecisionC
 	return PERMISSION_DECISION_CHOICES.find((choice) => choice.label === label);
 }
 
-export type AgentSkillSource = "builtin" | "codex" | "agents" | "pi" | "project";
+export type AgentSkillSource = "builtin" | "codex" | "agents" | "pi" | "project" | "package";
 
 export interface AgentSkillSummary {
 	id: string;
@@ -987,6 +1054,8 @@ export interface SetRoleSkillAssignmentsInput {
 
 export const PROMPT_TEMPLATE_SCOPES = ["user", "project"] as const;
 export type PromptTemplateScope = (typeof PROMPT_TEMPLATE_SCOPES)[number];
+export const PROMPT_TEMPLATE_SOURCES = ["user", "project", "package"] as const;
+export type PromptTemplateSource = (typeof PROMPT_TEMPLATE_SOURCES)[number];
 
 export interface PromptTemplateSummary {
 	name: string;
@@ -994,6 +1063,9 @@ export interface PromptTemplateSummary {
 	argumentHint: string | null;
 	content: string;
 	scope: PromptTemplateScope;
+	source: PromptTemplateSource;
+	sourceLabel: string | null;
+	readOnly: boolean;
 	filePath: string;
 }
 

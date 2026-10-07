@@ -83,4 +83,8 @@ await Promise.all([
     path.join(path.dirname(fileURLToPath(import.meta.url)), "pi-share-helper.mjs"),
     path.join("dist", "runtime-extensions", "pi-share-helper.mjs"),
   ),
+  cp(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "pi-package-helper.mjs"),
+    path.join("dist", "runtime-extensions", "pi-package-helper.mjs"),
+  ),
 ]);

@@ -1,4 +1,5 @@
 import { cp, mkdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -6,6 +7,12 @@ import { build } from "esbuild";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(scriptDirectory, "..");
 const outputRoot = path.join(repositoryRoot, ".artifacts", "codepiddy-runtime");
+const runtimeRoot = path.join(repositoryRoot, "packages", "coding-agent-runtime");
+if (!existsSync(path.join(runtimeRoot, "node_modules"))) {
+	throw new Error(
+		"coding-agent-runtime is not hydrated. Run: npm install --prefix packages/coding-agent-runtime --ignore-scripts --omit=dev",
+	);
+}
 
 await rm(outputRoot, { force: true, recursive: true });
 await mkdir(path.join(outputRoot, "extensions"), { recursive: true });
@@ -74,14 +81,25 @@ await Promise.all([
 		path.join(outputRoot, "extensions", "pi-share-helper.mjs"),
 	),
 	cp(
-		path.join(repositoryRoot, "packages", "coding-agent-runtime", "dist"),
+		path.join(repositoryRoot, "packages", "codepiddy-desktop", "scripts", "pi-package-helper.mjs"),
+		path.join(outputRoot, "extensions", "pi-package-helper.mjs"),
+	),
+	cp(
+		path.join(runtimeRoot, "dist"),
 		path.join(outputRoot, "coding-agent-package", "dist"),
 		{ recursive: true },
 	),
 	cp(
-		path.join(repositoryRoot, "packages", "coding-agent-runtime", "package.json"),
+		path.join(runtimeRoot, "package.json"),
 		path.join(outputRoot, "coding-agent-package", "package.json"),
 	),
+	cp(
+		path.join(runtimeRoot, "package-lock.json"),
+		path.join(outputRoot, "coding-agent-package", "package-lock.json"),
+	),
+	cp(path.join(runtimeRoot, "node_modules"), path.join(outputRoot, "coding-agent-package", "node_modules"), {
+		recursive: true,
+	}),
 	cp(path.join(repositoryRoot, "node_modules", "npm"), path.join(outputRoot, "npm"), { recursive: true }),
 ]);
 

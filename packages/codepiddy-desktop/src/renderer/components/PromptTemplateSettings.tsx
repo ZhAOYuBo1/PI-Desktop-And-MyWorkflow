@@ -1,4 +1,4 @@
-import type { PromptTemplateScope, PromptTemplateSummary } from "@codepiddy/shared";
+import type { PromptTemplateScope, PromptTemplateSource, PromptTemplateSummary } from "@codepiddy/shared";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AppIcon } from "./app-icon.tsx";
 import { ModalShell } from "./modal-shell.tsx";
@@ -7,6 +7,9 @@ import { StateBlock } from "./state-block.tsx";
 
 interface PromptTemplateDraft {
 	scope: PromptTemplateScope;
+	source: PromptTemplateSource;
+	sourceLabel: string | null;
+	readOnly: boolean;
 	originalName?: string;
 	name: string;
 	description: string;
@@ -14,8 +17,8 @@ interface PromptTemplateDraft {
 	content: string;
 }
 
-function templateKey(template: Pick<PromptTemplateSummary, "scope" | "name">): string {
-	return `${template.scope}:${template.name}`;
+function templateKey(template: Pick<PromptTemplateSummary, "source" | "sourceLabel" | "name">): string {
+	return `${template.source}:${template.sourceLabel ?? ""}:${template.name}`;
 }
 
 function demoPromptTemplates(): PromptTemplateSummary[] {
@@ -26,6 +29,9 @@ function demoPromptTemplates(): PromptTemplateSummary[] {
 			argumentHint: "[focus]",
 			content: "Review this change for correctness, regressions, and missing tests.\nFocus on: $ARGUMENTS",
 			scope: "user",
+			source: "user",
+			sourceLabel: null,
+			readOnly: false,
 			filePath: "demo://prompts/review.md",
 		},
 		{
@@ -34,7 +40,21 @@ function demoPromptTemplates(): PromptTemplateSummary[] {
 			argumentHint: "<description>",
 			content: "Investigate and fix this bug:\n\n$ARGUMENTS\n\nAdd a regression test when practical.",
 			scope: "project",
+			source: "project",
+			sourceLabel: null,
+			readOnly: false,
 			filePath: "demo://project/.pi/prompts/fix-bug.md",
+		},
+		{
+			name: "parallel-review",
+			description: "Parallel subagents review",
+			argumentHint: null,
+			content: "Run parallel reviewers for this change.",
+			scope: "user",
+			source: "package",
+			sourceLabel: "npm:pi-subagents",
+			readOnly: true,
+			filePath: "demo://packages/pi-subagents/prompts/parallel-review.md",
 		},
 	];
 }
@@ -77,8 +97,9 @@ export function PromptTemplateSettings({
 
 	const grouped = useMemo(
 		() => ({
-			project: templates.filter((template) => template.scope === "project"),
-			user: templates.filter((template) => template.scope === "user"),
+			project: templates.filter((template) => template.source === "project"),
+			user: templates.filter((template) => template.source === "user"),
+			package: templates.filter((template) => template.source === "package"),
 		}),
 		[templates],
 	);
@@ -90,6 +111,9 @@ export function PromptTemplateSettings({
 		}
 		setDraft({
 			scope,
+			source: scope,
+			sourceLabel: null,
+			readOnly: false,
 			name: "",
 			description: "",
 			argumentHint: "",
@@ -99,6 +123,7 @@ export function PromptTemplateSettings({
 
 	async function persistDraft(): Promise<PromptTemplateSummary | null> {
 		if (!draft) return null;
+		if (draft.readOnly) return null;
 		if (!draft.name.trim()) {
 			showSettingsToast("模板名称不能为空", "error");
 			return null;
@@ -116,12 +141,21 @@ export function PromptTemplateSettings({
 					argumentHint: draft.argumentHint.trim() || null,
 					content: draft.content.trim(),
 					scope: draft.scope,
+					source: draft.scope,
+					sourceLabel: null,
+					readOnly: false,
 					filePath:
 						draft.scope === "project"
 							? `demo://project/.pi/prompts/${draft.name.trim()}.md`
 							: `demo://prompts/${draft.name.trim()}.md`,
 				};
-				const originalKey = draft.originalName ? `${draft.scope}:${draft.originalName}` : null;
+				const originalKey = draft.originalName
+					? templateKey({
+							source: draft.source,
+							sourceLabel: draft.sourceLabel,
+							name: draft.originalName,
+						})
+					: null;
 				setTemplates((current) => [
 					...current.filter(
 						(template) =>
@@ -132,6 +166,9 @@ export function PromptTemplateSettings({
 				]);
 				setDraft({
 					scope: saved.scope,
+					source: saved.source,
+					sourceLabel: saved.sourceLabel,
+					readOnly: saved.readOnly,
 					originalName: saved.name,
 					name: saved.name,
 					description: saved.description,
@@ -151,10 +188,18 @@ export function PromptTemplateSettings({
 			});
 			setTemplates(next);
 			const saved =
-				next.find((template) => template.scope === draft.scope && template.name === draft.name.trim()) ?? null;
+				next.find(
+					(template) =>
+						template.source === draft.source &&
+						template.name === draft.name.trim() &&
+						(draft.source !== "package" || template.sourceLabel === draft.sourceLabel),
+				) ?? null;
 			if (saved) {
 				setDraft({
 					scope: saved.scope,
+					source: saved.source,
+					sourceLabel: saved.sourceLabel,
+					readOnly: saved.readOnly,
 					originalName: saved.name,
 					name: saved.name,
 					description: saved.description,
@@ -223,19 +268,24 @@ export function PromptTemplateSettings({
 		}
 	}
 
-	function renderGroup(scope: PromptTemplateScope, items: PromptTemplateSummary[]): ReactNode {
+	function renderGroup(source: PromptTemplateSource, items: PromptTemplateSummary[]): ReactNode {
+		const label = source === "project" ? "项目模板" : source === "user" ? "用户模板" : "包模板";
+		const emptyLabel = source === "project" ? "项目" : source === "user" ? "用户" : "包";
 		return (
-			<section className="prompt-template-group" key={scope}>
+			<section className="prompt-template-group" key={source}>
 				<div className="prompt-template-group-heading">
-					<span>{scope === "project" ? "项目模板" : "用户模板"}</span>
+					<span>{label}</span>
 					<small>{items.length}</small>
 				</div>
 				{items.length === 0 ? (
-					<div className="prompt-template-group-empty">还没有{scope === "project" ? "项目" : "用户"}模板</div>
+					<div className="prompt-template-group-empty">还没有{emptyLabel}模板</div>
 				) : (
 					<div className="prompt-template-list">
 						{items.map((template) => {
-							const selected = draft?.scope === template.scope && draft.name.trim() === template.name;
+							const selected =
+								draft?.source === template.source &&
+								draft.sourceLabel === template.sourceLabel &&
+								draft.name.trim() === template.name;
 							return (
 								<div
 									className={`prompt-template-row${selected ? " is-selected" : ""}`}
@@ -247,6 +297,9 @@ export function PromptTemplateSettings({
 										onClick={() =>
 											setDraft({
 												scope: template.scope,
+												source: template.source,
+												sourceLabel: template.sourceLabel,
+												readOnly: template.readOnly,
 												originalName: template.name,
 												name: template.name,
 												description: template.description,
@@ -257,6 +310,7 @@ export function PromptTemplateSettings({
 									>
 										<span className="prompt-template-name">/{template.name}</span>
 										<span className="prompt-template-description">{template.description || "无说明"}</span>
+										{template.sourceLabel ? <code>{template.sourceLabel}</code> : null}
 										{template.argumentHint ? <code>{template.argumentHint}</code> : null}
 									</button>
 									<button
@@ -334,6 +388,7 @@ export function PromptTemplateSettings({
 						<>
 							{projectRoot ? renderGroup("project", grouped.project) : null}
 							{renderGroup("user", grouped.user)}
+							{grouped.package.length > 0 ? renderGroup("package", grouped.package) : null}
 						</>
 					) : null}
 				</div>
@@ -343,16 +398,26 @@ export function PromptTemplateSettings({
 						<>
 							<div className="prompt-template-editor-heading">
 								<div>
-									<strong>{draft.originalName ? "编辑模板" : "新建模板"}</strong>
-									<small>{draft.scope === "project" ? "项目 .pi/prompts" : "用户 ~/.pi/agent/prompts"}</small>
+									<strong>
+										{draft.readOnly ? "查看包模板" : draft.originalName ? "编辑模板" : "新建模板"}
+									</strong>
+									<small>
+										{draft.readOnly
+											? (draft.sourceLabel ?? "Pi Package")
+											: draft.scope === "project"
+												? "项目 .pi/prompts"
+												: "用户 ~/.pi/agent/prompts"}
+									</small>
 								</div>
-								<span className="tool-settings-badge">{draft.scope === "project" ? "项目" : "用户"}</span>
+								<span className="tool-settings-badge">
+									{draft.readOnly ? "包" : draft.scope === "project" ? "项目" : "用户"}
+								</span>
 							</div>
 							<label className="settings-field">
 								<span>名称</span>
 								<input
 									value={draft.name}
-									disabled={busy}
+									disabled={busy || draft.readOnly}
 									onChange={(event) => setDraft({ ...draft, name: event.target.value })}
 									placeholder="例如 review"
 								/>
@@ -361,7 +426,7 @@ export function PromptTemplateSettings({
 								<span>说明</span>
 								<input
 									value={draft.description}
-									disabled={busy}
+									disabled={busy || draft.readOnly}
 									onChange={(event) => setDraft({ ...draft, description: event.target.value })}
 									placeholder="在 / 菜单里显示的一句话说明"
 								/>
@@ -370,7 +435,7 @@ export function PromptTemplateSettings({
 								<span>参数提示</span>
 								<input
 									value={draft.argumentHint}
-									disabled={busy}
+									disabled={busy || draft.readOnly}
 									onChange={(event) => setDraft({ ...draft, argumentHint: event.target.value })}
 									placeholder="例如 [focus] 或 <file>"
 								/>
@@ -379,50 +444,78 @@ export function PromptTemplateSettings({
 								<span>模板内容</span>
 								<textarea
 									value={draft.content}
-									disabled={busy}
+									disabled={busy || draft.readOnly}
 									onChange={(event) => setDraft({ ...draft, content: event.target.value })}
 									placeholder="支持 $1、$ARGUMENTS、$@ 和 ${1:-default}"
 									rows={12}
 								/>
 							</label>
 							<div className="prompt-template-editor-actions">
-								<button
-									className="primary-button"
-									type="button"
-									disabled={busy}
-									onClick={() => void saveTemplate()}
-								>
-									保存
-								</button>
-								<button
-									className="secondary-button"
-									type="button"
-									disabled={busy}
-									onClick={() => void saveAndUse()}
-								>
-									保存并插入
-								</button>
-								<button
-									className="secondary-button danger-button"
-									type="button"
-									disabled={busy || !draft.originalName}
-									onClick={() => {
-										const template = templates.find(
-											(item) => item.scope === draft.scope && item.name === draft.originalName,
-										);
-										if (template) setDeleteTarget(template);
-									}}
-								>
-									删除
-								</button>
-								<button
-									className="secondary-button"
-									type="button"
-									disabled={busy}
-									onClick={() => setDraft(null)}
-								>
-									取消
-								</button>
+								{draft.readOnly ? (
+									<>
+										<button
+											className="primary-button"
+											type="button"
+											onClick={() => {
+												const template = templates.find(
+													(item) =>
+														item.source === draft.source &&
+														item.sourceLabel === draft.sourceLabel &&
+														item.name === draft.name,
+												);
+												if (template) onUseTemplate(template);
+											}}
+										>
+											插入到输入框
+										</button>
+										<button className="secondary-button" type="button" onClick={() => setDraft(null)}>
+											关闭
+										</button>
+									</>
+								) : (
+									<>
+										<button
+											className="primary-button"
+											type="button"
+											disabled={busy}
+											onClick={() => void saveTemplate()}
+										>
+											保存
+										</button>
+										<button
+											className="secondary-button"
+											type="button"
+											disabled={busy}
+											onClick={() => void saveAndUse()}
+										>
+											保存并插入
+										</button>
+										<button
+											className="secondary-button danger-button"
+											type="button"
+											disabled={busy || !draft.originalName}
+											onClick={() => {
+												const template = templates.find(
+													(item) =>
+														item.source === draft.source &&
+														item.sourceLabel === draft.sourceLabel &&
+														item.name === draft.originalName,
+												);
+												if (template) setDeleteTarget(template);
+											}}
+										>
+											删除
+										</button>
+										<button
+											className="secondary-button"
+											type="button"
+											disabled={busy}
+											onClick={() => setDraft(null)}
+										>
+											取消
+										</button>
+									</>
+								)}
 							</div>
 						</>
 					) : (

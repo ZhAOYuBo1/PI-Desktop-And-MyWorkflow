@@ -8,6 +8,12 @@ dist/
 packages/*/dist/
 packages/*/dist-chrome/
 packages/*/dist-firefox/
+!packages/coding-agent-runtime/dist/
+packages/coding-agent-runtime/dist/*
+!packages/coding-agent-runtime/dist/index.js
+!packages/coding-agent-runtime/dist/core/
+packages/coding-agent-runtime/dist/core/*
+!packages/coding-agent-runtime/dist/core/slash-commands.js
 packages/ai/src/providers/.model-generation-*/
 *.cpuprofile
 

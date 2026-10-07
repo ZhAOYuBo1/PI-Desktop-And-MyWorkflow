@@ -50,6 +50,8 @@
 		"release:fix-links": "node scripts/release-notes.mjs fix-github-releases",
 		"prepare": "husky",
 		"build:codepiddy-runtime": "node scripts/build-codepiddy-runtime.mjs",
+		"hydrate:pi-runtime": "npm install --prefix packages/coding-agent-runtime --ignore-scripts --omit=dev --no-audit --no-fund",
+		"update:pi-runtime": "node scripts/update-codepiddy-runtime.mjs",
 		"prepare:codepiddy-package": "npm run build:codepiddy-runtime && npm run build:codepiddy",
 		"package:codepiddy:dir": "npm run prepare:codepiddy-package && npm run package:dir --workspace=@codepiddy/desktop",
 		"package:codepiddy": "npm run prepare:codepiddy-package && npm run package:win --workspace=@codepiddy/desktop"

@@ -86,7 +86,11 @@ export async function resolveBuiltinSkillsDirectory(repositoryRoot: string): Pro
 	return null;
 }
 
-export async function discoverAgentSkills(repositoryRoot: string, projectRoot?: string): Promise<AgentSkillSummary[]> {
+export async function discoverAgentSkills(
+	repositoryRoot: string,
+	projectRoot?: string,
+	packageSkillPaths: string[] = [],
+): Promise<AgentSkillSummary[]> {
 	const home = os.homedir();
 	const groups: Array<Promise<AgentSkillSummary[]>> = [
 		...BUILTIN_SKILL_DIRECTORIES.map((relative) =>
@@ -103,6 +107,11 @@ export async function discoverAgentSkills(repositoryRoot: string, projectRoot?: 
 			discoverSkillDirectory(path.join(projectRoot, ".agents", "skills"), "project"),
 		);
 	}
+	groups.push(
+		...packageSkillPaths.map((filePath) =>
+			readSkill(filePath, "package", `package:${path.resolve(filePath)}`).then((skill) => (skill ? [skill] : [])),
+		),
+	);
 	const discovered = (await Promise.all(groups)).flat();
 	const byName = new Map<string, AgentSkillSummary>();
 	for (const skill of discovered) {
@@ -120,8 +129,9 @@ export async function resolveRoleSkillPaths(
 	projectRoot: string,
 	role: AgentRole,
 	assignments: RoleSkillAssignments,
+	packageSkillPaths: string[] = [],
 ): Promise<string[]> {
-	const catalog = await discoverAgentSkills(repositoryRoot, projectRoot);
+	const catalog = await discoverAgentSkills(repositoryRoot, projectRoot, packageSkillPaths);
 	const byId = new Map(catalog.map((skill) => [skill.id, skill.filePath]));
 	return assignments[role].flatMap((id) => {
 		const filePath = byId.get(id);

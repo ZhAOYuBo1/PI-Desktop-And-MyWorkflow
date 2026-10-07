@@ -57,6 +57,8 @@ import type {
 	McpActionResult,
 	McpRuntimeSnapshot,
 	PendingPermissionRequest,
+	PiPackageActionInput,
+	PiPackageExtensionInput,
 	ProjectSummary,
 	ResetAgentInput,
 	SendAgentPromptInput,
@@ -94,6 +96,8 @@ import {
 	parseMcpProjectOverrideLocator,
 	parseMcpServerInput,
 	parsePermissionDefaults,
+	parsePiPackageActionInput,
+	parsePiPackageExtensionInput,
 	parseProjectId,
 	parseProjectRoot,
 	parseProjectUiState,
@@ -127,6 +131,7 @@ import {
 import { LlamaCppManager } from "./llama-cpp-manager.ts";
 import { PiAuthManager } from "./pi-auth.ts";
 import { loadPiBuiltinCommands, mergePiCommands } from "./pi-builtin-commands.ts";
+import { PiPackageManager } from "./pi-packages.ts";
 import { type InstalledPiRuntime, PiRuntimeUpdater } from "./pi-runtime-updater.ts";
 import { PiTrustManager } from "./pi-trust.ts";
 import { PromptTemplateManager } from "./prompt-templates.ts";
@@ -216,6 +221,13 @@ const channels = {
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
 	settingsSaveCodemode: "codepiddy:settings:codemode:save",
 	settingsSaveTools: "codepiddy:settings:tools:save",
+	settingsListPiPackages: "codepiddy:settings:pi-packages:list",
+	settingsCheckPiPackageUpdates: "codepiddy:settings:pi-packages:check-updates",
+	settingsInstallPiPackage: "codepiddy:settings:pi-packages:install",
+	settingsRemovePiPackage: "codepiddy:settings:pi-packages:remove",
+	settingsUpdatePiPackage: "codepiddy:settings:pi-packages:update",
+	settingsSetPiPackageExtension: "codepiddy:settings:pi-packages:set-extension",
+	settingsChoosePiPackageLocalPath: "codepiddy:settings:pi-packages:choose-local-path",
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
@@ -875,6 +887,8 @@ class AgentManager {
 	private readonly pendingPermissions = new Map<string, PendingPermissionRequest>();
 	private readonly builtinCommandsCache = new Map<string, AgentCommandOption[]>();
 	private readonly recentDiagnosticsErrors: DiagnosticsErrorEntry[] = [];
+	private resolvePackageExtensions: ((projectRoot: string) => Promise<string[]>) | null = null;
+	private resolvePackageSkills: ((projectRoot: string) => Promise<string[]>) | null = null;
 
 	constructor(
 		runtimeRoot: string,
@@ -892,6 +906,14 @@ class AgentManager {
 
 	get repositoryPath(): string {
 		return this.repositoryRoot;
+	}
+
+	setPackageExtensionResolver(resolver: (projectRoot: string) => Promise<string[]>): void {
+		this.resolvePackageExtensions = resolver;
+	}
+
+	setPackageSkillResolver(resolver: (projectRoot: string) => Promise<string[]>): void {
+		this.resolvePackageSkills = resolver;
 	}
 
 	decorate(project: ProjectSummary): Promise<ProjectSummary> {
@@ -1847,12 +1869,17 @@ class AgentManager {
 			this.settingsStore.getRoleSkillAssignments(),
 			this.settingsStore.getBuiltinToolExclusions(),
 		]);
+		const packageSkillPaths = this.resolvePackageSkills ? await this.resolvePackageSkills(agent.projectRoot) : [];
 		const roleSkillPaths = await resolveRoleSkillPaths(
 			this.repositoryRoot,
 			agent.projectRoot,
 			agent.role,
 			roleSkillAssignments,
+			packageSkillPaths,
 		);
+		const packageExtensionPaths = this.resolvePackageExtensions
+			? await this.resolvePackageExtensions(agent.projectRoot)
+			: [];
 		const selectedSessionId = await readSelectedSessionId(agent.sessionDirectory);
 		const selectedSessionFile = selectedSessionId
 			? await findSessionFileById(agent.sessionDirectory, selectedSessionId)
@@ -1910,6 +1937,7 @@ class AgentManager {
 				"builtin:tool-search",
 				"--extension",
 				"builtin:mcp",
+				...packageExtensionPaths.flatMap((extensionPath) => ["--extension", extensionPath]),
 				"--extension",
 				compiledRuntime
 					? path.join(extensionRoot, "permission.js")
@@ -2234,6 +2262,7 @@ function registerIpcHandlers(
 	piTrustManager: PiTrustManager,
 	llamaCppManager: LlamaCppManager,
 	diagnosticsManager: DiagnosticsManager,
+	repositoryRoot: string,
 ): void {
 	const openedProjects = new Map<string, string>();
 	const rootKey = (projectRoot: string): string =>
@@ -2262,6 +2291,25 @@ function registerIpcHandlers(
 		return { ...input, projectRoot: requireOpenProjectRoot(input.projectRoot) };
 	};
 	const promptTemplateManager = new PromptTemplateManager(resolvePiAgentDir());
+	const piPackageManager = new PiPackageManager({
+		helperPath: app.isPackaged
+			? path.join(repositoryRoot, "extensions", "pi-package-helper.mjs")
+			: path.join(app.getAppPath(), "dist", "runtime-extensions", "pi-package-helper.mjs"),
+		nodeExecutable: process.env.CODEPIDDY_NODE_EXECUTABLE ?? (app.isPackaged ? process.execPath : "node"),
+		agentDir: resolvePiAgentDir(),
+		resolvePackageDir: async () =>
+			piRuntimeUpdater.getLaunchRuntime()?.packageDir ??
+			path.join(
+				repositoryRoot,
+				app.isPackaged ? "coding-agent-package" : path.join("packages", "coding-agent-runtime"),
+			),
+		isProjectTrusted: async (projectRoot) => {
+			const status = await piTrustManager.getStatus(projectRoot);
+			return !status.requiresTrust || status.decision === true;
+		},
+	});
+	agentManager.setPackageExtensionResolver((projectRoot) => piPackageManager.enabledExtensionPaths(projectRoot));
+	agentManager.setPackageSkillResolver((projectRoot) => piPackageManager.packageSkillPaths(projectRoot));
 	const assertWorkspaceMutationAllowed = async (rawProjectId: string): Promise<void> => {
 		const status = await agentManager.getWriteLeaseStatus(rawProjectId);
 		if (status.lease && !status.stale) {
@@ -2644,6 +2692,39 @@ function registerIpcHandlers(
 		await settingsStore.setToolSettings(parseToolSettings(raw));
 		return settingsStore.status();
 	});
+	ipcMain.handle(channels.settingsListPiPackages, (_event, rawProjectRoot?: unknown) =>
+		piPackageManager.list(rawProjectRoot === undefined ? undefined : requireOpenProjectRoot(rawProjectRoot)),
+	);
+	ipcMain.handle(channels.settingsCheckPiPackageUpdates, (_event, rawProjectRoot?: unknown) =>
+		piPackageManager.checkUpdates(rawProjectRoot === undefined ? undefined : requireOpenProjectRoot(rawProjectRoot)),
+	);
+	ipcMain.handle(channels.settingsInstallPiPackage, (_event, raw: unknown) => {
+		const input: PiPackageActionInput = parsePiPackageActionInput(raw);
+		if (input.projectRoot) input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		return piPackageManager.install(input);
+	});
+	ipcMain.handle(channels.settingsRemovePiPackage, (_event, raw: unknown) => {
+		const input: PiPackageActionInput = parsePiPackageActionInput(raw);
+		if (input.projectRoot) input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		return piPackageManager.remove(input);
+	});
+	ipcMain.handle(channels.settingsUpdatePiPackage, (_event, raw: unknown) => {
+		const input: PiPackageActionInput = parsePiPackageActionInput(raw);
+		if (input.projectRoot) input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		return piPackageManager.update(input);
+	});
+	ipcMain.handle(channels.settingsSetPiPackageExtension, (_event, raw: unknown) => {
+		const input: PiPackageExtensionInput = parsePiPackageExtensionInput(raw);
+		if (input.projectRoot) input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		return piPackageManager.setExtensionEnabled(input);
+	});
+	ipcMain.handle(channels.settingsChoosePiPackageLocalPath, async () => {
+		const selected = await dialog.showOpenDialog({
+			title: "选择 Pi Package 目录",
+			properties: ["openDirectory"],
+		});
+		return selected.canceled ? null : (selected.filePaths[0] ?? null);
+	});
 	ipcMain.handle(channels.settingsListMcp, (_event, rawProjectRoot?: unknown) =>
 		rawProjectRoot === undefined
 			? settingsStore.listMcpServers()
@@ -2722,31 +2803,37 @@ function registerIpcHandlers(
 	);
 	ipcMain.handle(channels.settingsListSkills, (_event, rawProjectRoot?: unknown) => {
 		const projectRoot = rawProjectRoot === undefined ? undefined : requireOpenProjectRoot(rawProjectRoot);
-		return discoverAgentSkills(agentManager.repositoryPath, projectRoot);
+		return piPackageManager
+			.packageSkillPaths(projectRoot ?? process.cwd())
+			.then((packageSkillPaths) => discoverAgentSkills(agentManager.repositoryPath, projectRoot, packageSkillPaths));
 	});
 	ipcMain.handle(channels.settingsGetRoleSkills, () => settingsStore.getRoleSkillAssignments());
 	ipcMain.handle(channels.settingsSetRoleSkills, async (_event, raw: unknown) => {
 		const input = parseRoleSkillAssignmentsInput(raw);
 		const projectRoot = input.projectRoot ? requireOpenProjectRoot(input.projectRoot) : undefined;
-		const catalog = await discoverAgentSkills(agentManager.repositoryPath, projectRoot);
+		const packageSkillPaths = await piPackageManager.packageSkillPaths(projectRoot ?? process.cwd());
+		const catalog = await discoverAgentSkills(agentManager.repositoryPath, projectRoot, packageSkillPaths);
 		const allowedIds = new Set(catalog.map((skill) => skill.id));
 		if (input.skillIds.some((skillId) => !allowedIds.has(skillId)))
 			throw new Error("Skill ID 不存在或不在允许目录中");
 		return settingsStore.setRoleSkillAssignments(input);
 	});
-	ipcMain.handle(channels.settingsListPromptTemplates, (_event, rawProjectRoot?: unknown) => {
+	ipcMain.handle(channels.settingsListPromptTemplates, async (_event, rawProjectRoot?: unknown) => {
 		const projectRoot = rawProjectRoot === undefined ? undefined : requireOpenProjectRoot(rawProjectRoot);
-		return promptTemplateManager.list(projectRoot);
+		const packagePrompts = await piPackageManager.packagePromptFiles(projectRoot ?? process.cwd());
+		return promptTemplateManager.list(projectRoot, packagePrompts);
 	});
-	ipcMain.handle(channels.settingsSavePromptTemplate, (_event, raw: unknown) => {
+	ipcMain.handle(channels.settingsSavePromptTemplate, async (_event, raw: unknown) => {
 		const input = parsePromptTemplateInput(raw);
 		if (input.scope === "project") input.projectRoot = requireOpenProjectRoot(input.projectRoot);
-		return promptTemplateManager.save(input);
+		const packagePrompts = await piPackageManager.packagePromptFiles(input.projectRoot ?? process.cwd());
+		return promptTemplateManager.save(input, packagePrompts);
 	});
-	ipcMain.handle(channels.settingsDeletePromptTemplate, (_event, raw: unknown) => {
+	ipcMain.handle(channels.settingsDeletePromptTemplate, async (_event, raw: unknown) => {
 		const input = parsePromptTemplateLocator(raw);
 		if (input.scope === "project") input.projectRoot = requireOpenProjectRoot(input.projectRoot);
-		return promptTemplateManager.delete(input);
+		const packagePrompts = await piPackageManager.packagePromptFiles(input.projectRoot ?? process.cwd());
+		return promptTemplateManager.delete(input, packagePrompts);
 	});
 	ipcMain.handle(channels.settingsOpenPromptTemplateFolder, async (_event, raw: unknown) => {
 		const input = parsePromptTemplateFolderInput(raw);
@@ -2943,6 +3030,7 @@ if (!hasSingleInstanceLock) {
 			piTrustManager,
 			llamaCppManager,
 			diagnosticsManager,
+			repositoryRoot,
 		);
 		mainWindow = createWindow(recentProjects);
 		mainWindow.on("closed", () => {

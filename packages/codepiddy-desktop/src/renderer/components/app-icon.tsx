@@ -23,6 +23,7 @@ import {
 	ListChecks,
 	type LucideIcon,
 	MessageCircleQuestion,
+	Package,
 	PanelRight,
 	Paperclip,
 	Pencil,
@@ -77,6 +78,7 @@ export type AppIconName =
 	| "plug"
 	| "checklist"
 	| "message-question"
+	| "package"
 	| "globe"
 	| "hard-drive"
 	| "clock"
@@ -119,6 +121,7 @@ const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	plug: Plug,
 	checklist: ListChecks,
 	"message-question": MessageCircleQuestion,
+	package: Package,
 	globe: Globe,
 	"hard-drive": HardDrive,
 	clock: Clock,

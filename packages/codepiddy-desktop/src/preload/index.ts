@@ -24,6 +24,10 @@ import type {
 	McpProjectOverrideLocator,
 	McpServerInput,
 	PermissionDefaults,
+	PiPackageActionInput,
+	PiPackageExtensionInput,
+	PiPackageListResult,
+	PiPackageUpdateSummary,
 	PromptTemplateInput,
 	PromptTemplateLocator,
 	PromptTemplateSummary,
@@ -135,6 +139,13 @@ const channels = {
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
 	settingsSaveCodemode: "codepiddy:settings:codemode:save",
 	settingsSaveTools: "codepiddy:settings:tools:save",
+	settingsListPiPackages: "codepiddy:settings:pi-packages:list",
+	settingsCheckPiPackageUpdates: "codepiddy:settings:pi-packages:check-updates",
+	settingsInstallPiPackage: "codepiddy:settings:pi-packages:install",
+	settingsRemovePiPackage: "codepiddy:settings:pi-packages:remove",
+	settingsUpdatePiPackage: "codepiddy:settings:pi-packages:update",
+	settingsSetPiPackageExtension: "codepiddy:settings:pi-packages:set-extension",
+	settingsChoosePiPackageLocalPath: "codepiddy:settings:pi-packages:choose-local-path",
 	settingsListMcp: "codepiddy:settings:mcp:list",
 	settingsSaveMcp: "codepiddy:settings:mcp:save",
 	settingsDeleteMcp: "codepiddy:settings:mcp:delete",
@@ -295,6 +306,20 @@ const api: CodePIddyClientApi = {
 		ipcRenderer.invoke(channels.settingsSaveContextCompaction, input),
 	saveCodemodeSettings: (input: CodemodeSettings) => ipcRenderer.invoke(channels.settingsSaveCodemode, input),
 	saveToolSettings: (input: ToolSettings) => ipcRenderer.invoke(channels.settingsSaveTools, input),
+	listPiPackages: (projectRoot?: string): Promise<PiPackageListResult> =>
+		ipcRenderer.invoke(channels.settingsListPiPackages, projectRoot),
+	checkPiPackageUpdates: (projectRoot?: string): Promise<PiPackageUpdateSummary[]> =>
+		ipcRenderer.invoke(channels.settingsCheckPiPackageUpdates, projectRoot),
+	installPiPackage: (input: PiPackageActionInput): Promise<PiPackageListResult> =>
+		ipcRenderer.invoke(channels.settingsInstallPiPackage, input),
+	removePiPackage: (input: PiPackageActionInput): Promise<PiPackageListResult> =>
+		ipcRenderer.invoke(channels.settingsRemovePiPackage, input),
+	updatePiPackage: (input: PiPackageActionInput): Promise<PiPackageListResult> =>
+		ipcRenderer.invoke(channels.settingsUpdatePiPackage, input),
+	setPiPackageExtensionEnabled: (input: PiPackageExtensionInput): Promise<PiPackageListResult> =>
+		ipcRenderer.invoke(channels.settingsSetPiPackageExtension, input),
+	choosePiPackageLocalPath: (): Promise<string | null> =>
+		ipcRenderer.invoke(channels.settingsChoosePiPackageLocalPath),
 	listMcpServers: (projectRoot?: string) => ipcRenderer.invoke(channels.settingsListMcp, projectRoot),
 	saveMcpServer: (input: McpServerInput) => ipcRenderer.invoke(channels.settingsSaveMcp, input),
 	deleteMcpServer: (name: string) => ipcRenderer.invoke(channels.settingsDeleteMcp, name),
