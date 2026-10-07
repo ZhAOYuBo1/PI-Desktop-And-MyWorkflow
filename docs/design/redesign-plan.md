@@ -4,7 +4,7 @@
 
 ## 如何续接（压缩后先读这里）
 
-1. 读 [PRODUCT.md](../../PRODUCT.md)（定位、边界、反参考）→ [DESIGN.md](../../DESIGN.md)（配色、字体、层次、组件规则）→ [ui-component-rules.md](./ui-component-rules.md)（统一组件规则）→ [reference-pi-desktop.md](./reference-pi-desktop.md)（主参考项目拆解）→ [reference-dsh-effort-dial.md](./reference-dsh-effort-dial.md)（思考强度波场拆解）→ [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)（Pi 1.0.1 功能审计和后续清单）。
+1. 读 [PRODUCT.md](../../PRODUCT.md)（定位、边界、反参考）→ [DESIGN.md](../../DESIGN.md)（配色、字体、层次、组件规则）→ [ui-component-rules.md](./ui-component-rules.md)（统一组件规则）→ [reference-pi-desktop.md](./reference-pi-desktop.md)（主参考项目拆解）→ [reference-dsh-effort-dial.md](./reference-dsh-effort-dial.md)（思考强度波场拆解）→ [reference-dsh-workbench.md](./reference-dsh-workbench.md)（工作区文件管理参考拆解）→ [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)（Pi 1.0.1 功能审计和后续清单）。
 2. 翻到本文件底部「进度日志」，读最后一条，确认上一批做到哪、验证到什么程度。
 3. 恢复环境：
    - 依赖已装过，需要时 `npm install --ignore-scripts`
@@ -22,13 +22,14 @@
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
-再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md。批次 1-63 已提交到本地 `main`，`origin/main` 尚未同步；批次 63 代码提交 `8a9231079`，文档整理提交紧随其后，当前 HEAD 以 `git log -1` 为准，工作树干净。
+再读 PRODUCT.md、DESIGN.md、docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。批次 1-63 和支线 64 已提交到本地 `main`，`origin/main` 尚未同步；批次 63 代码提交 `8a9231079`，支线 64 代码提交 `293c6a5e2`，文档整理提交紧随其后，当前 HEAD 以 `git log -1` 为准，工作树干净。
 批次 58 Cache Warming 提交 `c17b64abf`，批次 59 缓存预热云朵图标提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`。
 批次 63 新增设置页「Agent > Prompt 模板」：客户端管理用户 `~/.pi/agent/prompts/` 和项目 `.pi/prompts/` 下的 Markdown 模板，支持新增、编辑、重命名、删除、打开目录、`description` / `argument-hint` / 正文编辑，并把 `/模板名` 插入当前 Agent 输入框。模板文件保存或删除后，空闲 Agent 自动重连并刷新 `/` 命令菜单；运行中 Agent 只提示停止或重连后生效。`/name` 仍是 Session 重命名，和模板名称不是同一功能。
+支线 64 已完成工作区文件管理增强：文件树右键操作、多选、复制 / 剪切 / 粘贴、拖拽移动、自动刷新、多标签编辑保存、Markdown / 图片预览、外部磁盘变更同步、文件类型图标和 `@相对路径` 插入；写操作检查项目边界、realpath 和 Agent write lease。
 另一个 session 已提交 `c7174fadc` 修复会话名称重启覆盖与删除会话交互，`b3693adba` 修复失效 Session 导致 Pi 启动失败、`7abba1aa1` 新建会话支持预设名称和模型，不要重做。
-阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming、第 25 项上下文压缩、第 26 项 Codemode、第 27 项 Tool Search / Tool Exposure、第 28 项 Prompt Templates 都已完成。下一步从阶段 4 第 29 项开始：Pi Packages。
+阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming、第 25 项上下文压缩、第 26 项 Codemode、第 27 项 Tool Search / Tool Exposure、第 28 项 Prompt Templates 都已完成。主线下一步仍从阶段 4 第 29 项开始：Pi Packages。
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
-字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode、Prompt 模板和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
+字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、会话树、工作区面板、变更历史、内部终端、结构清理、README、截图、设置分区、MCP / Provider 配置、Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode、Prompt 模板、工作区文件管理增强和统一组件规则都已实现，不要重做。文件搜索和终端多标签已取消，不再推进。
 Pi core 可更新，禁止改 packages/coding-agent；外壳增强走 Pi 的扩展点（tool_call / tool_result / agent_before_settle）或 packages/codepiddy-desktop 自己的 main / renderer。
 UI 改完 build 通过后自动重启客户端，不用询问用户。
 当前 HEAD 以 `git log -1` 为准。
@@ -62,8 +63,14 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-07 批次 63：Prompt 模板，已提交到本地 main）
+## 当前状态（2026-10-07 支线 64：工作区文件管理增强，已提交到本地 main）
 
+- 支线 64 已适配 `E:\mypi-refs\reference-dsh-plugin-workbench` 的文件工作台能力，详细拆解见 [reference-dsh-workbench.md](./reference-dsh-workbench.md)。
+- 右侧「文件」视图从只读树和单文件预览升级为完整文件工作台：右键新建 / 重命名 / 删除 / 复制 / 剪切 / 粘贴、多选、拖拽移动、自动刷新、资源管理器定位、多标签编辑保存、Markdown / 图片预览、行号 / 换行、外部磁盘变更同步和 `@相对路径` 插入。
+- 文件操作新增 core / main / preload 接口：读取元数据、写入、创建、重命名、删除、复制和资源管理器定位。所有写操作限制在项目根内，并对最近存在的祖先执行 `realpath` 校验；写操作会检查 Agent write lease。
+- 文件标签和展开目录按项目保存在本地 `localStorage`；外部变更用 2.5 秒轮询元数据同步，有未保存草稿时只显示“磁盘内容已变化”，不自动覆盖。
+- 未照搬参考项目的深色主题、emoji 图标、自定义滚动条、宿主布局补丁和 `.dsh-trash`；语法高亮、撤销栈、标签拖拽排序和拖文件进聊天输入区暂未纳入本批。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、工作区文件操作单测 4 项、Playwright mock 文件树 / 右键菜单 / 重命名弹窗 / Markdown 编辑保存检查通过；真实 Electron 已重启。
 - 批次 63 代码提交：`8a9231079 feat(desktop): add prompt template management`；文档整理提交紧随其后。
 - 设置页新增「Agent > Prompt 模板」：管理用户模板 `~/.pi/agent/prompts/` 和项目模板 `.pi/prompts/`；支持新增、编辑、重命名、删除、打开目录，以及 `description`、`argument-hint` 和模板正文编辑。
 - 模板名称即命令名：`review.md` 对应 `/review`。设置页的“使用”和“保存并插入”会把 `/模板名 ` 插入当前 Agent 输入框，已有草稿会作为参数接在模板命令后面。
@@ -1219,6 +1226,19 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - 实现完全在 `packages/codepiddy-desktop` 和 `packages/codepiddy-shared`，未修改 Pi core。
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、模板单测 4 项、`?demo=1` 桌面 / 窄窗 / 保存 / 插入流程检查通过；真实 Electron 已重启。
 
+### 2026-10-07 支线 64：工作区文件管理增强（已提交到本地 main）
+
+- 代码提交：`293c6a5e2 feat(desktop): enhance workspace file management`。
+- 参考项目：`E:\mypi-refs\reference-dsh-plugin-workbench`，拆解见 [reference-dsh-workbench.md](./reference-dsh-workbench.md)。
+- 右侧「文件」视图新增完整文件树操作：新建文件 / 文件夹、重命名、删除、复制、剪切、粘贴、复制相对路径、刷新和资源管理器定位。
+- 文件树支持多选、键盘快捷键、拖拽移动、自动刷新和按项目持久化展开状态；文件类型使用 Lucide 图标，保持 CodePIddy 的浅色和统一组件风格。
+- 新增多标签预览：文本文件可编辑保存、未保存标记、`Ctrl/Cmd+S`、Markdown 渲染 / 源码切换、图片预览、行号、自动换行和复制。
+- 新增磁盘变更同步：定时读取打开文件的元数据；干净标签自动重载，有未保存草稿时显示重新加载提示，不覆盖用户修改。
+- 文件操作由 `packages/codepiddy-core/src/workspace-fs.ts` 提供，经 main IPC 和 preload 暴露；写操作检查项目路径、realpath 和 Agent write lease。
+- 右键“在消息中引用”会把 `@相对路径` 插入当前 Agent 输入框。
+- 未照搬深色主题、emoji 图标、自定义滚动条、宿主布局补丁和 `.dsh-trash`；语法高亮、撤销栈、标签拖拽排序、拖文件进聊天输入区留给后续可选增强。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、工作区文件操作单测 4 项、Playwright mock 文件树 / 右键菜单 / 重命名弹窗 / Markdown 编辑保存检查通过；真实 Electron 已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1261,10 +1281,11 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 38. [x] **Codemode 设置与 Provider 模型刷新**：批次 61 已实现 Codemode `mode / inlineBudget` 设置、转录流运行结果视图，以及 Provider 新增/删除后的 Agent 模型目录刷新，提交 `ec4dde669`。下一步进入阶段 4 第 27 项 Tool Search / Tool Exposure。
 39. [x] **工具设置与 MCP 自动刷新**：批次 62 已实现 `defaultTools` 严格内置工具隔离、工具发现与曝光只读汇总、工具设置 / MCP 配置保存后的空闲 Agent 自动重连，提交 `6815fc026`。同期另一个 session 提交 `c7174fadc` 修复会话名称重启覆盖与删除交互。下一步进入阶段 4 第 28 项 Prompt Templates。
 40. [x] **Prompt 模板管理**：批次 63 已实现用户 / 项目模板增删改、`/模板名` 插入、空闲 Agent 自动重连和命令菜单刷新，提交 `8a9231079`。下一步进入阶段 4 第 29 项 Pi Packages。
+41. [x] **支线 64：工作区文件管理增强**：已适配参考项目的文件树操作、多选 / 剪贴板 / 拖拽、多标签编辑保存、磁盘变更同步、文件图标和 `@相对路径` 插入；写操作检查项目边界、realpath 和 Agent write lease。主线仍从阶段 4 第 29 项 Pi Packages 继续。
 
 ## 提交状态
 
-批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板和本次文档整理仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`、`c7174fadc`。提交哈希以 `git log -1` 为准。
+批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64 工作区文件管理和本次文档整理仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0` 四个 bugfix，以及 `b3693adba`、`7abba1aa1`、`c7174fadc`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1326,7 +1347,8 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 | 2026-10-06 | MCP exposure 继续只在 MCP 服务页配置，工具页只读汇总 | 避免为同一配置维护第二套 UI；配置来源保持单一 |
 | 2026-10-06 | 工具设置和 MCP 配置保存后，空闲 Agent 自动重连，运行中 Agent 延后生效 | 配置是 Agent 启动参数，必须重建进程才能保证工具索引和注册表及时生效 |
 | 2026-10-07 | Prompt 模板由客户端管理用户 / 项目 Markdown 文件，模板名就是 `/命令名`；保存或删除后空闲 Agent 自动重连并刷新命令菜单 | Pi 不提供模板管理 RPC；模板在 Agent 启动时加载，运行中的 Session 不会自动重载 |
+| 2026-10-07 | 工作区文件管理参考 `dsh-plugin-workbench` 的能力，但只适配到 CodePIddy 的 core / main / preload / renderer，不照搬其主题、emoji 和宿主补丁 | 保持项目视觉与安全边界；文件写入必须继续受项目路径、realpath 和 Agent write lease 约束 |
 
 ## 待用户确认
 
-- 暂无，批次 1-63 已验收；批次 63 和本次文档整理尚在本地 `main`，未推送。
+- 暂无，批次 1-63 和支线 64 已验收；批次 63、支线 64 和本次文档整理尚在本地 `main`，未推送。
