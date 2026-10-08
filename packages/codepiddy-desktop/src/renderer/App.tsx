@@ -1855,6 +1855,16 @@ export function App() {
 							text: "工作区面板已补齐文件、更改和运行视图。\n\n```ts\nconst entries = toolItems.map(projectToolToPanel).filter(Boolean);\n```\n\n基础检查已经通过，工作区导航和 diff 展示已更新。",
 							status: "complete",
 							streamStats: { tokens: 150, estimated: false, elapsedMs: 6000 },
+							usage: {
+								input: 1240,
+								output: 150,
+								cacheRead: 8600,
+								cacheWrite: 0,
+								reasoning: 64,
+								total: 10054,
+								cost: 0.0012,
+							},
+							thinkingLevel: "high",
 						},
 					],
 				}

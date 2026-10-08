@@ -11,6 +11,7 @@
     "build:renderer": "vite build",
     "typecheck": "tsgo -p tsconfig.node.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "start": "electron .",
+    "verify:transcript": "node --import tsx scripts/verify-transcript-ui.mts",
     "package:dir": "electron-builder --dir --win --x64",
     "package:win": "electron-builder --win portable --x64",
     "package:installer": "electron-builder --win nsis --x64",

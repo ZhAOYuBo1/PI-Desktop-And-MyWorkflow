@@ -49,3 +49,5 @@
 3. `npm run check` 确认基线。
 4. 按 T4 → T14 顺序继续；每步 `npm run check`，renderer 改动再跑
    `npm run build:renderer --workspace=@codepiddy/desktop`。
+5. UI 改动要跑功能生效验证：`npm run verify:transcript --workspace=@codepiddy/desktop`
+   （起真实 Vite + Chromium，加载 `?demo=1` 断言渲染结果；新增 UI 断言就扩展这个脚本）。
