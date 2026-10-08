@@ -128,6 +128,7 @@ const channels = {
 	settingsShareSetGitHubCliPath: "codepiddy:settings:share:github-cli:set",
 	openExternalUrl: "codepiddy:app:open-external-url",
 	settingsSaveShell: "codepiddy:settings:shell:save",
+	settingsSaveShellCommandPrefix: "codepiddy:settings:shell-command-prefix:save",
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
 	settingsSaveCodemode: "codepiddy:settings:codemode:save",
@@ -288,6 +289,7 @@ const api: CodePIddyClientApi = {
 	rollbackPiRuntime: () => ipcRenderer.invoke(channels.piRuntimeRollback),
 	restartCodePIddy: () => ipcRenderer.invoke(channels.piRuntimeRestart),
 	saveShellPath: (shellPath: string) => ipcRenderer.invoke(channels.settingsSaveShell, shellPath),
+	saveShellCommandPrefix: (prefix: string) => ipcRenderer.invoke(channels.settingsSaveShellCommandPrefix, prefix),
 	saveCacheWarmingSettings: (input: CacheWarmingSettings) =>
 		ipcRenderer.invoke(channels.settingsSaveCacheWarming, input),
 	saveContextCompactionSettings: (input: ContextCompactionSettings) =>

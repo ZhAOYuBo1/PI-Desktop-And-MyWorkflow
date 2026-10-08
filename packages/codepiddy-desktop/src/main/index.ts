@@ -114,6 +114,7 @@ import {
 	parseSetAgentModelScopeInput,
 	parseSetAgentThinkingInput,
 	parseSetProjectTrustInput,
+	parseShellCommandPrefix,
 	parseSwitchAgentSessionInput,
 	parseTerminalId,
 	parseTerminalResizeInput,
@@ -210,6 +211,7 @@ const channels = {
 	settingsShareSetGitHubCliPath: "codepiddy:settings:share:github-cli:set",
 	openExternalUrl: "codepiddy:app:open-external-url",
 	settingsSaveShell: "codepiddy:settings:shell:save",
+	settingsSaveShellCommandPrefix: "codepiddy:settings:shell-command-prefix:save",
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
 	settingsSaveCodemode: "codepiddy:settings:codemode:save",
@@ -2631,6 +2633,9 @@ function registerIpcHandlers(
 	});
 	ipcMain.handle(channels.settingsSaveShell, (_event, rawShellPath: unknown) =>
 		settingsStore.setShellPath(parseBoundedText(rawShellPath, "Shell 路径", 1024)),
+	);
+	ipcMain.handle(channels.settingsSaveShellCommandPrefix, (_event, rawPrefix: unknown) =>
+		settingsStore.setShellCommandPrefix(parseShellCommandPrefix(rawPrefix)),
 	);
 	ipcMain.handle(channels.settingsSaveCacheWarming, async (_event, raw: unknown) => {
 		await settingsStore.setCacheWarmingSettings(parseCacheWarmingSettings(raw));

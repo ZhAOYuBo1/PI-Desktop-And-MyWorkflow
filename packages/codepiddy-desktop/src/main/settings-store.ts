@@ -639,6 +639,22 @@ export class AppSettingsStore {
 		return this.status();
 	}
 
+	async getShellCommandPrefix(): Promise<string | null> {
+		const settings = await this.readJsonRecord(this.piSettingsPath);
+		const value = settings.shellCommandPrefix;
+		return typeof value === "string" && value.trim() ? value : null;
+	}
+
+	async setShellCommandPrefix(value: string): Promise<SettingsStatus> {
+		const normalized = value.replace(/\r\n?/gu, "\n");
+		const shellCommandPrefix = normalized.trim() ? normalized : null;
+		const settings = await this.readJsonRecord(this.piSettingsPath);
+		if (shellCommandPrefix) settings.shellCommandPrefix = shellCommandPrefix;
+		else delete settings.shellCommandPrefix;
+		await this.writeJsonRecord(this.piSettingsPath, settings);
+		return this.status();
+	}
+
 	async getGitHubCliPath(): Promise<string | null> {
 		const settings = await this.readJsonRecord(this.shareSettingsPath);
 		return typeof settings.githubCliPath === "string" && settings.githubCliPath.trim()
@@ -1083,6 +1099,7 @@ export class AppSettingsStore {
 		return {
 			encryptionAvailable: safeStorage.isEncryptionAvailable(),
 			shellPath: await this.getShellPath(),
+			shellCommandPrefix: await this.getShellCommandPrefix(),
 			cacheWarming: await this.getCacheWarmingSettings(),
 			contextCompaction: await this.getContextCompactionSettings(),
 			codemode: await this.getCodemodeSettings(),

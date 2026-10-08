@@ -407,6 +407,37 @@ button { color: inherit; }
   white-space: nowrap;
 }
 
+.settings-shell-block {
+  display: grid;
+  gap: var(--cp-space-sm);
+  min-width: 0;
+}
+
+.settings-shell-block + .settings-shell-block {
+  padding-top: var(--cp-space-md);
+  box-shadow: 0 -0.5px 0 var(--cp-line-subtle);
+}
+
+.settings-shell-block strong {
+  color: var(--cp-ink);
+  font-size: 12.5px;
+  font-weight: 560;
+}
+
+.settings-shell-block p {
+  margin-top: var(--cp-space-xxs);
+  color: var(--cp-ink-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-shell-block textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+}
+
 .app-icon-mark {
   overflow: hidden;
   padding: 0;

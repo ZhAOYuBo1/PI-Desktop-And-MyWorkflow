@@ -71,7 +71,8 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 里的「客户端边界清理」「进度日志」最后三条和「待办清单」），再读 PRODUCT.md、DESIGN.md、
 docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。
 
-批次 1-68 已完成；批次 68 提交为 `65607e721`。另一个 session 已提交 `ebd1ea58b`
+批次 1-69 已实现；批次 68 提交为 `65607e721`，批次 69 Shell aliases 待验收。
+另一个 session 已提交 `ebd1ea58b`
 修复流式输出跟随滚动，以及 `873784d2c` 对齐文件树同层文件与目录缩进。
 当前 HEAD 以 `git log -1` 为准；`origin/main` 仍为 `29feb195e`，
 本地领先数量以 `git rev-list --count origin/main..HEAD` 为准，尚未推送。工作树应干净；
@@ -88,13 +89,15 @@ docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs
 阶段 3 已全部完成；阶段 4 第 24-29 项 Cache Warming、上下文压缩、Codemode、
 Tool Search / Tool Exposure、Prompt Templates、Pi Packages 都已实现。
 Pi Packages 和 runtime 更新仍待验收；批次 68 边界清理已验收提交。
-下一轮实现 Shell aliases（审计文档第 31 项；旧计划里的第 30 项）：
+批次 69 已实现 Shell aliases（审计文档第 31 项；旧计划里的第 30 项）：
 1. 客户端 UI / IPC 只读写 Pi 原生 `settings.json` 的 `shellCommandPrefix`，
    不另建 alias 列表或第二套 shell 系统。
 2. 设置在「常规 > Shell」，使用多行文本；空字符串表示清除字段，错误走 `StateBlock`，
    保存反馈走 `SettingsToast`。
-3. 保存必须合并写 settings.json；空闲 Agent 自动重连，运行中 Agent 延后生效。
-4. 单测覆盖合并写入、清除字段、保留其他 settings 和非法输入。
+3. 合并写 settings.json；空闲 Agent 自动重连，运行中 Agent 延后生效。
+4. 单测覆盖合并写入、清除字段、保留其他 settings 和 NUL 输入。
+
+下一步验收 Shell aliases，然后进入 Telemetry 设置。
 
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；
 复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现。
@@ -137,7 +140,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-08 客户端边界清理已完成并验收）
+## 当前状态（2026-10-08 Shell aliases 已实现，待验收）
 
 ### 客户端边界清理（批次 68 已验收并提交 `65607e721`）
 
@@ -158,6 +161,10 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - 上一轮尝试加入的 `subagents.defaultExtensions` / permission forwarding 兼容补丁已被否决并撤销，
   不要再恢复。
 - 批次 68 已删除四个客户端包及 `permission` / Tavily 专用 IPC、设置、构建入口和环境变量。
+
+- 批次 69 已实现「常规 > Shell」的 `shellCommandPrefix`：使用多行文本框读写 Pi 原生
+  `settings.json`，保留其他设置字段，空值删除字段，拒绝 NUL 输入；保存后空闲 Agent
+  自动重连，运行中 Agent 延后生效。Shell 页面现在同时包含 bash 可执行文件和命令前缀。
 
 - 阶段 4 第 29 项 Pi Packages 已实现：设置页新增「Agent > Pi Packages」，读取用户级和项目级
   `packages`，显示来源、作用域、版本、安装路径、资源摘要和扩展开关；支持安装、移除、
@@ -1449,6 +1456,18 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
   确认 Tavily / 默认权限入口不再出现，MCP / Agent Skills / Pi Packages 保留。
 - 代码提交：`65607e721 feat(desktop): remove non-native client extensions`。
 
+### 2026-10-08 批次 69：Shell aliases / Shell command prefix（已实现，待验收）
+
+- 在设置页「常规 > Shell」增加 `shellCommandPrefix` 多行编辑器，和已有 bash 可执行文件配置放在同一页。
+- `@codepiddy/shared` 增加 `shellCommandPrefix` 状态字段和保存接口；main / preload / IPC
+  使用同一窄 API，不暴露原始 shell 命令。
+- `AppSettingsStore` 合并读写 Pi 原生 `settings.json` 的 `shellCommandPrefix`；CRLF 归一为
+  LF，空白值删除字段，其他 settings 字段保持不变。
+- IPC 校验限制长度并拒绝 NUL；保存反馈走 `SettingsToast`，持久错误走 `StateBlock`。
+- 保存后空闲 Agent 自动重连；运行中或等待授权的 Agent 提示停止或重连后生效。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、Shell 命令前缀单测 4 项、
+  `?demo=1` 桌面 / 900px 窄窗截图检查通过；真实 Electron 已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1497,6 +1516,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 44. [x] **阶段 4 第 29 项：Pi Packages 审计**：确认配置格式、用户 / 项目作用域、npm / Git / 本地路径、安装位置、CLI 与 `DefaultPackageManager` 能力，以及 `--no-extensions` 对 package extension 的隔离边界；下一步实现客户端原生 Pi Packages 设置页。
 45. [x] **批次 67：Pi Packages 设置与运行时包管理**：实现用户 / 项目级包列表、npm / Git / 本地路径安装、移除、单包更新、更新检查、项目信任校验、资源摘要和按包 extension 开关；开启后 Agent 显式加载对应 extension，关闭后不加载。helper 使用 runtime bundle，不解析 `pi list`，不更新 Pi 运行时。完整 runtime 包根、内置 runtime 更新脚本和命令说明适配已提交 `3db8f6a37`。待验收。
 46. [x] **批次 68：客户端边界清理（已验收并提交 `65607e721`）**：删除 `permission-extension`、Tavily `web_search` 自建 MCP、`provider-extension`、`role-guard-extension`；保留 `review`、`retry`、`cache-warming`、自研 Skills、角色提示词和角色 Skill 分配；审计确认 `llama.cpp` 与 `/share` 暂无公开 Pi core 入口，只保留 GUI / 配置适配。下一步实现 Shell aliases。
+47. [x] **批次 69：Shell aliases / Shell command prefix**：设置页「常规 > Shell」已支持 Pi 原生 `shellCommandPrefix` 多行编辑、清除、合并写入和 Agent 重连；单测覆盖合并写入、清除、保留其他 settings 与 NUL 校验。待验收。
 
 ## 提交状态
 

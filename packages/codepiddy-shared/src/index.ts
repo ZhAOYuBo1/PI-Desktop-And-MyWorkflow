@@ -434,6 +434,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	rollbackPiRuntime(): Promise<PiRuntimeStatus>;
 	restartCodePIddy(): Promise<void>;
 	saveShellPath(shellPath: string): Promise<SettingsStatus>;
+	saveShellCommandPrefix(prefix: string): Promise<SettingsStatus>;
 	saveCacheWarmingSettings(input: CacheWarmingSettings): Promise<SettingsStatus>;
 	saveContextCompactionSettings(input: ContextCompactionSettings): Promise<SettingsStatus>;
 	saveCodemodeSettings(input: CodemodeSettings): Promise<SettingsStatus>;
@@ -638,6 +639,8 @@ export interface SettingsStatus {
 	encryptionAvailable: boolean;
 	/** 用户配置的 bash 路径；为 null 表示交给 pi 自动探测。 */
 	shellPath: string | null;
+	/** Pi 原生 shellCommandPrefix；为 null 表示不添加命令前缀。 */
+	shellCommandPrefix: string | null;
 	cacheWarming: CacheWarmingSettings;
 	contextCompaction: ContextCompactionSettings;
 	codemode: CodemodeSettings;

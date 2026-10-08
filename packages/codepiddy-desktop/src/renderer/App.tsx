@@ -1649,6 +1649,9 @@ export function App() {
 	const [settingsSection, setSettingsSection] = useState<SettingsSectionId>("runtime");
 	const [piUpdateConfirm, setPiUpdateConfirm] = useState(false);
 	const [shellPath, setShellPath] = useState("");
+	const [shellCommandPrefix, setShellCommandPrefix] = useState("");
+	const [shellCommandPrefixSaving, setShellCommandPrefixSaving] = useState(false);
+	const [shellCommandPrefixError, setShellCommandPrefixError] = useState<string | null>(null);
 	const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([]);
 	const [roleSkillAssignments, setRoleSkillAssignments] = useState<RoleSkillAssignments>({
 		"requirement-analysis": [],
@@ -2086,6 +2089,23 @@ export function App() {
 			return "工具设置已保存；当前 Agent 已重新连接。";
 		} catch (caught) {
 			return `工具设置已保存；刷新 Agent 失败：${clientErrorMessage(caught, "未知错误")}`;
+		}
+	}, []);
+
+	const refreshAfterShellCommandChange = useCallback(async (): Promise<string> => {
+		if (demoMode || !("codepiddy" in window)) return "Shell 命令前缀已保存。";
+		const locator = lastActiveAgentLocatorRef.current;
+		if (!locator) return "Shell 命令前缀已保存；新启动或重置后的 Agent 生效。";
+		const status = findAgentStatus(projectRef.current, locator);
+		if (!status) return "Shell 命令前缀已保存；重新打开 Agent 后生效。";
+		if (status === "running" || status === "waiting") {
+			return "Shell 命令前缀已保存；当前 Agent 正在运行，停止或重新连接后生效。";
+		}
+		try {
+			await window.codepiddy.reconnectAgent(locator);
+			return "Shell 命令前缀已保存；当前 Agent 已重新连接。";
+		} catch (caught) {
+			return `Shell 命令前缀已保存；刷新 Agent 失败：${clientErrorMessage(caught, "未知错误")}`;
 		}
 	}, []);
 
@@ -4651,6 +4671,8 @@ export function App() {
 			window.codepiddy.getPiRuntimeStatus(),
 		]);
 		setSettingsStatus(status);
+		setShellCommandPrefix(status.shellCommandPrefix ?? "");
+		setShellCommandPrefixError(null);
 		setPiRuntimeStatus(piRuntime);
 		setAvailableSkills(skills);
 		setRoleSkillAssignments(assignments);
@@ -4722,6 +4744,22 @@ export function App() {
 			setShellRestartDialog(true);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "保存 Shell 路径失败");
+		}
+	}
+
+	async function saveShellCommandPrefix(value: string): Promise<void> {
+		if (!("codepiddy" in window) || shellCommandPrefixSaving) return;
+		setShellCommandPrefixSaving(true);
+		setShellCommandPrefixError(null);
+		try {
+			const next = await window.codepiddy.saveShellCommandPrefix(value);
+			setSettingsStatus(next);
+			setShellCommandPrefix(next.shellCommandPrefix ?? "");
+			showSettingsToast(await refreshAfterShellCommandChange(), "success");
+		} catch (caught) {
+			setShellCommandPrefixError(caught instanceof Error ? caught.message : "保存 Shell 命令前缀失败");
+		} finally {
+			setShellCommandPrefixSaving(false);
 		}
 	}
 
@@ -5074,44 +5112,101 @@ export function App() {
 							/>
 						</div>
 						<section className="settings-card" hidden={settingsSection !== "shell"}>
-							<div>
-								<h2>Shell</h2>
-								<p>
-									Agent 的 <code>bash</code> 工具需要一个 bash 可执行文件。留空则自动探测（Program Files 下的
-									Git Bash、PATH 上的 bash.exe）；Git for Windows 装在非标准目录时填这里，否则工具会报 “No bash
-									shell found”。请填 <code>Git\bin\bash.exe</code> 或 <code>Git\usr\bin\bash.exe</code>，不要填{" "}
-									<code>git-bash.exe</code>，后者会弹出可见终端窗口。
-								</p>
+							<div className="settings-card-heading">
+								<div>
+									<h2>Shell</h2>
+									<p>
+										配置 Pi <code>bash</code> 工具使用的可执行文件，以及每条命令执行前追加的 shell
+										初始化片段。
+									</p>
+								</div>
+								<div className="settings-status">{settingsStatus?.shellPath ? "Bash 已配置" : "自动探测"}</div>
 							</div>
-							<div className="settings-status">{settingsStatus?.shellPath ? "已配置" : "自动探测"}</div>
-							{settingsStatus?.shellPath ? (
-								<code className="settings-shell-current">{settingsStatus.shellPath}</code>
-							) : null}
-							<input
-								type="text"
-								value={shellPath}
-								onChange={(event) => setShellPath(event.target.value)}
-								placeholder="留空自动探测，或填 bash.exe 完整路径"
-							/>
-							<div className="settings-actions">
-								<button
-									className="primary-button"
-									type="button"
-									disabled={shellPath.trim().length === 0}
-									onClick={() => void saveShellPath(shellPath)}
-								>
-									保存
-								</button>
-								<button
-									className="secondary-button"
-									type="button"
-									disabled={!settingsStatus?.shellPath}
-									onClick={() => void saveShellPath("")}
-								>
-									清除
-								</button>
+							<div className="settings-shell-block">
+								<div>
+									<strong>Bash 可执行文件</strong>
+									<p>
+										留空则自动探测 Program Files 下的 Git Bash 和 PATH 上的 <code>bash.exe</code>。 请填{" "}
+										<code>Git\bin\bash.exe</code> 或 <code>Git\usr\bin\bash.exe</code>，不要填{" "}
+										<code>git-bash.exe</code>，后者会弹出可见终端窗口。
+									</p>
+								</div>
+								{settingsStatus?.shellPath ? (
+									<code className="settings-shell-current">{settingsStatus.shellPath}</code>
+								) : null}
+								<input
+									type="text"
+									value={shellPath}
+									onChange={(event) => setShellPath(event.target.value)}
+									placeholder="留空自动探测，或填 bash.exe 完整路径"
+								/>
+								<div className="settings-actions">
+									<button
+										className="primary-button"
+										type="button"
+										disabled={shellPath.trim().length === 0}
+										onClick={() => void saveShellPath(shellPath)}
+									>
+										保存
+									</button>
+									<button
+										className="secondary-button"
+										type="button"
+										disabled={!settingsStatus?.shellPath}
+										onClick={() => void saveShellPath("")}
+									>
+										清除
+									</button>
+								</div>
+								<small>修改后，新启动或重置后的 Agent 才会使用新路径。</small>
 							</div>
-							<small>修改后，新启动或重置后的 Agent 才会使用新路径。</small>
+							<div className="settings-shell-block">
+								<div>
+									<strong>命令前缀</strong>
+									<p>
+										Pi 会在每条 bash 命令前追加这段配置，适合启用 alias 展开或加载自己的 shell
+										初始化文件。这里只写 Pi 原生 <code>settings.json</code> 的 <code>shellCommandPrefix</code>
+										，不会维护第二套 alias 列表。
+									</p>
+								</div>
+								<div className="settings-field">
+									<span>shellCommandPrefix</span>
+									<textarea
+										rows={4}
+										spellCheck={false}
+										value={shellCommandPrefix}
+										onChange={(event) => {
+											setShellCommandPrefix(event.target.value);
+											setShellCommandPrefixError(null);
+										}}
+										placeholder={"例如：\nshopt -s expand_aliases\nsource ~/.bashrc"}
+									/>
+								</div>
+								<div className="settings-actions">
+									<button
+										className="primary-button"
+										type="button"
+										disabled={shellCommandPrefixSaving || shellCommandPrefix.trim().length === 0}
+										onClick={() => void saveShellCommandPrefix(shellCommandPrefix)}
+									>
+										{shellCommandPrefixSaving ? "保存中…" : "保存前缀"}
+									</button>
+									<button
+										className="secondary-button"
+										type="button"
+										disabled={shellCommandPrefixSaving || !settingsStatus?.shellCommandPrefix}
+										onClick={() => void saveShellCommandPrefix("")}
+									>
+										清除
+									</button>
+								</div>
+								{shellCommandPrefixError ? (
+									<StateBlock compact tone="error" title={shellCommandPrefixError} />
+								) : null}
+								<small>
+									前缀会在每条命令前单独占行；空值会从 <code>settings.json</code> 中删除该字段。
+								</small>
+							</div>
 						</section>
 						<div className="settings-section-slot" hidden={settingsSection !== "codemode"}>
 							<CodemodeSettingsPanel

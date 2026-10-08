@@ -150,7 +150,7 @@
 | Skills | 已覆盖 | 角色 Skill 分配 |
 | Prompt Templates | 已覆盖 | 批次 63 已实现用户 / 项目模板增删改、`/模板名` 插入和保存后的 Agent / 命令菜单刷新 |
 | Packages | 缺失 | 没有 Pi package 安装、更新、移除 UI |
-| Shell aliases | 缺失 | 没有设置 UI |
+| Shell aliases | 已覆盖 | 「常规 > Shell」读写 Pi 原生 `shellCommandPrefix`，支持多行前缀、清除和保存后 Agent 重连 |
 | Cache Warming | 部分覆盖 | 批次 58 已实现设置（`cacheWarming` off/streaming/idle、`showCacheMissNotices`）和最近一次预热决策的费用状态；Pi RPC 未暴露 `session.cacheWarmingStatus` 的实时 state / nextWarmAt，客户端通过 `cache_warming_decision` 扩展事件读取决策数据 |
 | Retry 设置 | 部分覆盖 | 通过 Pi settings 写默认值，没有完整设置 UI |
 | Telemetry | 缺失 | 没有 Pi 原生 telemetry 设置 UI |
@@ -472,10 +472,10 @@ RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部
 内置命令说明从 `dist/core/slash-commands.js` 读取，不再回退为统一的“Pi 内置命令”文案。
 30. [x] 客户端边界清理：删除 permission / Tavily / 未加载扩展；审计确认 Pi 1.0.1 暂无
     llama / share 公开入口，保留 GUI 适配且不复制 core 源码。
-31. Shell aliases / Shell command prefix：客户端 UI 读写 Pi 原生 `settings.json` 的
+31. [x] Shell aliases / Shell command prefix：客户端 UI 读写 Pi 原生 `settings.json` 的
     `shellCommandPrefix`，不维护独立 alias 列表。该值会作为前缀拼到每次 bash 命令前，
     可用于启用 alias 展开或加载用户 shell 配置。设置页放在「常规 > Shell」，空字符串表示清除。
-    保存后空闲 Agent 自动重连，运行中 Agent 延后生效；不要修改 Pi core。
+    保存后空闲 Agent 自动重连，运行中 Agent 延后生效；未修改 Pi core。
 32. Telemetry 设置
 33. 自定义 Provider / 虚拟模型 / classifier / image models
 
