@@ -3203,12 +3203,11 @@ textarea:focus-visible,
   cursor: pointer;
 }
 
-.workspace-file-row[data-kind="dir"] {
-  padding-left: calc(var(--cp-space-md) + var(--cp-space-lg) * var(--tree-depth, 0));
-}
-
+/* 文件行也保留空的 caret 占位，所以和目录行用同一个左缩进：
+   同一层的图标与文件名必须对齐，多缩进 12px 会让根目录文件看起来像子项。 */
+.workspace-file-row[data-kind="dir"],
 .workspace-file-row[data-kind="file"] {
-  padding-left: calc(var(--cp-space-xl) + var(--cp-space-lg) * var(--tree-depth, 0));
+  padding-left: calc(var(--cp-space-md) + var(--cp-space-lg) * var(--tree-depth, 0));
 }
 
 .workspace-file-row:hover {
