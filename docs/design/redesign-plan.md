@@ -71,7 +71,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 里的「客户端边界清理」「进度日志」最后三条和「待办清单」），再读 PRODUCT.md、DESIGN.md、
 docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。
 
-批次 1-69 已实现；批次 68 提交为 `65607e721`，批次 69 Shell aliases 待验收。
+批次 1-69 已实现；批次 68 提交为 `65607e721`，批次 69 Shell aliases 已验收并提交 `cab6fa4ff`。
 另一个 session 已提交 `ebd1ea58b`
 修复流式输出跟随滚动，以及 `873784d2c` 对齐文件树同层文件与目录缩进。
 当前 HEAD 以 `git log -1` 为准；`origin/main` 仍为 `29feb195e`，
@@ -97,7 +97,7 @@ Pi Packages 和 runtime 更新仍待验收；批次 68 边界清理已验收提�
 3. 合并写 settings.json；空闲 Agent 自动重连，运行中 Agent 延后生效。
 4. 单测覆盖合并写入、清除字段、保留其他 settings 和 NUL 输入。
 
-下一步验收 Shell aliases，然后进入 Telemetry 设置。
+下一步进入 Telemetry 设置。
 
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；
 复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现。
@@ -140,7 +140,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-08 Shell aliases 已实现，待验收）
+## 当前状态（2026-10-08 Shell aliases 已验收并提交）
 
 ### 客户端边界清理（批次 68 已验收并提交 `65607e721`）
 
@@ -162,7 +162,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
   不要再恢复。
 - 批次 68 已删除四个客户端包及 `permission` / Tavily 专用 IPC、设置、构建入口和环境变量。
 
-- 批次 69 已实现「常规 > Shell」的 `shellCommandPrefix`：使用多行文本框读写 Pi 原生
+- 批次 69 已实现并提交「常规 > Shell」的 `shellCommandPrefix`：使用多行文本框读写 Pi 原生
   `settings.json`，保留其他设置字段，空值删除字段，拒绝 NUL 输入；保存后空闲 Agent
   自动重连，运行中 Agent 延后生效。Shell 页面现在同时包含 bash 可执行文件和命令前缀。
 
@@ -1456,7 +1456,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
   确认 Tavily / 默认权限入口不再出现，MCP / Agent Skills / Pi Packages 保留。
 - 代码提交：`65607e721 feat(desktop): remove non-native client extensions`。
 
-### 2026-10-08 批次 69：Shell aliases / Shell command prefix（已实现，待验收）
+### 2026-10-08 批次 69：Shell aliases / Shell command prefix（已验收并提交 `cab6fa4ff`）
 
 - 在设置页「常规 > Shell」增加 `shellCommandPrefix` 多行编辑器，和已有 bash 可执行文件配置放在同一页。
 - `@codepiddy/shared` 增加 `shellCommandPrefix` 状态字段和保存接口；main / preload / IPC
@@ -1516,11 +1516,11 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 44. [x] **阶段 4 第 29 项：Pi Packages 审计**：确认配置格式、用户 / 项目作用域、npm / Git / 本地路径、安装位置、CLI 与 `DefaultPackageManager` 能力，以及 `--no-extensions` 对 package extension 的隔离边界；下一步实现客户端原生 Pi Packages 设置页。
 45. [x] **批次 67：Pi Packages 设置与运行时包管理**：实现用户 / 项目级包列表、npm / Git / 本地路径安装、移除、单包更新、更新检查、项目信任校验、资源摘要和按包 extension 开关；开启后 Agent 显式加载对应 extension，关闭后不加载。helper 使用 runtime bundle，不解析 `pi list`，不更新 Pi 运行时。完整 runtime 包根、内置 runtime 更新脚本和命令说明适配已提交 `3db8f6a37`。待验收。
 46. [x] **批次 68：客户端边界清理（已验收并提交 `65607e721`）**：删除 `permission-extension`、Tavily `web_search` 自建 MCP、`provider-extension`、`role-guard-extension`；保留 `review`、`retry`、`cache-warming`、自研 Skills、角色提示词和角色 Skill 分配；审计确认 `llama.cpp` 与 `/share` 暂无公开 Pi core 入口，只保留 GUI / 配置适配。下一步实现 Shell aliases。
-47. [x] **批次 69：Shell aliases / Shell command prefix**：设置页「常规 > Shell」已支持 Pi 原生 `shellCommandPrefix` 多行编辑、清除、合并写入和 Agent 重连；单测覆盖合并写入、清除、保留其他 settings 与 NUL 校验。待验收。
+47. [x] **批次 69：Shell aliases / Shell command prefix**：设置页「常规 > Shell」已支持 Pi 原生 `shellCommandPrefix` 多行编辑、清除、合并写入和 Agent 重连；单测覆盖合并写入、清除、保留其他 settings 与 NUL 校验。已验收并提交 `cab6fa4ff`。
 
 ## 提交状态
 
-批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64-66 工作区文件工作台、批次 67 Pi Packages 和批次 68 边界清理仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
+批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64-66 工作区文件工作台、批次 67 Pi Packages、批次 68 边界清理和批次 69 Shell command prefix 仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`，批次 69 提交 `cab6fa4ff`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
