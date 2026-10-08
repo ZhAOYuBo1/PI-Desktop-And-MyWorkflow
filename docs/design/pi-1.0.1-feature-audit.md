@@ -400,7 +400,7 @@ CodePIddy 是客户端，不复制 Pi core 已公开的运行时能力。保留�
   不再复制 router、Hugging Face、load / unload / download 逻辑。
 - `/share` helper：保留客户端分享弹窗，优先复用 Pi core 分享流程，不复制 Radius / Gist 业务逻辑。
 
-批次 68 已实现该清理，验证通过后进入阶段 4 第 30 项 Shell aliases。
+批次 68 已实现该清理并通过验证，下一步进入 Shell aliases。
 
 重复实现审计结果：Pi 1.0.1 的公开 SDK 导出没有 `LlamaClient` / `shareSession`，
 RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部文件路径或复制源码。
@@ -472,9 +472,22 @@ RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部
 内置命令说明从 `dist/core/slash-commands.js` 读取，不再回退为统一的“Pi 内置命令”文案。
 30. [x] 客户端边界清理：删除 permission / Tavily / 未加载扩展；审计确认 Pi 1.0.1 暂无
     llama / share 公开入口，保留 GUI 适配且不复制 core 源码。
-31. Shell aliases
+31. Shell aliases / Shell command prefix：客户端 UI 读写 Pi 原生 `settings.json` 的
+    `shellCommandPrefix`，不维护独立 alias 列表。该值会作为前缀拼到每次 bash 命令前，
+    可用于启用 alias 展开或加载用户 shell 配置。设置页放在「常规 > Shell」，空字符串表示清除。
+    保存后空闲 Agent 自动重连，运行中 Agent 延后生效；不要修改 Pi core。
 32. Telemetry 设置
 33. 自定义 Provider / 虚拟模型 / classifier / image models
+
+Shell aliases 下一轮代码落点：
+
+1. `@codepiddy/shared` 增加 shell command prefix 的设置类型和状态字段。
+2. `AppSettingsStore` 合并读写 Pi 原生 `settings.json` 的 `shellCommandPrefix`；空值删除字段。
+3. main / preload / IPC 增加 get / save 接口，输入限制长度并拒绝 NUL。
+4. 设置页「常规 > Shell」增加多行文本框、保存 / 清除和示例说明；临时反馈走 `SettingsToast`，
+   持久错误走 `StateBlock`。
+5. 保存后空闲 Agent 自动重连；运行中 Agent 提示停止或重连后生效。
+6. 单测覆盖合并写入、清除字段、保留其他 settings 字段和非法输入。
 
 ### 阶段 5：回归和收尾
 
