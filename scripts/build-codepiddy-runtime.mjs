@@ -34,14 +34,6 @@ const common = {
 await Promise.all([
 	build({
 		...common,
-		alias: {
-			"jsonc-parser": path.join(repositoryRoot, "node_modules", "jsonc-parser", "lib", "esm", "main.js"),
-		},
-		entryPoints: [path.join(repositoryRoot, "packages", "codepiddy-permission-extension", "index.ts")],
-		outfile: path.join(outputRoot, "extensions", "permission.js"),
-	}),
-	build({
-		...common,
 		entryPoints: [path.join(repositoryRoot, "packages", "codepiddy-review-extension", "index.ts")],
 		outfile: path.join(outputRoot, "extensions", "review.js"),
 	}),
@@ -54,11 +46,6 @@ await Promise.all([
 		...common,
 		entryPoints: [path.join(repositoryRoot, "packages", "codepiddy-cache-warming-extension", "index.ts")],
 		outfile: path.join(outputRoot, "extensions", "cache-warming.js"),
-	}),
-	build({
-		...common,
-		entryPoints: [path.join(repositoryRoot, "packages", "codepiddy-tavily-search-mcp", "src", "index.ts")],
-		outfile: path.join(outputRoot, "mcp", "tavily-search.js"),
 	}),
 ]);
 

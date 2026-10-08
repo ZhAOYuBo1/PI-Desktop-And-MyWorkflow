@@ -59,22 +59,21 @@ const PI_EXTENSION_TOOLS = [
 
 const DEMO_MCP_SERVERS: McpServerSummary[] = [
 	{
-		name: "web_search",
+		name: "filesystem",
 		transport: "stdio",
-		command: "node",
-		args: ["tavily-search.js"],
+		command: "npx",
+		args: ["-y", "@modelcontextprotocol/server-filesystem@2026.1.14"],
 		url: null,
-		env: { TAVILY_API_KEY: `\${TAVILY_API_KEY}` },
+		env: {},
 		headers: {},
 		enabled: true,
-		exposure: "direct",
-		toolExposure: { web_search: "direct" },
-		description: "Tavily web search",
-		timeout: null,
+		exposure: "codemode",
+		toolExposure: {},
+		description: "Filesystem access tools",
+		timeout: 30,
 		oauth: null,
 		authProvider: null,
 		projectOverride: null,
-		source: "builtin",
 	},
 	{
 		name: "chrome-devtools",
@@ -92,7 +91,6 @@ const DEMO_MCP_SERVERS: McpServerSummary[] = [
 		oauth: null,
 		authProvider: null,
 		projectOverride: null,
-		source: "global",
 	},
 ];
 

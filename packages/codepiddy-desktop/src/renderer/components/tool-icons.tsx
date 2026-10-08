@@ -7,7 +7,6 @@ import {
 	Eye,
 	FilePlus,
 	FileSearch,
-	Globe,
 	List,
 	ListChecks,
 	type LucideIcon,
@@ -35,7 +34,6 @@ export type ToolIconName =
 	| "plug"
 	| "checklist"
 	| "message-question"
-	| "globe"
 	| "clock"
 	| "check-circle"
 	| "x-circle"
@@ -56,9 +54,6 @@ export function toolIconForTool(toolName: string): ToolIconName {
 	if (name === "mcp") return "plug";
 	if (name === "todo") return "checklist";
 	if (name === "question") return "message-question";
-	if (name === "web_search" || name === "tavily" || name === "tavily-search" || name.startsWith("mcp__web_search__")) {
-		return "globe";
-	}
 	if (name.startsWith("mcp__")) return "plug";
 	return "sparkles";
 }
@@ -76,7 +71,6 @@ const TOOL_ICONS: Record<ToolIconName, LucideIcon> = {
 	plug: Plug,
 	checklist: ListChecks,
 	"message-question": MessageCircleQuestion,
-	globe: Globe,
 	clock: Clock,
 	"check-circle": CircleCheck,
 	"x-circle": CircleX,

@@ -22,7 +22,6 @@ import type {
 	McpProjectOverrideLocator,
 	McpServerInput,
 	McpServerSummary,
-	PermissionDefaults,
 	PiBuiltinToolName,
 	ProviderApi,
 	ProviderInput,
@@ -34,23 +33,11 @@ import type {
 	ToolSettings,
 } from "@codepiddy/shared";
 import { safeStorage } from "electron";
-import {
-	createPermissionPolicy,
-	DEFAULT_PERMISSION_DEFAULTS,
-	normalizePermissionDefaults,
-} from "./permission-settings.ts";
 import { DEFAULT_ROLE_SKILL_ASSIGNMENTS } from "./skill-catalog.ts";
 
 interface StoredSecrets {
-	tavilyApiKey?: string;
 	providerApiKeys?: Record<string, string>;
 	mcpOAuthClientSecrets?: Record<string, string>;
-}
-
-interface TavilyMcpRuntime {
-	command: string;
-	args: string[];
-	env?: Record<string, string>;
 }
 
 const agentRoles: AgentRole[] = ["requirement-analysis", "coding", "bug-fix", "review"];
@@ -288,7 +275,6 @@ function normalizeMcpServer(
 				? value.auth.provider.trim()
 				: null,
 		projectOverride,
-		source: name === "web_search" ? "builtin" : "global",
 	};
 }
 
@@ -346,27 +332,21 @@ function addNewBuiltinDefaults(assignments: RoleSkillAssignments): RoleSkillAssi
 export class AppSettingsStore {
 	private readonly secretsPath: string;
 	private readonly roleSkillsPath: string;
-	private readonly permissionDefaultsPath: string;
-	private readonly permissionPolicyPath: string;
 	private readonly shellPathFile: string;
 	private readonly shareSettingsPath: string;
 	private readonly piSettingsPath: string;
 	private readonly mcpConfigPath: string;
 	private readonly modelsConfigPath: string;
-	private readonly tavilyMcpRuntime: TavilyMcpRuntime | null;
 
-	constructor(userDataPath: string, tavilyMcpRuntime?: TavilyMcpRuntime) {
+	constructor(userDataPath: string) {
 		const settingsDirectory = path.join(userDataPath, "settings");
 		this.secretsPath = path.join(settingsDirectory, "secrets.json");
 		this.roleSkillsPath = path.join(settingsDirectory, "role-skills.json");
-		this.permissionDefaultsPath = path.join(settingsDirectory, "permission-defaults.json");
-		this.permissionPolicyPath = path.join(userDataPath, "permissions", "policy", "pi-permissions.jsonc");
 		this.shellPathFile = path.join(settingsDirectory, "shell.json");
 		this.shareSettingsPath = path.join(settingsDirectory, "share.json");
 		this.piSettingsPath = path.join(resolvePiAgentDir(), "settings.json");
 		this.mcpConfigPath = path.join(resolvePiAgentDir(), "mcp.json");
 		this.modelsConfigPath = path.join(resolvePiAgentDir(), "models.json");
-		this.tavilyMcpRuntime = tavilyMcpRuntime ?? null;
 	}
 
 	/**
@@ -687,38 +667,6 @@ export class AppSettingsStore {
 		await this.writeJsonRecord(this.shareSettingsPath, next);
 	}
 
-	async getPermissionDefaults(): Promise<PermissionDefaults> {
-		try {
-			return normalizePermissionDefaults(JSON.parse(await readFile(this.permissionDefaultsPath, "utf8")) as unknown);
-		} catch (error) {
-			if (isNotFound(error)) return { ...DEFAULT_PERMISSION_DEFAULTS };
-			throw error;
-		}
-	}
-
-	private async writePermissionPolicy(defaults: PermissionDefaults): Promise<void> {
-		await mkdir(path.dirname(this.permissionPolicyPath), { recursive: true });
-		await writeFile(
-			this.permissionPolicyPath,
-			`${JSON.stringify(createPermissionPolicy(defaults), null, 2)}\n`,
-			"utf8",
-		);
-	}
-
-	async ensurePermissionPolicy(): Promise<PermissionDefaults> {
-		const defaults = await this.getPermissionDefaults();
-		await this.writePermissionPolicy(defaults);
-		return defaults;
-	}
-
-	async setPermissionDefaults(input: PermissionDefaults): Promise<PermissionDefaults> {
-		const defaults = normalizePermissionDefaults(input);
-		await mkdir(path.dirname(this.permissionDefaultsPath), { recursive: true });
-		await writeFile(this.permissionDefaultsPath, `${JSON.stringify(defaults, null, 2)}\n`, "utf8");
-		await this.writePermissionPolicy(defaults);
-		return defaults;
-	}
-
 	private async readSecrets(): Promise<StoredSecrets> {
 		try {
 			const parsed = JSON.parse(await readFile(this.secretsPath, "utf8")) as unknown;
@@ -727,7 +675,6 @@ export class AppSettingsStore {
 			const providerApiKeys = record.providerApiKeys;
 			const mcpOAuthClientSecrets = record.mcpOAuthClientSecrets;
 			return {
-				...(typeof record.tavilyApiKey === "string" ? { tavilyApiKey: record.tavilyApiKey } : {}),
 				...(typeof providerApiKeys === "object" && providerApiKeys !== null && !Array.isArray(providerApiKeys)
 					? {
 							providerApiKeys: Object.fromEntries(
@@ -758,7 +705,7 @@ export class AppSettingsStore {
 	private async writeSecrets(secrets: StoredSecrets): Promise<void> {
 		const hasProviderKeys = secrets.providerApiKeys && Object.keys(secrets.providerApiKeys).length > 0;
 		const hasMcpOAuthSecrets = secrets.mcpOAuthClientSecrets && Object.keys(secrets.mcpOAuthClientSecrets).length > 0;
-		if (!secrets.tavilyApiKey && !hasProviderKeys && !hasMcpOAuthSecrets) {
+		if (!hasProviderKeys && !hasMcpOAuthSecrets) {
 			try {
 				await unlink(this.secretsPath);
 			} catch (error) {
@@ -858,42 +805,9 @@ export class AppSettingsStore {
 			.sort((left, right) => left.name.localeCompare(right.name));
 	}
 
-	async ensureTavilyMcpServer(): Promise<void> {
-		if (!this.tavilyMcpRuntime) return;
-		const config = await this.readJsonRecord(this.mcpConfigPath);
-		const servers = isRecord(config.mcpServers) ? { ...config.mcpServers } : {};
-		const existing = isRecord(servers.web_search) ? { ...servers.web_search } : {};
-		const env = stringRecord(existing.env);
-		delete env.ELECTRON_RUN_AS_NODE;
-		const toolExposure = stringRecord(existing.toolExposure);
-		const entry: Record<string, unknown> = {
-			...existing,
-			type: "stdio",
-			command: this.tavilyMcpRuntime.command,
-			args: [...this.tavilyMcpRuntime.args],
-			env: {
-				...env,
-				...this.tavilyMcpRuntime.env,
-				TAVILY_API_KEY: `\${TAVILY_API_KEY}`,
-			},
-			description: "Tavily web search",
-			exposure: "direct",
-			toolExposure: {
-				...toolExposure,
-				web_search: "direct",
-			},
-		};
-		delete entry.disabled;
-		if ((await this.getTavilyApiKey()) === null) entry.enabled = false;
-		else delete entry.enabled;
-		servers.web_search = entry;
-		await this.writeJsonRecord(this.mcpConfigPath, { ...config, mcpServers: servers });
-	}
-
 	async saveMcpServer(input: McpServerInput): Promise<McpServerSummary[]> {
 		const name = input.name.trim();
 		if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new Error("MCP 服务名只能包含字母、数字、点、下划线和连字符");
-		if (name === "web_search") throw new Error("web_search 由 Tavily Search 设置维护");
 		if (input.transport === "stdio" && !input.command?.trim()) throw new Error("stdio 服务需要 command");
 		if (input.transport === "http" && !input.url?.trim()) throw new Error("http 服务需要 url");
 		const config = await this.readJsonRecord(this.mcpConfigPath);
@@ -963,7 +877,6 @@ export class AppSettingsStore {
 	}
 
 	async deleteMcpServer(name: string): Promise<McpServerSummary[]> {
-		if (name === "web_search") throw new Error("web_search 由 Tavily Search 设置维护");
 		const config = await this.readJsonRecord(this.mcpConfigPath);
 		const servers = isRecord(config.mcpServers) ? { ...config.mcpServers } : {};
 		delete servers[name];
@@ -1168,7 +1081,6 @@ export class AppSettingsStore {
 
 	async status(): Promise<SettingsStatus> {
 		return {
-			tavilyApiKeyConfigured: (await this.getTavilyApiKey()) !== null,
 			encryptionAvailable: safeStorage.isEncryptionAvailable(),
 			shellPath: await this.getShellPath(),
 			cacheWarming: await this.getCacheWarmingSettings(),
@@ -1176,27 +1088,5 @@ export class AppSettingsStore {
 			codemode: await this.getCodemodeSettings(),
 			tools: await this.getToolSettings(),
 		};
-	}
-
-	async getTavilyApiKey(): Promise<string | null> {
-		return this.decrypt((await this.readSecrets()).tavilyApiKey);
-	}
-
-	async saveTavilyApiKey(value: string): Promise<SettingsStatus> {
-		const apiKey = value.trim();
-		if (!apiKey) throw new Error("Tavily API Key 不能为空");
-		const secrets = await this.readSecrets();
-		secrets.tavilyApiKey = this.encrypt(apiKey);
-		await this.writeSecrets(secrets);
-		await this.ensureTavilyMcpServer();
-		return this.status();
-	}
-
-	async clearTavilyApiKey(): Promise<SettingsStatus> {
-		const secrets = await this.readSecrets();
-		delete secrets.tavilyApiKey;
-		await this.writeSecrets(secrets);
-		await this.ensureTavilyMcpServer();
-		return this.status();
 	}
 }

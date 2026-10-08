@@ -23,7 +23,6 @@ import type {
 	McpProjectOverrideInput,
 	McpProjectOverrideLocator,
 	McpServerInput,
-	PermissionDefaults,
 	PiPackageActionInput,
 	PiPackageExtensionInput,
 	PiPackageListResult,
@@ -113,9 +112,7 @@ const channels = {
 	refreshProject: "codepiddy:project:refresh",
 	restoreWorkItem: "codepiddy:work-item:restore",
 	respondToExtensionUi: "codepiddy:agent:extension-ui-response",
-	getPendingPermissionRequest: "codepiddy:agent:permission:get-pending",
-	settingsClearTavily: "codepiddy:settings:tavily:clear",
-	settingsGetTavily: "codepiddy:settings:tavily:get",
+	getPendingExtensionUiRequest: "codepiddy:agent:extension-ui:get-pending",
 	settingsListSkills: "codepiddy:settings:skills:list",
 	settingsGetRoleSkills: "codepiddy:settings:role-skills:get",
 	settingsSetRoleSkills: "codepiddy:settings:role-skills:set",
@@ -124,16 +121,12 @@ const channels = {
 	settingsDeletePromptTemplate: "codepiddy:settings:prompt-templates:delete",
 	settingsOpenPromptTemplateFolder: "codepiddy:settings:prompt-templates:open-folder",
 	settingsOpenPiConfig: "codepiddy:settings:pi-config:open",
-	settingsOpenPermissionPolicy: "codepiddy:settings:permission-policy:open",
 	settingsOpenProjectSkills: "codepiddy:settings:project-skills:open",
 	settingsOpenBuiltinSkills: "codepiddy:settings:builtin-skills:open",
 	settingsShareGet: "codepiddy:settings:share:get",
 	settingsShareChooseGitHubCli: "codepiddy:settings:share:github-cli:choose",
 	settingsShareSetGitHubCliPath: "codepiddy:settings:share:github-cli:set",
 	openExternalUrl: "codepiddy:app:open-external-url",
-	settingsGetPermissions: "codepiddy:settings:permissions:get",
-	settingsSetPermissions: "codepiddy:settings:permissions:set",
-	settingsSaveTavily: "codepiddy:settings:tavily:save",
 	settingsSaveShell: "codepiddy:settings:shell:save",
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
@@ -265,8 +258,8 @@ const api: CodePIddyClientApi = {
 	},
 	resetAgent: (input: ResetAgentInput) => ipcRenderer.invoke(channels.resetAgent, input),
 	respondToExtensionUi: (input: ExtensionUiResponseInput) => ipcRenderer.invoke(channels.respondToExtensionUi, input),
-	getPendingPermissionRequest: (input: AgentInstanceLocator) =>
-		ipcRenderer.invoke(channels.getPendingPermissionRequest, input),
+	getPendingExtensionUiRequest: (input: AgentInstanceLocator) =>
+		ipcRenderer.invoke(channels.getPendingExtensionUiRequest, input),
 	searchProjectFiles: (projectRoot: string, query: string) =>
 		ipcRenderer.invoke(channels.searchProjectFiles, projectRoot, query),
 	listWorkspaceDir: (projectRoot: string, relativeDir: string) =>
@@ -294,11 +287,6 @@ const api: CodePIddyClientApi = {
 	installPiRuntimeUpdate: (version: string) => ipcRenderer.invoke(channels.piRuntimeInstall, version),
 	rollbackPiRuntime: () => ipcRenderer.invoke(channels.piRuntimeRollback),
 	restartCodePIddy: () => ipcRenderer.invoke(channels.piRuntimeRestart),
-	getPermissionDefaults: () => ipcRenderer.invoke(channels.settingsGetPermissions),
-	setPermissionDefaults: (input: PermissionDefaults) => ipcRenderer.invoke(channels.settingsSetPermissions, input),
-	saveTavilyApiKey: (apiKey: string) => ipcRenderer.invoke(channels.settingsSaveTavily, apiKey),
-	clearTavilyApiKey: () => ipcRenderer.invoke(channels.settingsClearTavily),
-	getTavilyApiKey: () => ipcRenderer.invoke(channels.settingsGetTavily),
 	saveShellPath: (shellPath: string) => ipcRenderer.invoke(channels.settingsSaveShell, shellPath),
 	saveCacheWarmingSettings: (input: CacheWarmingSettings) =>
 		ipcRenderer.invoke(channels.settingsSaveCacheWarming, input),
@@ -356,7 +344,6 @@ const api: CodePIddyClientApi = {
 	openPromptTemplateFolder: (input: Pick<PromptTemplateLocator, "scope" | "projectRoot">): Promise<void> =>
 		ipcRenderer.invoke(channels.settingsOpenPromptTemplateFolder, input),
 	openPiConfigFolder: () => ipcRenderer.invoke(channels.settingsOpenPiConfig),
-	openPermissionPolicyFolder: () => ipcRenderer.invoke(channels.settingsOpenPermissionPolicy),
 	openProjectSkillsFolder: (projectRoot: string) =>
 		ipcRenderer.invoke(channels.settingsOpenProjectSkills, projectRoot),
 	openBuiltinSkillsFolder: () => ipcRenderer.invoke(channels.settingsOpenBuiltinSkills),

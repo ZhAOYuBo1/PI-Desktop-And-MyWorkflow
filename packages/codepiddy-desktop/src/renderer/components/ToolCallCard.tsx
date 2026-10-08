@@ -19,13 +19,6 @@ export interface ToolCallCardItem {
 
 const OUTPUT_PREVIEW_LIMIT = 6000;
 
-function friendlyToolText(item: ToolCallCardItem): string {
-	if (/TAVILY_API_KEY is (?:not configured|required)/i.test(item.text)) {
-		return "Tavily Search 尚未配置。请在 CodePIddy 设置中保存 Tavily API Key，然后重启或重置当前 Agent。";
-	}
-	return item.text;
-}
-
 function toolDisplayName(toolName: string): string {
 	const match = /^mcp__(.+?)__(.+)$/.exec(toolName);
 	return match?.[2] ?? toolName;
@@ -35,7 +28,7 @@ export function ToolCallOutput({ item, showAll }: { item: ToolCallCardItem; show
 	const name = item.name.toLowerCase();
 	const terminal = name === "bash" || name === "powershell";
 	const diff = name === "edit" || name === "write";
-	const friendlyText = friendlyToolText(item);
+	const friendlyText = item.text;
 	const text =
 		showAll || friendlyText.length <= OUTPUT_PREVIEW_LIMIT
 			? friendlyText
@@ -62,7 +55,7 @@ export const ToolCallCard = memo(function ToolCallCard({ item }: { item: ToolCal
 	const [pin, setPin] = useState<ToolPinMode>("auto");
 	const [showAll, setShowAll] = useState(false);
 	const expanded = resolveToolExpanded(pin, item.status);
-	const friendlyText = friendlyToolText(item);
+	const friendlyText = item.text;
 	const truncated = friendlyText.length > OUTPUT_PREVIEW_LIMIT;
 	const failureKind = item.isError ? classifyToolFailure(friendlyText) : null;
 	const duration =

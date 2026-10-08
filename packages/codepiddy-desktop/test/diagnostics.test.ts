@@ -74,7 +74,6 @@ describe("diagnostics", () => {
 			role: "coding",
 		};
 		const manager = new DiagnosticsManager({
-			userDataPath: root,
 			agentDir: root,
 			appVersion: "0.1.0",
 			getPiRuntimeStatus: () => piRuntime,

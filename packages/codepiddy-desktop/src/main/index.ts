@@ -56,7 +56,7 @@ import type {
 	McpActionInput,
 	McpActionResult,
 	McpRuntimeSnapshot,
-	PendingPermissionRequest,
+	PendingExtensionUiRequest,
 	PiPackageActionInput,
 	PiPackageExtensionInput,
 	ProjectSummary,
@@ -95,7 +95,6 @@ import {
 	parseMcpProjectOverrideInput,
 	parseMcpProjectOverrideLocator,
 	parseMcpServerInput,
-	parsePermissionDefaults,
 	parsePiPackageActionInput,
 	parsePiPackageExtensionInput,
 	parseProjectId,
@@ -195,9 +194,7 @@ const channels = {
 	refreshProject: "codepiddy:project:refresh",
 	restoreWorkItem: "codepiddy:work-item:restore",
 	respondToExtensionUi: "codepiddy:agent:extension-ui-response",
-	getPendingPermissionRequest: "codepiddy:agent:permission:get-pending",
-	settingsClearTavily: "codepiddy:settings:tavily:clear",
-	settingsGetTavily: "codepiddy:settings:tavily:get",
+	getPendingExtensionUiRequest: "codepiddy:agent:extension-ui:get-pending",
 	settingsListSkills: "codepiddy:settings:skills:list",
 	settingsGetRoleSkills: "codepiddy:settings:role-skills:get",
 	settingsSetRoleSkills: "codepiddy:settings:role-skills:set",
@@ -206,16 +203,12 @@ const channels = {
 	settingsDeletePromptTemplate: "codepiddy:settings:prompt-templates:delete",
 	settingsOpenPromptTemplateFolder: "codepiddy:settings:prompt-templates:open-folder",
 	settingsOpenPiConfig: "codepiddy:settings:pi-config:open",
-	settingsOpenPermissionPolicy: "codepiddy:settings:permission-policy:open",
 	settingsOpenProjectSkills: "codepiddy:settings:project-skills:open",
 	settingsOpenBuiltinSkills: "codepiddy:settings:builtin-skills:open",
 	settingsShareGet: "codepiddy:settings:share:get",
 	settingsShareChooseGitHubCli: "codepiddy:settings:share:github-cli:choose",
 	settingsShareSetGitHubCliPath: "codepiddy:settings:share:github-cli:set",
 	openExternalUrl: "codepiddy:app:open-external-url",
-	settingsGetPermissions: "codepiddy:settings:permissions:get",
-	settingsSetPermissions: "codepiddy:settings:permissions:set",
-	settingsSaveTavily: "codepiddy:settings:tavily:save",
 	settingsSaveShell: "codepiddy:settings:shell:save",
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
@@ -778,8 +771,7 @@ function roleDocumentContract(agent: StoredAgentInstance): string {
 	].join("\n");
 }
 
-async function rolePrompt(agent: StoredAgentInstance, webSearchAvailable: boolean): Promise<string> {
-	const webSearchToolName = "mcp__web_search__web_search";
+async function rolePrompt(agent: StoredAgentInstance): Promise<string> {
 	const [profile, workItem] = await Promise.all([
 		readRoleProfile(agent.projectRoot, agent.role),
 		readWorkItemPromptContext(agent),
@@ -794,11 +786,6 @@ async function rolePrompt(agent: StoredAgentInstance, webSearchAvailable: boolea
 		`User-provided description: ${workItem.description || "No description provided."}`,
 		"Actually existing materials produced by the enabled Skills and related to this Work Item are the workflow handoff source of truth; do not assume any specific file exists.",
 		"",
-		"# Web Search Contract",
-		webSearchAvailable
-			? `${webSearchToolName} is a search engine only. It returns ranked results and snippets; it never opens, fetches, reads, crawls, maps, or extracts a webpage. If the user asks to inspect a specific URL, explain that limitation and use keyword/domain search only for discoverable snippets. Never claim that a webpage was read from the web search results.`
-			: "The native MCP web search tool is unavailable because Tavily is not configured. Do not attempt to call it; tell the user that web search requires configuration in CodePIddy Settings.",
-		"",
 		profile,
 		"# Work Item and OpenSpec Contract",
 		roleDocumentContract(agent),
@@ -808,12 +795,7 @@ async function rolePrompt(agent: StoredAgentInstance, webSearchAvailable: boolea
 	].join("\n");
 }
 
-async function probePiUpdate(
-	runtime: InstalledPiRuntime,
-	stagingRoot: string,
-	repositoryRoot: string,
-	userDataRoot: string,
-): Promise<void> {
+async function probePiUpdate(runtime: InstalledPiRuntime, stagingRoot: string, repositoryRoot: string): Promise<void> {
 	const packaged = app.isPackaged;
 	const extensions = packaged
 		? path.join(repositoryRoot, "extensions")
@@ -833,9 +815,6 @@ async function probePiUpdate(
 			...(packaged ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
 			PI_PACKAGE_DIR: runtime.packageDir,
 			PI_CODING_AGENT_DIR: path.join(stagingRoot, "probe-agent"),
-			PI_PERMISSION_SYSTEM_CONFIG_PATH: path.join(userDataRoot, "permissions", "extension.json"),
-			PI_PERMISSION_SYSTEM_LOGS_DIR: path.join(stagingRoot, "probe-logs"),
-			PI_PERMISSION_SYSTEM_POLICY_AGENT_DIR: path.join(userDataRoot, "permissions", "policy"),
 		},
 		args: [
 			runtime.cliPath,
@@ -851,8 +830,6 @@ async function probePiUpdate(
 			"builtin:tool-search",
 			"--extension",
 			"builtin:mcp",
-			"--extension",
-			path.join(extensions, "permission.js"),
 			"--extension",
 			path.join(extensions, "review.js"),
 			"--extension",
@@ -884,7 +861,7 @@ class AgentManager {
 	private readonly processes = new Map<string, PiRpcProcess>();
 	private readonly processAgents = new Map<string, StoredAgentInstance>();
 	private readonly processStarts = new SingleFlightMap<string, PiRpcProcess>();
-	private readonly pendingPermissions = new Map<string, PendingPermissionRequest>();
+	private readonly pendingExtensionUiRequests = new Map<string, PendingExtensionUiRequest>();
 	private readonly builtinCommandsCache = new Map<string, AgentCommandOption[]>();
 	private readonly recentDiagnosticsErrors: DiagnosticsErrorEntry[] = [];
 	private resolvePackageExtensions: ((projectRoot: string) => Promise<string[]>) | null = null;
@@ -1027,7 +1004,6 @@ class AgentManager {
 				? path.join(this.repositoryRoot, "coding-agent-package", "dist", "bundle", "cli.js")
 				: path.join(this.repositoryRoot, "packages", "coding-agent-runtime", "dist", "bundle", "cli.js"));
 		const nodeExecutable = process.env.CODEPIDDY_NODE_EXECUTABLE ?? (packaged ? process.execPath : "node");
-		const tavilyApiKey = await this.settingsStore.getTavilyApiKey();
 		const args = [
 			...(compiledRuntime
 				? [cliPath]
@@ -1047,7 +1023,6 @@ class AgentManager {
 			...(packaged ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
 			...(await this.settingsStore.getProviderEnv()),
 			...(await this.settingsStore.getMcpEnv()),
-			...(tavilyApiKey ? { TAVILY_API_KEY: tavilyApiKey } : {}),
 			...(compiledRuntime
 				? {
 						PI_PACKAGE_DIR:
@@ -1221,8 +1196,8 @@ class AgentManager {
 			role: agent.role,
 			event: { type: "agent_history", messages: await this.historyMessages(process) },
 		});
-		const pendingPermission = this.pendingPermissions.get(agent.id);
-		if (pendingPermission) {
+		const pendingExtensionUiRequest = this.pendingExtensionUiRequests.get(agent.id);
+		if (pendingExtensionUiRequest) {
 			if (agent.status !== "waiting") await this.registry.setStatus(agent, "waiting");
 			this.broadcast({
 				agentInstanceId: agent.id,
@@ -1596,7 +1571,7 @@ class AgentManager {
 		const process = this.processes.get(agent.id);
 		this.processes.delete(agent.id);
 		this.processAgents.delete(agent.id);
-		this.pendingPermissions.delete(agent.id);
+		this.pendingExtensionUiRequests.delete(agent.id);
 		if (process) await process.stop();
 		if (agent.role !== "requirement-analysis") await this.writeLeases.release(agent.projectId, agent.id);
 		await this.registry.reset(input);
@@ -1604,22 +1579,22 @@ class AgentManager {
 	}
 
 	async respondToExtensionUi(input: ExtensionUiResponseInput): Promise<void> {
-		const pending = this.pendingPermissions.get(input.agentInstanceId);
+		const pending = this.pendingExtensionUiRequests.get(input.agentInstanceId);
 		if (!pending || pending.requestId !== input.requestId) return;
 		const process = this.processes.get(input.agentInstanceId);
 		if (!process) {
-			this.pendingPermissions.delete(input.agentInstanceId);
+			this.pendingExtensionUiRequests.delete(input.agentInstanceId);
 			return;
 		}
 		if (input.cancelled !== true) {
 			if (pending.method === "select" && (input.value === undefined || !pending.options.includes(input.value))) {
-				throw new Error("权限选择值不在允许选项中");
+				throw new Error("Extension UI 选择值不在允许选项中");
 			}
 			if (pending.method === "confirm" && typeof input.confirmed !== "boolean") {
-				throw new Error("确认权限请求必须提交布尔值");
+				throw new Error("确认请求必须提交布尔值");
 			}
 			if ((pending.method === "input" || pending.method === "editor") && input.value === undefined) {
-				throw new Error("权限输入请求缺少 value");
+				throw new Error("Extension UI 输入请求缺少 value");
 			}
 		}
 		await process.respondToExtensionUi({
@@ -1628,22 +1603,22 @@ class AgentManager {
 			...(input.confirmed === undefined ? {} : { confirmed: input.confirmed }),
 			...(input.cancelled === undefined ? {} : { cancelled: input.cancelled }),
 		});
-		if (this.pendingPermissions.get(input.agentInstanceId)?.requestId === input.requestId) {
-			this.pendingPermissions.delete(input.agentInstanceId);
+		if (this.pendingExtensionUiRequests.get(input.agentInstanceId)?.requestId === input.requestId) {
+			this.pendingExtensionUiRequests.delete(input.agentInstanceId);
 		}
 	}
 
-	async getPendingPermissionRequest(input: AgentInstanceLocator): Promise<PendingPermissionRequest | null> {
+	async getPendingExtensionUiRequest(input: AgentInstanceLocator): Promise<PendingExtensionUiRequest | null> {
 		await this.resolve(input);
-		return this.pendingPermissions.get(input.agentInstanceId) ?? null;
+		return this.pendingExtensionUiRequests.get(input.agentInstanceId) ?? null;
 	}
 
 	async abort(input: AgentInstanceLocator): Promise<void> {
 		const process = this.processes.get(input.agentInstanceId);
-		const pending = this.pendingPermissions.get(input.agentInstanceId);
+		const pending = this.pendingExtensionUiRequests.get(input.agentInstanceId);
 		if (process && pending) {
 			await process.respondToExtensionUi({ id: pending.requestId, cancelled: true });
-			this.pendingPermissions.delete(input.agentInstanceId);
+			this.pendingExtensionUiRequests.delete(input.agentInstanceId);
 		}
 		if (process) await process.abort();
 	}
@@ -1658,9 +1633,9 @@ class AgentManager {
 			event: { type: "process_recovery_start", attempt: 1, manual: true },
 		});
 		const current = this.processes.get(agent.id);
-		const pending = this.pendingPermissions.get(agent.id);
+		const pending = this.pendingExtensionUiRequests.get(agent.id);
 		if (current && pending) await current.respondToExtensionUi({ id: pending.requestId, cancelled: true });
-		this.pendingPermissions.delete(agent.id);
+		this.pendingExtensionUiRequests.delete(agent.id);
 		this.processes.delete(agent.id);
 		this.processAgents.delete(agent.id);
 		if (current) await current.stop();
@@ -1863,9 +1838,7 @@ class AgentManager {
 				? path.join(this.repositoryRoot, "coding-agent-package", "dist", "bundle", "cli.js")
 				: path.join(this.repositoryRoot, "packages", "coding-agent-runtime", "dist", "bundle", "cli.js"));
 		const nodeExecutable = process.env.CODEPIDDY_NODE_EXECUTABLE ?? (packaged ? process.execPath : "node");
-		await this.settingsStore.ensureTavilyMcpServer();
-		const [tavilyApiKey, roleSkillAssignments, excludedBuiltinTools] = await Promise.all([
-			this.settingsStore.getTavilyApiKey(),
+		const [roleSkillAssignments, excludedBuiltinTools] = await Promise.all([
 			this.settingsStore.getRoleSkillAssignments(),
 			this.settingsStore.getBuiltinToolExclusions(),
 		]);
@@ -1904,10 +1877,6 @@ class AgentManager {
 									: path.join(this.repositoryRoot, "packages", "coding-agent-runtime")),
 						}
 					: {}),
-				PI_PERMISSION_SYSTEM_CONFIG_PATH: path.join(this.runtimeRoot, "permissions", "extension.json"),
-				PI_PERMISSION_SYSTEM_LOGS_DIR: path.join(this.runtimeRoot, "permissions", "logs"),
-				PI_PERMISSION_SYSTEM_POLICY_AGENT_DIR: path.join(this.runtimeRoot, "permissions", "policy"),
-				...(tavilyApiKey ? { TAVILY_API_KEY: tavilyApiKey } : {}),
 				// shellPath 不走环境变量：Pi 原生从 settings.json 读，AppSettingsStore.setShellPath
 				// 已写进 PI_CODING_AGENT_DIR/settings.json。曾经传的 PI_SHELL_PATH 需要 Pi 源码里的
 				// 私有补丁，用户从 npm 升级 Pi 后失效且无人察觉。
@@ -1940,10 +1909,6 @@ class AgentManager {
 				...packageExtensionPaths.flatMap((extensionPath) => ["--extension", extensionPath]),
 				"--extension",
 				compiledRuntime
-					? path.join(extensionRoot, "permission.js")
-					: path.join(this.repositoryRoot, "packages", "codepiddy-permission-extension", "index.ts"),
-				"--extension",
-				compiledRuntime
 					? path.join(extensionRoot, "review.js")
 					: path.join(this.repositoryRoot, "packages", "codepiddy-review-extension", "index.ts"),
 				"--extension",
@@ -1956,7 +1921,7 @@ class AgentManager {
 					: path.join(this.repositoryRoot, "packages", "codepiddy-cache-warming-extension", "index.ts"),
 				...roleSkillPaths.flatMap((skillPath) => ["--skill", skillPath]),
 				"--append-system-prompt",
-				await rolePrompt(agent, Boolean(tavilyApiKey)),
+				await rolePrompt(agent),
 			],
 		});
 		rpc.onEvent((event) => {
@@ -1968,7 +1933,7 @@ class AgentManager {
 					event.method === "input" ||
 					event.method === "editor")
 			) {
-				this.pendingPermissions.set(agent.id, {
+				this.pendingExtensionUiRequests.set(agent.id, {
 					agentInstanceId: agent.id,
 					projectId: agent.projectId,
 					workItemId: agent.workItemId,
@@ -1996,7 +1961,7 @@ class AgentManager {
 				if (agent.role !== "requirement-analysis") void this.writeLeases.heartbeat(agent.projectId, agent.id);
 			}
 			if (event.type === "agent_settled") {
-				this.pendingPermissions.delete(agent.id);
+				this.pendingExtensionUiRequests.delete(agent.id);
 				void this.registry.setStatus(agent, "idle");
 				if (agent.role !== "requirement-analysis") void this.writeLeases.release(agent.projectId, agent.id);
 			} else if (
@@ -2008,7 +1973,7 @@ class AgentManager {
 			) {
 				void this.registry.setStatus(agent, "waiting");
 			} else if (event.type === "process_error" || event.type === "process_exit") {
-				this.pendingPermissions.delete(agent.id);
+				this.pendingExtensionUiRequests.delete(agent.id);
 				if (event.expected === true || this.processes.get(agent.id) !== rpc) return;
 				if (typeof event.error === "string" && event.error)
 					this.recordDiagnosticsError("agent-process", event.error);
@@ -2112,7 +2077,7 @@ class AgentManager {
 				const process = this.processes.get(agentId);
 				this.processes.delete(agentId);
 				this.processAgents.delete(agentId);
-				this.pendingPermissions.delete(agentId);
+				this.pendingExtensionUiRequests.delete(agentId);
 				if (process) await process.stop();
 				if (agent.role !== "requirement-analysis") await this.writeLeases.release(projectId, agentId);
 			}),
@@ -2129,7 +2094,7 @@ class AgentManager {
 				const process = this.processes.get(agentId);
 				this.processes.delete(agentId);
 				this.processAgents.delete(agentId);
-				this.pendingPermissions.delete(agentId);
+				this.pendingExtensionUiRequests.delete(agentId);
 				if (process) await process.stop();
 				await this.writeLeases.release(projectId, agentId);
 			}),
@@ -2140,7 +2105,7 @@ class AgentManager {
 		const entries = [...this.processes.entries()];
 		this.processes.clear();
 		this.processAgents.clear();
-		this.pendingPermissions.clear();
+		this.pendingExtensionUiRequests.clear();
 		await Promise.all(
 			entries.map(async ([agentId, process]) => {
 				await process.stop();
@@ -2512,8 +2477,8 @@ function registerIpcHandlers(
 	ipcMain.handle(channels.respondToExtensionUi, (_event, raw: unknown) =>
 		agentManager.respondToExtensionUi(parseExtensionUiResponseInput(raw)),
 	);
-	ipcMain.handle(channels.getPendingPermissionRequest, (_event, raw: unknown) =>
-		agentManager.getPendingPermissionRequest(parseAgentLocator(raw)),
+	ipcMain.handle(channels.getPendingExtensionUiRequest, (_event, raw: unknown) =>
+		agentManager.getPendingExtensionUiRequest(parseAgentLocator(raw)),
 	);
 	ipcMain.handle(channels.searchProjectFiles, (_event, rawProjectRoot: unknown, rawQuery: unknown) =>
 		searchProjectFiles(requireOpenProjectRoot(rawProjectRoot), parseBoundedText(rawQuery, "搜索内容", 500, true)),
@@ -2664,15 +2629,6 @@ function registerIpcHandlers(
 		shell.showItemInFolder(result.filePath);
 		return result;
 	});
-	ipcMain.handle(channels.settingsGetPermissions, () => settingsStore.getPermissionDefaults());
-	ipcMain.handle(channels.settingsSetPermissions, (_event, raw: unknown) =>
-		settingsStore.setPermissionDefaults(parsePermissionDefaults(raw)),
-	);
-	ipcMain.handle(channels.settingsSaveTavily, (_event, rawApiKey: unknown) =>
-		settingsStore.saveTavilyApiKey(parseBoundedText(rawApiKey, "Tavily API Key", 500)),
-	);
-	ipcMain.handle(channels.settingsClearTavily, () => settingsStore.clearTavilyApiKey());
-	ipcMain.handle(channels.settingsGetTavily, () => settingsStore.getTavilyApiKey());
 	ipcMain.handle(channels.settingsSaveShell, (_event, rawShellPath: unknown) =>
 		settingsStore.setShellPath(parseBoundedText(rawShellPath, "Shell 路径", 1024)),
 	);
@@ -2849,14 +2805,6 @@ function registerIpcHandlers(
 		const error = await shell.openPath(directory);
 		if (error) throw new Error(error);
 	});
-	// 权限策略目录是排查「为什么还在弹窗」的第一现场：扩展除了这份全局策略，
-	// 还会读 agents/ 子目录和项目级配置，设置页那 7 个开关只是其中一层。
-	ipcMain.handle(channels.settingsOpenPermissionPolicy, async () => {
-		const directory = path.join(app.getPath("userData"), "permissions", "policy");
-		await mkdir(directory, { recursive: true });
-		const error = await shell.openPath(directory);
-		if (error) throw new Error(error);
-	});
 	ipcMain.handle(channels.settingsOpenProjectSkills, async (_event, rawProjectRoot: unknown) => {
 		const projectRoot = requireOpenProjectRoot(rawProjectRoot);
 		const directory = path.join(projectRoot, ".codepiddy", ".pi", "skills");
@@ -2941,24 +2889,9 @@ if (!hasSingleInstanceLock) {
 		const repositoryRoot =
 			process.env.CODEPIDDY_REPO_ROOT ??
 			(app.isPackaged ? path.join(process.resourcesPath, "runtime") : path.resolve(app.getAppPath(), "..", ".."));
-		const runtimeExtensionsRoot = app.isPackaged
-			? path.join(repositoryRoot, "extensions")
-			: path.join(app.getAppPath(), "dist", "runtime-extensions");
-		const tavilyMcpEntry = app.isPackaged
-			? path.join(repositoryRoot, "mcp", "tavily-search.js")
-			: path.join(runtimeExtensionsRoot, "tavily-search.js");
-		const nodeExecutable = process.env.CODEPIDDY_NODE_EXECUTABLE ?? (app.isPackaged ? process.execPath : "node");
-		const settingsStore = new AppSettingsStore(app.getPath("userData"), {
-			command: nodeExecutable,
-			args: [tavilyMcpEntry],
-			...(path.basename(nodeExecutable).toLowerCase().includes("electron")
-				? { env: { ELECTRON_RUN_AS_NODE: "1" } }
-				: {}),
-		});
-		await settingsStore.ensurePermissionPolicy();
+		const settingsStore = new AppSettingsStore(app.getPath("userData"));
 		await settingsStore.ensurePiRetrySettings();
 		await settingsStore.ensureShellPathNormalized();
-		await settingsStore.ensureTavilyMcpServer();
 		const recentProjects = new RecentProjectStore(app.getPath("userData"), {
 			discoverKnownRoots: process.env.CODEPIDDY_DISABLE_PROJECT_DISCOVERY !== "1",
 		});
@@ -2971,7 +2904,7 @@ if (!hasSingleInstanceLock) {
 			bundledVersion: bundledManifest.version,
 			nodeExecutable: process.execPath,
 			...(app.isPackaged ? { npmCliPath: path.join(repositoryRoot, "npm", "bin", "npm-cli.js") } : {}),
-			probe: (runtime, stagingRoot) => probePiUpdate(runtime, stagingRoot, repositoryRoot, app.getPath("userData")),
+			probe: (runtime, stagingRoot) => probePiUpdate(runtime, stagingRoot, repositoryRoot),
 		});
 		await piRuntimeUpdater.initialize();
 		const agentManager = new AgentManager(app.getPath("userData"), repositoryRoot, settingsStore, piRuntimeUpdater);
@@ -3007,7 +2940,6 @@ if (!hasSingleInstanceLock) {
 		});
 		const llamaCppManager = new LlamaCppManager(resolvePiAgentDir());
 		const diagnosticsManager = new DiagnosticsManager({
-			userDataPath: app.getPath("userData"),
 			agentDir: resolvePiAgentDir(),
 			appVersion: app.getVersion(),
 			getPiRuntimeStatus: () => piRuntimeUpdater.status(),

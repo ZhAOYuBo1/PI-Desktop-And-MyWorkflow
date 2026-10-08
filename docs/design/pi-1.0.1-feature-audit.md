@@ -12,8 +12,7 @@
   `packages/coding-agent-runtime/dist/bundle` + `packages/coding-agent-runtime/package.json`。
 - `packages/coding-agent` 等上游源码仍保留在仓库中，但客户端内置运行时不再由它们构建，也不再在 build 时联网升级。
 - Pi 1.0.1 已原生依赖 `@earendil-works/pi-mcp`，MCP 不再依赖外部插件。
-- `web_search` 已迁移到 Pi 原生 `mcp.json`；客户端只保留 Tavily 设置入口和加密 Key，
-  启动 Agent 时注入 `TAVILY_API_KEY`，不再维护独立 MCP 注入通道。
+- Tavily `web_search` 专用 MCP 已在批次 68 删除；需要 web search 时通过通用 MCP 配置。
 - 客户端当前使用的 RPC 接口在 1.0.1 下已验证：
   `get_state`、`get_messages`、`get_session_tree`、`get_available_models`、`get_commands`。
 - Pi 1.0.1 的 `/login`、`/logout` 是交互式 TUI 命令；RPC 没有直接暴露认证命令。SDK 公开了
@@ -24,45 +23,16 @@
 
 ### 当前状态
 
-- 用户自定义 MCP 服务已经读写 Pi 原生 `~/.pi/agent/mcp.json`。
-- `web_search` 现在由客户端维护为原生 `mcp.json` 条目：
-  - `command` / `args` 指向随应用构建的 Tavily MCP 脚本；
-  - `env.TAVILY_API_KEY` 只保存 `${TAVILY_API_KEY}` 引用；
-  - `exposure: "direct"`，`toolExposure.web_search: "direct"`；
-  - 未配置 Tavily Key 时条目保留但 `enabled: false`。
-- 旧的 `CODEPIDDY_TAVILY_MCP_ENTRY` 和 `packages/codepiddy-tavily-tool-extension` 已删除。
+- 用户自定义 MCP 服务读写 Pi 原生 `~/.pi/agent/mcp.json`。
+- 客户端不再维护内置 `web_search` 条目、Tavily Key、`TAVILY_API_KEY` 注入或专用 MCP 脚本。
+- 旧的 `packages/codepiddy-tavily-search-mcp` 和 Tavily 设置入口已删除。
 
 ### 目标状态
 
-- 已完成：不再维护 `CODEPIDDY_TAVILY_MCP_ENTRY` 这类独立注入通道。
-- 已完成：客户端继续保留独立的 `web_search` / Tavily 设置入口和 Key 输入。
-- 已完成：Tavily Key 由客户端加密保存，启动 Agent 时只注入 `TAVILY_API_KEY` 环境变量。
-- 已完成：`web_search` 服务写入 Pi 原生 MCP 配置：
-
-```json
-{
-  "mcpServers": {
-    "web_search": {
-      "command": "node",
-      "args": ["<packaged-or-dev-tavily-search-mcp.js>"],
-      "env": {
-        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
-      },
-      "description": "Tavily web search",
-      "exposure": "direct",
-      "toolExposure": {
-        "web_search": "direct"
-      }
-    }
-  }
-}
-```
-
-- 配置统一后，`web_search` 由 Pi 原生 MCP 连接、重连、权限、曝光和日志系统管理。
-- 命名策略已决定：接受原生工具名 `mcp__web_search__web_search`，不增加别名适配层。
-  客户端工具卡和设置页仍显示友好名称 `web_search`，实际调用名保持 Pi 原生格式。
+- 目标状态：客户端只提供通用 MCP 配置 UI，所有 MCP 服务都由 Pi 原生连接、重连、曝光和日志系统管理。
+- 不再为 Tavily 或其他搜索服务维护专用设置、专用构建产物或环境变量注入。
 - 扩展隔离策略：保留 `--no-extensions` 避免自动加载用户第三方 extension，同时显式加载
-  `builtin:mcp`、`builtin:codemode`、`builtin:tool-search` 和 CodePIddy 自己的 permission/review/retry。
+  `builtin:mcp`、`builtin:codemode`、`builtin:tool-search` 和 CodePIddy 自己的 review/retry/cache-warming。
 
 ### Pi 1.0.1 原生 MCP 能力
 
@@ -155,7 +125,7 @@
 | MCP permissions annotations | 部分覆盖 | 有统一 MCP 权限开关，但没有按 annotation 展示 |
 | `/mcp` | 已覆盖 | 客户端命令菜单提供 `/mcp`，打开设置页的 MCP 管理入口 |
 | `pi mcp add/remove/list/login/logout` | 已覆盖 | `list/login/logout` 走 Pi CLI；add/remove 走客户端原生设置 UI |
-| Tavily `web_search` | 已覆盖 | 已写入 Pi 原生 `mcp.json`，Key 使用 `${TAVILY_API_KEY}`，工具名 `mcp__web_search__web_search` |
+| Tavily `web_search` | 已删除 | 批次 68 删除专用 MCP、设置和注入；需要时由用户通过通用 MCP 配置 |
 
 ### 导出、分享与诊断
 
@@ -174,7 +144,7 @@
 | --- | --- | --- |
 | Codemode | 已覆盖 | 批次 61 已实现客户端 `codemode.mode / inlineBudget` 设置和运行结果视图；脚本、工具调用、错误、完整输出路径从 `tool_execution_*` details 展示 |
 | Tool Search | 已覆盖 | 客户端工具页汇总 MCP deferred / codemode exposure；实际搜索由 Pi 内置 `tool_search` 执行，不复制搜索实现 |
-| Extensions | 部分覆盖 | 客户端自带权限、Tavily、review、retry 扩展，没有通用管理 UI |
+| Extensions | 部分覆盖 | 客户端自带 review、retry、cache-warming 扩展；第三方 extension 走 Pi Packages |
 | Tool exposure | 已覆盖 | MCP 服务级 `exposure` / 工具级 `toolExposure` 在 MCP 设置页配置；内置工具用 `defaultTools + --exclude-tools` 严格隔离 |
 | Tool rendering | 缺失 | Pi 1.0.1 支持任意工具 renderer，客户端没有扩展入口 |
 | Skills | 已覆盖 | 角色 Skill 分配 |
@@ -337,7 +307,6 @@ CodePIddy 启动 Agent 时继续使用 `--no-extensions`，并显式加载：
 builtin:mcp
 builtin:codemode
 builtin:tool-search
-permission.js
 review.js
 retry.js
 cache-warming.js
@@ -348,13 +317,12 @@ Pi 1.0.1 的 `--no-extensions` 会禁用自动发现的 extensions 和内置 ext
 
 这意味着：
 
-- 第三方包里的 extension 默认不会加载，避免 `@gotgenes/pi-permission-system` 和 CodePIddy
-  自己的 permission 扩展重复；但客户端提供按包开关，开启后会把该包的 extension 作为显式
-  `--extension` 传给 Agent。
+- 第三方包里的 extension 默认不会加载；客户端提供按包开关，开启后会把该包的 extension
+  作为显式 `--extension` 传给 Agent。
 - 包内的 skills / prompts / themes 仍可能进入 Pi 资源解析，因此客户端不能只用“扩展已安装”
   一个状态描述整个包。
 - 启用第三方 package extension 必须经过显式确认；客户端不能自动放宽所有包，也不能修改
-  permission / review / retry / cache-warming 这些内置扩展的加载顺序。
+  review / retry / cache-warming 这些内置扩展的加载顺序。
 
 ### 客户端实现建议
 
@@ -432,7 +400,11 @@ CodePIddy 是客户端，不复制 Pi core 已公开的运行时能力。保留�
   不再复制 router、Hugging Face、load / unload / download 逻辑。
 - `/share` helper：保留客户端分享弹窗，优先复用 Pi core 分享流程，不复制 Radius / Gist 业务逻辑。
 
-下一轮先实现该清理，再继续阶段 4 第 30 项 Shell aliases。
+批次 68 已实现该清理，验证通过后进入阶段 4 第 30 项 Shell aliases。
+
+重复实现审计结果：Pi 1.0.1 的公开 SDK 导出没有 `LlamaClient` / `shareSession`，
+RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部文件路径或复制源码。
+因此本轮不迁移、不搬源码，保留现有 GUI / 配置适配，等待 Pi 提供稳定公开入口。
 
 ## 后续任务清单
 
@@ -446,7 +418,7 @@ CodePIddy 是客户端，不复制 Pi core 已公开的运行时能力。保留�
 ### 阶段 1：MCP 统一
 
 2026-10-08 更新：本阶段第 5-8 项关于保留 Tavily `web_search` 的结论已被
-「客户端边界清理决定」替代；下一轮删除专用 Tavily MCP 和设置，只保留通用 MCP 配置。
+「客户端边界清理决定」替代；批次 68 已删除专用 Tavily MCP 和设置，只保留通用 MCP 配置。
 
 5. [x] 保留客户端 Tavily / `web_search` 独立设置卡和加密 Key。
 6. [x] 删除 `CODEPIDDY_TAVILY_MCP_ENTRY` 独立注入通道。
@@ -476,7 +448,7 @@ CodePIddy 是客户端，不复制 Pi core 已公开的运行时能力。保留�
 22. [x] `/share`：批次 51-53 已实现并验收客户端原生分享、隐私确认、独立分享设置、品牌图标、Radius / GitHub CLI 回退和 viewer link。
 23. [x] `/bug` / 客户端诊断包：批次 54 已完成客户端原生诊断导出，收集版本、平台、Agent / Session / Provider / MCP / trust 状态、最近错误、日志路径和可选脱敏 Session JSONL，导出本地 ZIP，不上传。Pi 1.0.1 仍没有原生 `/bug`。
 
-批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`，第 26 项 Codemode 已由批次 61 实现并提交 `ec4dde669`，第 27 项 Tool Search / Tool Exposure 已由批次 62 实现并提交 `6815fc026`，第 28 项 Prompt Templates 已由批次 63 实现并提交 `8a9231079`。第 29 项 Pi Packages 已由批次 67 实现客户端设置页、runtime helper、安装 / 更新 / 移除 / 更新检查和项目信任边界。下一轮先执行「客户端边界清理决定」，然后进入第 30 项 Shell aliases。
+批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`，第 26 项 Codemode 已由批次 61 实现并提交 `ec4dde669`，第 27 项 Tool Search / Tool Exposure 已由批次 62 实现并提交 `6815fc026`，第 28 项 Prompt Templates 已由批次 63 实现并提交 `8a9231079`。第 29 项 Pi Packages 已由批次 67 实现客户端设置页、runtime helper、安装 / 更新 / 移除 / 更新检查和项目信任边界。批次 68 已完成客户端边界清理，下一步进入第 30 项 Shell aliases。
 
 ### 阶段 4：高级运行时能力
 
@@ -498,7 +470,8 @@ CodePIddy 是客户端，不复制 Pi core 已公开的运行时能力。保留�
 解析，并校验 SDK 入口、commands、host peers 和 `quickjs-wasi`。更新内置 runtime 使用
 `npm run update:pi-runtime -- <version>`；只替换 `dist/bundle` 不再被视为有效更新。
 内置命令说明从 `dist/core/slash-commands.js` 读取，不再回退为统一的“Pi 内置命令”文案。
-30. 客户端边界清理：删除 permission / Tavily / 未加载扩展，复用 Pi core 的 llama / share 能力。
+30. [x] 客户端边界清理：删除 permission / Tavily / 未加载扩展；审计确认 Pi 1.0.1 暂无
+    llama / share 公开入口，保留 GUI 适配且不复制 core 源码。
 31. Shell aliases
 32. Telemetry 设置
 33. 自定义 Provider / 虚拟模型 / classifier / image models

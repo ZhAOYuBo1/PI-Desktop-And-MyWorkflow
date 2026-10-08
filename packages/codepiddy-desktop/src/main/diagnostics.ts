@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type {
@@ -34,7 +34,6 @@ export interface DiagnosticsAgentSnapshot {
 }
 
 export interface DiagnosticsManagerOptions {
-	userDataPath: string;
 	agentDir: string;
 	appVersion: string;
 	getPiRuntimeStatus(): PiRuntimeStatus;
@@ -55,7 +54,6 @@ const SECRET_KEY_PATTERN =
 	/(api[_-]?key|authorization|password|secret|token|cookie|credential|private[_-]?key|access[_-]?key)/iu;
 const MAX_TEXT_LENGTH = 512 * 1024;
 const MAX_SESSION_BYTES = 8 * 1024 * 1024;
-const MAX_PERMISSION_LOG_FILES = 8;
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -125,26 +123,6 @@ async function readTail(filePath: string, maxBytes: number): Promise<string | nu
 	}
 }
 
-async function collectPermissionLogs(directory: string): Promise<Zippable> {
-	let entries: string[] = [];
-	try {
-		entries = (await readdir(directory, { withFileTypes: true }))
-			.filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".log"))
-			.map((entry) => entry.name)
-			.sort()
-			.slice(-MAX_PERMISSION_LOG_FILES);
-	} catch (error) {
-		if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return {};
-		throw error;
-	}
-	const files: Zippable = {};
-	for (const name of entries) {
-		const content = await readTail(path.join(directory, name), MAX_TEXT_LENGTH);
-		if (content !== null) files[name] = strToU8(redactDiagnosticText(content));
-	}
-	return files;
-}
-
 function diagnosticReadme(input: DiagnosticsExportInput, includedSession: boolean): string {
 	return [
 		"CodePIddy diagnostics package",
@@ -153,7 +131,7 @@ function diagnosticReadme(input: DiagnosticsExportInput, includedSession: boolea
 		"",
 		"Contents:",
 		"- diagnostics.json: versions, environment, Agent, Provider, MCP, trust and error summaries.",
-		"- logs/: available Pi, MCP and permission logs.",
+		"- logs/: available Pi and MCP logs.",
 		includedSession
 			? "- session.jsonl: the selected Session JSONL after basic secret redaction."
 			: "- session.jsonl is not included.",
@@ -203,8 +181,6 @@ export class DiagnosticsManager {
 				? [{ timestamp: generatedAt, source: "renderer", message: input.uiError.trim() }]
 				: []),
 		].slice(-100);
-		const permissionLogDirectory = path.join(this.options.userDataPath, "permissions", "logs");
-		const permissionLogs = await collectPermissionLogs(permissionLogDirectory);
 		const debugLog = await readTail(path.join(this.options.agentDir, "pi-debug.log"), MAX_TEXT_LENGTH);
 		const mcpLog = await readTail(path.join(this.options.agentDir, "mcp.log"), MAX_TEXT_LENGTH);
 		const sessionFile = agent.value?.sessionFile ?? null;
@@ -251,12 +227,7 @@ export class DiagnosticsManager {
 			logs: {
 				debugLogPath: path.join(this.options.agentDir, "pi-debug.log"),
 				mcpLogPath: path.join(this.options.agentDir, "mcp.log"),
-				permissionLogDirectory,
-				included: [
-					...(debugLog ? ["pi-debug.log"] : []),
-					...(mcpLog ? ["mcp.log"] : []),
-					...Object.keys(permissionLogs),
-				],
+				included: [...(debugLog ? ["pi-debug.log"] : []), ...(mcpLog ? ["mcp.log"] : [])],
 			},
 			session: {
 				requested: input.includeSession,
@@ -269,7 +240,7 @@ export class DiagnosticsManager {
 			"README.txt": strToU8(diagnosticReadme(input, includedSession)),
 			"diagnostics.json": jsonFile(redactDiagnosticValue(diagnostics)),
 		};
-		const logs: Zippable = { ...permissionLogs };
+		const logs: Zippable = {};
 		if (debugLog) logs["pi-debug.log"] = strToU8(redactDiagnosticText(debugLog));
 		if (mcpLog) logs["mcp.log"] = strToU8(redactDiagnosticText(mcpLog));
 		if (Object.keys(logs).length > 0) files.logs = logs;

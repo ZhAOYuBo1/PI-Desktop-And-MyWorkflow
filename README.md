@@ -58,7 +58,7 @@ Pi 仍然是底层事实源：模型、Provider、Session、Tool、Skill、Slash
 
 ### 设置
 
-Pi 运行时的独立版本检查 / 更新 / 回退、按工具类型划分的权限策略、Tavily Search、Shell 路径和按 Agent 角色分配的 Skill，都在设置页。
+Pi 运行时的独立版本检查 / 更新 / 回退、工具启停、MCP 服务、Shell 路径和按 Agent 角色分配的 Skill，都在设置页。
 
 <img src="docs/images/codepiddy-settings.png" alt="设置页" width="100%" />
 
@@ -184,8 +184,6 @@ packages/codepiddy-desktop/              Electron Main、Preload 与 React Rende
 packages/codepiddy-core/                 Work Item、Agent Registry、Pi RPC 与写锁
 packages/codepiddy-shared/               共享 IPC 与工作流类型
 packages/codepiddy-agent-skills/         随应用分发的固定 Skill
-packages/codepiddy-permission-extension/ 权限系统适配
-packages/codepiddy-tavily-search-mcp/    Tavily Search MCP
 packages/coding-agent/                   Pi Coding Agent Runtime
 docs/images/                             README 截图
 ```
@@ -200,9 +198,9 @@ docs/images/                             README 截图
 
 - Renderer 开启 Sandbox 与 Context Isolation，禁用 Node Integration；
 - IPC 输入做运行时校验；
-- Tavily Key 使用 Electron `safeStorage`；
+- Provider / MCP OAuth 凭据使用 Electron `safeStorage`；
 - 文件面板只能列出和读取项目根目录内的路径，越界请求被拒绝；
-- Bash、MCP、Skill 和项目外路径的审批策略可在设置中调整；
+- 工具启用范围和 MCP exposure 分别由 Pi 原生 `settings.json` 与 `mcp.json` 控制；
 - 多 Agent 之间不做进程内编排，交接靠共享工作树和工作项文档；
 - 当前 Windows MVP 未提供强执行沙箱，Agent 进程使用当前操作系统用户权限。
 

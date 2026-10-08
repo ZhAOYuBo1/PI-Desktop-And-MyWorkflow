@@ -36,7 +36,6 @@
 			"!**/models.generated.ts",
 			"!**/*.models.ts",
 			"!packages/mom/data/**/*",
-			"!packages/codepiddy-permission-extension/**/*",
 			"!!**/node_modules"
 		]
 	}

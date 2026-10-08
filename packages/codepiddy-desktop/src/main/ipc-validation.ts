@@ -24,8 +24,6 @@ import type {
 	McpProjectOverrideInput,
 	McpProjectOverrideLocator,
 	McpServerInput,
-	PermissionDefaults,
-	PermissionState,
 	PiBuiltinToolName,
 	PiPackageActionInput,
 	PiPackageExtensionInput,
@@ -333,18 +331,18 @@ export function parseForkAgentSessionInput(value: unknown): ForkAgentSessionInpu
 }
 
 export function parseExtensionUiResponseInput(value: unknown): ExtensionUiResponseInput {
-	const input = record(value, "Permission Response");
+	const input = record(value, "Extension UI Response");
 	const result: ExtensionUiResponseInput = {
 		...parseAgentLocator(input),
-		requestId: text(input.requestId, "Permission Request ID", 200),
+		requestId: text(input.requestId, "Extension UI Request ID", 200),
 	};
-	if (input.value !== undefined) result.value = text(input.value, "Permission Value", 100_000, true);
+	if (input.value !== undefined) result.value = text(input.value, "Extension UI Value", 100_000, true);
 	if (input.confirmed !== undefined) {
-		if (typeof input.confirmed !== "boolean") throw new Error("Permission confirmed 必须是布尔值");
+		if (typeof input.confirmed !== "boolean") throw new Error("Extension UI confirmed 必须是布尔值");
 		result.confirmed = input.confirmed;
 	}
 	if (input.cancelled !== undefined) {
-		if (input.cancelled !== true) throw new Error("Permission cancelled 值无效");
+		if (input.cancelled !== true) throw new Error("Extension UI cancelled 值无效");
 		result.cancelled = true;
 	}
 	return result;
@@ -706,24 +704,6 @@ export function parseRunLlamaCppActionInput(value: unknown): RunLlamaCppActionIn
 	return {
 		action,
 		...(input.modelId === undefined ? {} : { modelId: text(input.modelId, "llama.cpp 模型 ID", 2000) }),
-	};
-}
-
-function permissionState(value: unknown, label: string): PermissionState {
-	if (value === "allow" || value === "ask" || value === "deny") return value;
-	throw new Error(`${label}权限状态无效`);
-}
-
-export function parsePermissionDefaults(value: unknown): PermissionDefaults {
-	const input = record(value, "Permission Defaults");
-	return {
-		read: permissionState(input.read, "读取"),
-		write: permissionState(input.write, "修改"),
-		bash: permissionState(input.bash, "命令执行"),
-		mcp: permissionState(input.mcp, "MCP"),
-		skills: permissionState(input.skills, "Skill"),
-		otherTools: permissionState(input.otherTools, "其他工具"),
-		externalDirectory: permissionState(input.externalDirectory, "项目外路径"),
 	};
 }
 

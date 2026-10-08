@@ -26,22 +26,21 @@ const EXPOSURE_OPTIONS: Array<{ value: McpExposure; label: string; description: 
 
 const DEMO_SERVERS: McpServerSummary[] = [
 	{
-		name: "web_search",
+		name: "filesystem",
 		transport: "stdio",
-		command: "node",
-		args: ["tavily-search.js"],
+		command: "npx",
+		args: ["-y", "@modelcontextprotocol/server-filesystem@2026.1.14"],
 		url: null,
-		env: { TAVILY_API_KEY: `\${TAVILY_API_KEY}` },
+		env: {},
 		headers: {},
-		enabled: false,
-		exposure: "direct",
-		toolExposure: { web_search: "direct" },
-		description: "Tavily web search",
-		timeout: null,
+		enabled: true,
+		exposure: "codemode",
+		toolExposure: {},
+		description: "Filesystem access tools",
+		timeout: 30,
 		oauth: null,
 		authProvider: null,
 		projectOverride: null,
-		source: "builtin",
 	},
 	{
 		name: "chrome-devtools",
@@ -59,21 +58,20 @@ const DEMO_SERVERS: McpServerSummary[] = [
 		oauth: null,
 		authProvider: null,
 		projectOverride: null,
-		source: "global",
 	},
 ];
 
 const DEMO_RUNTIME: McpRuntimeSnapshot = {
 	servers: [
 		{
-			name: "web_search",
+			name: "filesystem",
 			scope: "global",
 			source: "~/.pi/agent/mcp.json",
-			enabled: false,
-			exposure: "direct",
-			transport: "node tavily-search.js",
-			state: "disabled",
-			tools: [],
+			enabled: true,
+			exposure: "codemode",
+			transport: "npx @modelcontextprotocol/server-filesystem@2026.1.14",
+			state: "connected",
+			tools: [{ name: "read_file" }, { name: "write_file" }],
 		},
 		{
 			name: "chrome-devtools",
@@ -406,7 +404,6 @@ export function McpSettings({
 							: null,
 					authProvider: input.authProvider?.trim() || null,
 					projectOverride: previous?.projectOverride ?? null,
-					source: previous?.source === "builtin" ? "builtin" : "global",
 				};
 				return [...next, created].sort((left, right) => left.name.localeCompare(right.name));
 			});
@@ -603,7 +600,7 @@ export function McpSettings({
 								<span className="mcp-runtime-dot" aria-hidden="true" />
 								<span className="mcp-runtime-copy">
 									<strong>{server.name}</strong>
-									<small title={server.transport}>{server.transport || server.source}</small>
+									<small title={server.transport}>{server.transport}</small>
 								</span>
 								<span className="mcp-runtime-tools">
 									{server.tools.length > 0 ? `${server.tools.length} 个工具` : "无工具"}
@@ -649,9 +646,7 @@ export function McpSettings({
 								</small>
 							</span>
 							<span className="mcp-server-badges">
-								<span className="mcp-server-badge">
-									{server.source === "builtin" ? "内置" : server.transport === "http" ? "HTTP" : "stdio"}
-								</span>
+								<span className="mcp-server-badge">{server.transport === "http" ? "HTTP" : "stdio"}</span>
 								<span className="mcp-server-badge">{effectiveExposure}</span>
 								{!effectiveEnabled ? <span className="mcp-server-badge is-muted">禁用</span> : null}
 								{override ? <span className="mcp-server-badge is-project">项目覆盖</span> : null}
@@ -668,29 +663,25 @@ export function McpSettings({
 								>
 									<SlidersHorizontal size={14} strokeWidth={2} />
 								</button>
-								{server.source === "builtin" ? null : (
-									<>
-										<button
-											type="button"
-											className="work-panel-icon-button"
-											aria-label="编辑 MCP 服务"
-											title="编辑"
-											onClick={() => setDraft(draftFrom(server))}
-										>
-											<Pencil size={14} strokeWidth={2} />
-										</button>
-										<button
-											type="button"
-											className="work-panel-icon-button"
-											aria-label="删除 MCP 服务"
-											title="删除"
-											disabled={busy !== null}
-											onClick={() => void removeServer(server.name)}
-										>
-											<Trash2 size={14} strokeWidth={2} />
-										</button>
-									</>
-								)}
+								<button
+									type="button"
+									className="work-panel-icon-button"
+									aria-label="编辑 MCP 服务"
+									title="编辑"
+									onClick={() => setDraft(draftFrom(server))}
+								>
+									<Pencil size={14} strokeWidth={2} />
+								</button>
+								<button
+									type="button"
+									className="work-panel-icon-button"
+									aria-label="删除 MCP 服务"
+									title="删除"
+									disabled={busy !== null}
+									onClick={() => void removeServer(server.name)}
+								>
+									<Trash2 size={14} strokeWidth={2} />
+								</button>
 							</span>
 						</div>
 					);
@@ -844,7 +835,7 @@ export function McpSettings({
 							<textarea
 								value={draft.toolExposureText}
 								rows={4}
-								placeholder={"web_search=direct\n*=deferred"}
+								placeholder={"search=direct\n*=deferred"}
 								onChange={(event) => setDraft({ ...draft, toolExposureText: event.target.value })}
 							/>
 						</label>
@@ -1030,7 +1021,7 @@ export function McpSettings({
 						<textarea
 							value={overrideDraft.toolExposureText}
 							rows={3}
-							placeholder={"web_search=direct\n*=deferred"}
+							placeholder={"search=direct\n*=deferred"}
 							onChange={(event) => setOverrideDraft({ ...overrideDraft, toolExposureText: event.target.value })}
 						/>
 					</label>

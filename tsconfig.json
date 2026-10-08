@@ -55,7 +55,6 @@
 	"exclude": [
 		"**/dist/**",
 		"packages/coding-agent/examples/extensions/gondolin/**",
-		"packages/codepiddy-desktop/src/renderer/**",
-		"packages/codepiddy-permission-extension/**"
+		"packages/codepiddy-desktop/src/renderer/**"
 	]
 }

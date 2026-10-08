@@ -18,9 +18,7 @@ import type {
 	CacheWarmingMode,
 	CacheWarmingSettings,
 	LaneKind,
-	PendingPermissionRequest,
-	PermissionDefaults,
-	PermissionState,
+	PendingExtensionUiRequest,
 	PiRuntimeStatus,
 	ProjectSummary,
 	ProjectTrustStatus,
@@ -33,7 +31,7 @@ import type {
 	ShareAgentSessionResult,
 	WorkItemSummary,
 } from "@codepiddy/shared";
-import { Check, Eye, EyeOff, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import {
 	type CSSProperties,
 	lazy,
@@ -88,7 +86,6 @@ import {
 import { useTranscriptScroll } from "./components/use-transcript-scroll.ts";
 import { WorkPanel } from "./components/WorkPanel.tsx";
 import { demoProject } from "./demo-project.ts";
-import { permissionChoicePresentation } from "./permission-choices.ts";
 import { WORKSPACE_FILES_DRAG_TYPE } from "./workspace-drag.ts";
 
 const LlamaCppSettings = lazy(() =>
@@ -264,7 +261,7 @@ interface ToolRecoveryOffer {
 	reason: string;
 }
 
-function extensionDialogFromPermission(request: PendingPermissionRequest): ExtensionDialogState {
+function extensionDialogFromRequest(request: PendingExtensionUiRequest): ExtensionDialogState {
 	return {
 		agentInstanceId: request.agentInstanceId,
 		projectId: request.projectId,
@@ -916,111 +913,6 @@ function IconButton({
 	);
 }
 
-const permissionChoices: { value: PermissionState; label: string }[] = [
-	{ value: "allow", label: "直接允许" },
-	{ value: "ask", label: "每次询问" },
-	{ value: "deny", label: "禁止" },
-];
-
-function PermissionSettingRow({
-	label,
-	description,
-	value,
-	onChange,
-}: {
-	label: string;
-	description: string;
-	value: PermissionState;
-	onChange(value: PermissionState): void;
-}) {
-	const [open, setOpen] = useState(false);
-	const [highlighted, setHighlighted] = useState(0);
-	const rootRef = useRef<HTMLDivElement>(null);
-	const triggerRef = useRef<HTMLButtonElement>(null);
-	const listRef = useRef<HTMLDivElement>(null);
-	useEffect(() => {
-		if (!open) return;
-		const closeOnOutside = (event: PointerEvent): void => {
-			if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-		};
-		document.addEventListener("pointerdown", closeOnOutside);
-		return () => document.removeEventListener("pointerdown", closeOnOutside);
-	}, [open]);
-	useEffect(() => {
-		if (open) listRef.current?.querySelectorAll<HTMLButtonElement>("[role=option]")[highlighted]?.focus();
-	}, [open, highlighted]);
-	function choose(next: PermissionState): void {
-		onChange(next);
-		setOpen(false);
-		triggerRef.current?.focus();
-	}
-	function handleKeys(event: React.KeyboardEvent): void {
-		if (event.key === "Escape" && open) {
-			event.preventDefault();
-			event.stopPropagation();
-			setOpen(false);
-			triggerRef.current?.focus();
-		} else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-			event.preventDefault();
-			setHighlighted((current) =>
-				open
-					? (current + (event.key === "ArrowDown" ? 1 : 2)) % 3
-					: permissionChoices.findIndex((choice) => choice.value === value),
-			);
-			setOpen(true);
-		}
-	}
-	return (
-		<div className="permission-setting-row">
-			<span>
-				<strong>{label}</strong>
-				<small>{description}</small>
-			</span>
-			<div className="permission-picker" ref={rootRef}>
-				<button
-					ref={triggerRef}
-					type="button"
-					className="permission-picker-trigger"
-					onKeyDown={handleKeys}
-					aria-label={`${label}：${permissionChoices.find((choice) => choice.value === value)?.label}`}
-					aria-haspopup="listbox"
-					aria-expanded={open}
-					onClick={() => {
-						setHighlighted(permissionChoices.findIndex((choice) => choice.value === value));
-						setOpen((current) => !current);
-					}}
-				>
-					{permissionChoices.find((choice) => choice.value === value)?.label}
-					<AppIcon name="chevron" size={14} />
-				</button>
-				{open ? (
-					<div
-						className="permission-picker-list"
-						ref={listRef}
-						role="listbox"
-						onKeyDown={handleKeys}
-						aria-label={`${label}权限`}
-					>
-						{permissionChoices.map((choice) => (
-							<button
-								key={choice.value}
-								type="button"
-								className={value === choice.value ? "is-selected" : ""}
-								role="option"
-								aria-selected={value === choice.value}
-								onClick={() => choose(choice.value)}
-							>
-								<span>{choice.label}</span>
-								{value === choice.value ? <Check size={13} strokeWidth={2} aria-hidden="true" /> : null}
-							</button>
-						))}
-					</div>
-				) : null}
-			</div>
-		</div>
-	);
-}
-
 function formatTokenCount(value: number): string {
 	return new Intl.NumberFormat(undefined, {
 		notation: value >= 10_000 ? "compact" : "standard",
@@ -1365,9 +1257,7 @@ type SettingsSectionId =
 	| "providers"
 	| "llama"
 	| "mcp"
-	| "search"
 	| "share"
-	| "permissions"
 	| "skills"
 	| "prompts"
 	| "packages";
@@ -1391,14 +1281,12 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 			{ id: "providers", label: "Provider 与模型", icon: "globe" },
 			{ id: "llama", label: "llama.cpp", icon: "hard-drive" },
 			{ id: "mcp", label: "MCP 服务", icon: "plug" },
-			{ id: "search", label: "Tavily Search", icon: "search" },
 			{ id: "share", label: "分享", icon: "share" },
 		],
 	},
 	{
 		label: "Agent",
 		items: [
-			{ id: "permissions", label: "默认权限", icon: "shield" },
 			{ id: "skills", label: "Agent Skills", icon: "sparkles" },
 			{ id: "prompts", label: "Prompt 模板", icon: "message-question" },
 			{ id: "packages", label: "Pi Packages", icon: "package" },
@@ -1758,20 +1646,6 @@ export function App() {
 	const [piRuntimeBusy, setPiRuntimeBusy] = useState<"check" | "install" | "rollback" | null>(null);
 	const [settingsSection, setSettingsSection] = useState<SettingsSectionId>("runtime");
 	const [piUpdateConfirm, setPiUpdateConfirm] = useState(false);
-	const [permissionDefaults, setPermissionDefaults] = useState<PermissionDefaults>({
-		read: "allow",
-		write: "allow",
-		bash: "ask",
-		mcp: "ask",
-		skills: "ask",
-		otherTools: "ask",
-		externalDirectory: "ask",
-	});
-	const [permissionSaving, setPermissionSaving] = useState(false);
-	// 权限卡自己的错误位。设置页通用的 error 横幅固定在 main pane 顶部，
-	// 页面滚到下面就看不见，而这里恰恰是最需要立刻看到失败的地方。
-	const [tavilyApiKey, setTavilyApiKey] = useState("");
-	const [tavilyKeyRevealed, setTavilyKeyRevealed] = useState(false);
 	const [shellPath, setShellPath] = useState("");
 	const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([]);
 	const [roleSkillAssignments, setRoleSkillAssignments] = useState<RoleSkillAssignments>({
@@ -1875,10 +1749,10 @@ export function App() {
 	const [agentActivities, setAgentActivities] = useState<Record<string, AgentActivity>>(
 		demoMode ? { "CODE-001": { label: "Pi 正在处理", kind: "working", queued: 0 } } : {},
 	);
-	const [pendingPermissionRequests, setPendingPermissionRequests] = useState<Record<string, PendingPermissionRequest>>(
-		{},
-	);
-	const [deferredPermissionAgentId, setDeferredPermissionAgentId] = useState<string | null>(null);
+	const [pendingExtensionUiRequests, setPendingExtensionUiRequests] = useState<
+		Record<string, PendingExtensionUiRequest>
+	>({});
+	const [deferredExtensionUiAgentId, setDeferredExtensionUiAgentId] = useState<string | null>(null);
 	const [toolRecoveryOffers, setToolRecoveryOffers] = useState<Record<string, ToolRecoveryOffer>>({});
 	const [agentSessionSnapshots, setAgentSessionSnapshots] = useState<Record<string, AgentSessionSnapshot>>(
 		demoMode ? { "CODE-001": demoSessionSnapshot } : {},
@@ -1913,7 +1787,7 @@ export function App() {
 	const [fileMatches, setFileMatches] = useState<string[]>([]);
 	const activeAssistantIds = useRef(new Map<string, string>());
 	const pendingToolFailures = useRef(new Map<string, ToolRecoveryOffer>());
-	const permissionResponsesInFlight = useRef(new Set<string>());
+	const extensionUiResponsesInFlight = useRef(new Set<string>());
 	const agentCommandLoads = useRef(new Map<string, Promise<AgentCommandOption[]>>());
 	const activatedAgentKey = useRef<string | null>(null);
 	const lastActiveAgentLocatorRef = useRef<AgentInstanceLocator | null>(null);
@@ -2519,7 +2393,7 @@ export function App() {
 					typeof event.id === "string" &&
 					(method === "select" || method === "confirm" || method === "input" || method === "editor")
 				) {
-					const request: PendingPermissionRequest = {
+					const request: PendingExtensionUiRequest = {
 						agentInstanceId,
 						projectId: clientEvent.projectId,
 						workItemId: clientEvent.workItemId,
@@ -2535,12 +2409,12 @@ export function App() {
 						prefill: typeof event.prefill === "string" ? event.prefill : "",
 						createdAt: new Date().toISOString(),
 					};
-					setPendingPermissionRequests((current) => ({ ...current, [agentInstanceId]: request }));
-					setDeferredPermissionAgentId((current) => (current === agentInstanceId ? null : current));
-					if (activeAgentId === agentInstanceId) setExtensionDialog(extensionDialogFromPermission(request));
+					setPendingExtensionUiRequests((current) => ({ ...current, [agentInstanceId]: request }));
+					setDeferredExtensionUiAgentId((current) => (current === agentInstanceId ? null : current));
+					if (activeAgentId === agentInstanceId) setExtensionDialog(extensionDialogFromRequest(request));
 					markAgentUnread(agentInstanceId);
 					updateAgentStatus(clientEvent, "waiting");
-					updateAgentActivity(agentInstanceId, { label: "等待权限确认", kind: "waiting", queued: 0 });
+					updateAgentActivity(agentInstanceId, { label: "等待扩展确认", kind: "waiting", queued: 0 });
 				}
 				return;
 			}
@@ -2576,7 +2450,7 @@ export function App() {
 				return;
 			}
 			if (type === "agent_settled") {
-				setPendingPermissionRequests((current) => {
+				setPendingExtensionUiRequests((current) => {
 					if (!(agentInstanceId in current)) return current;
 					const next = { ...current };
 					delete next[agentInstanceId];
@@ -2871,7 +2745,7 @@ export function App() {
 				return;
 			}
 			if (type === "process_recovery_start") {
-				setPendingPermissionRequests((current) => {
+				setPendingExtensionUiRequests((current) => {
 					if (!(agentInstanceId in current)) return current;
 					const next = { ...current };
 					delete next[agentInstanceId];
@@ -3038,13 +2912,13 @@ export function App() {
 		void window.codepiddy
 			.activateAgent(locator)
 			.then(async () => {
-				const permission = await window.codepiddy.getPendingPermissionRequest(locator);
-				if (permission) {
-					setPendingPermissionRequests((current) => ({
+				const request = await window.codepiddy.getPendingExtensionUiRequest(locator);
+				if (request) {
+					setPendingExtensionUiRequests((current) => ({
 						...current,
-						[slot.currentInstanceId!]: permission,
+						[slot.currentInstanceId!]: request,
 					}));
-					setExtensionDialog(extensionDialogFromPermission(permission));
+					setExtensionDialog(extensionDialogFromRequest(request));
 				}
 				const [modelResult, commandResult, snapshotResult] = await Promise.allSettled([
 					window.codepiddy.getAgentModelSelection(locator),
@@ -3077,19 +2951,19 @@ export function App() {
 	useEffect(() => {
 		if (!activeAgentId) {
 			setExtensionDialog(null);
-			setDeferredPermissionAgentId(null);
+			setDeferredExtensionUiAgentId(null);
 			return;
 		}
-		if (deferredPermissionAgentId === activeAgentId) {
+		if (deferredExtensionUiAgentId === activeAgentId) {
 			setExtensionDialog(null);
 			return;
 		}
-		const pending = pendingPermissionRequests[activeAgentId];
+		const pending = pendingExtensionUiRequests[activeAgentId];
 		setExtensionDialog((current) => {
 			if (current?.agentInstanceId === activeAgentId) return current;
-			return pending ? extensionDialogFromPermission(pending) : null;
+			return pending ? extensionDialogFromRequest(pending) : null;
 		});
-	}, [activeAgentId, deferredPermissionAgentId, pendingPermissionRequests]);
+	}, [activeAgentId, deferredExtensionUiAgentId, pendingExtensionUiRequests]);
 
 	useEffect(() => {
 		if (
@@ -3137,24 +3011,6 @@ export function App() {
 		const timer = window.setTimeout(() => setError(null), 6500);
 		return () => window.clearTimeout(timer);
 	}, [error]);
-
-	useEffect(() => {
-		if (demoMode || selection.type !== "settings" || settingsSection !== "search" || !("codepiddy" in window)) {
-			return;
-		}
-		let cancelled = false;
-		void window.codepiddy
-			.getSettingsStatus()
-			.then((status) => {
-				if (!cancelled) setSettingsStatus(status);
-			})
-			.catch((caught: unknown) => {
-				if (!cancelled) setError(caught instanceof Error ? caught.message : "读取 Tavily 配置状态失败");
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [selection.type, settingsSection]);
 
 	useEffect(() => {
 		if (!sessionNotice) return;
@@ -3902,7 +3758,7 @@ export function App() {
 					await window.codepiddy.respondToExtensionUi({ ...locator, requestId, cancelled: true });
 				}
 				await window.codepiddy.abortAgent(locator);
-				setPendingPermissionRequests((current) => {
+				setPendingExtensionUiRequests((current) => {
 					const next = { ...current };
 					delete next[agentId];
 					return next;
@@ -4638,8 +4494,8 @@ export function App() {
 	}): Promise<void> {
 		if (!extensionDialog || !("codepiddy" in window)) return;
 		const current = extensionDialog;
-		if (permissionResponsesInFlight.current.has(current.requestId)) return;
-		permissionResponsesInFlight.current.add(current.requestId);
+		if (extensionUiResponsesInFlight.current.has(current.requestId)) return;
+		extensionUiResponsesInFlight.current.add(current.requestId);
 		setExtensionDialog(null);
 		try {
 			await window.codepiddy.respondToExtensionUi({
@@ -4650,12 +4506,12 @@ export function App() {
 				requestId: current.requestId,
 				...response,
 			});
-			setPendingPermissionRequests((permissions) => {
-				const next = { ...permissions };
+			setPendingExtensionUiRequests((requests) => {
+				const next = { ...requests };
 				delete next[current.agentInstanceId];
 				return next;
 			});
-			setDeferredPermissionAgentId((agentId) => (agentId === current.agentInstanceId ? null : agentId));
+			setDeferredExtensionUiAgentId((agentId) => (agentId === current.agentInstanceId ? null : agentId));
 			updateAgentStatus(
 				{
 					agentInstanceId: current.agentInstanceId,
@@ -4668,12 +4524,12 @@ export function App() {
 			);
 		} catch (caught) {
 			const message = caught instanceof Error ? caught.message : String(caught);
-			if (!/Permission request is no longer active|Agent process is not active/i.test(message)) {
+			if (!/request is no longer active|Agent process is not active/i.test(message)) {
 				setExtensionDialog(current);
-				setError(clientErrorMessage(caught, "提交权限响应失败"));
+				setError(clientErrorMessage(caught, "提交扩展响应失败"));
 			}
 		} finally {
-			permissionResponsesInFlight.current.delete(current.requestId);
+			extensionUiResponsesInFlight.current.delete(current.requestId);
 		}
 	}
 
@@ -4786,45 +4642,16 @@ export function App() {
 		setSettingsSection(section);
 		setSelection({ type: "settings" });
 		if (!("codepiddy" in window)) return;
-		const [status, permissions, skills, assignments, piRuntime] = await Promise.all([
+		const [status, skills, assignments, piRuntime] = await Promise.all([
 			window.codepiddy.getSettingsStatus(),
-			window.codepiddy.getPermissionDefaults(),
 			window.codepiddy.listAgentSkills(project?.rootPath),
 			window.codepiddy.getRoleSkillAssignments(),
 			window.codepiddy.getPiRuntimeStatus(),
 		]);
 		setSettingsStatus(status);
 		setPiRuntimeStatus(piRuntime);
-		setPermissionDefaults(permissions);
 		setAvailableSkills(skills);
 		setRoleSkillAssignments(assignments);
-	}
-
-	/**
-	 * 改一项就落一次盘，不再要按「保存权限」。
-	 *
-	 * 同一个设置页里原本混着三套保存模型：权限和 Tavily/Shell 要点保存，
-	 * Skills 勾选即存，运行时是即时执行。用户得记三套规则，而且前两者
-	 * 改完直接切走就静默丢失。统一成即时保存后，权限这一项的行为和 Skills 一致，
-	 * 也和权限本身「下一次工具调用就生效」的事实一致（扩展按 mtime 失效缓存）。
-	 *
-	 * 先乐观更新再回滚：写盘是本地操作，失败时把界面退回去并在卡片内报错，
-	 * 而不是把错误塞到页面顶部的全局横幅里（长页面滚下去看不见）。
-	 */
-	async function updatePermissionDefaults(patch: Partial<PermissionDefaults>): Promise<void> {
-		if (!("codepiddy" in window) || permissionSaving) return;
-		const previous = permissionDefaults;
-		const next = { ...previous, ...patch };
-		setPermissionDefaults(next);
-		setPermissionSaving(true);
-		try {
-			setPermissionDefaults(await window.codepiddy.setPermissionDefaults(next));
-		} catch (caught) {
-			setPermissionDefaults(previous);
-			showSettingsToast(caught instanceof Error ? caught.message : "保存默认权限失败", "error");
-		} finally {
-			setPermissionSaving(false);
-		}
 	}
 
 	/**
@@ -4885,46 +4712,6 @@ export function App() {
 		}
 	}
 
-	async function saveTavilyKey(): Promise<void> {
-		if (!("codepiddy" in window)) return;
-		try {
-			setSettingsStatus(await window.codepiddy.saveTavilyApiKey(tavilyApiKey));
-			setTavilyApiKey("");
-			setTavilyKeyRevealed(false);
-		} catch (caught) {
-			setError(caught instanceof Error ? caught.message : "保存 Tavily API Key 失败");
-		}
-	}
-
-	async function clearTavilyKey(): Promise<void> {
-		if (!("codepiddy" in window)) return;
-		setSettingsStatus(await window.codepiddy.clearTavilyApiKey());
-		setTavilyApiKey("");
-		setTavilyKeyRevealed(false);
-	}
-
-	async function toggleTavilyKeyReveal(): Promise<void> {
-		if (!("codepiddy" in window)) return;
-		if (tavilyKeyRevealed) {
-			setTavilyKeyRevealed(false);
-			return;
-		}
-		if (tavilyApiKey) {
-			setTavilyKeyRevealed(true);
-			return;
-		}
-		if (!settingsStatus?.tavilyApiKeyConfigured) return;
-		try {
-			const apiKey = await window.codepiddy.getTavilyApiKey();
-			if (apiKey) {
-				setTavilyApiKey(apiKey);
-				setTavilyKeyRevealed(true);
-			}
-		} catch (caught) {
-			setError(caught instanceof Error ? caught.message : "读取 Tavily API Key 失败");
-		}
-	}
-
 	async function saveShellPath(value: string): Promise<void> {
 		if (!("codepiddy" in window)) return;
 		try {
@@ -4973,14 +4760,6 @@ export function App() {
 			setError(caught instanceof Error ? caught.message : "保存 Agent Skill 配置失败");
 		} finally {
 			setRoleSkillSaving(null);
-		}
-	}
-
-	async function openPermissionPolicyFolder(): Promise<void> {
-		try {
-			await window.codepiddy.openPermissionPolicyFolder();
-		} catch (caught) {
-			setError(caught instanceof Error ? caught.message : "打开权限配置目录失败");
 		}
 	}
 
@@ -5292,131 +5071,6 @@ export function App() {
 								onStatusChange={setSettingsStatus}
 							/>
 						</div>
-						<section
-							className="settings-card permission-settings-card"
-							hidden={settingsSection !== "permissions"}
-						>
-							<div className="settings-card-heading">
-								<div>
-									<h2>默认权限</h2>
-									<p>所有 Agent 共用。按工具类型分别设置；“修改文件”不包含 Bash 命令。</p>
-								</div>
-								<div className="skill-settings-actions">
-									<div className="settings-status">全局</div>
-									<button
-										className="secondary-button"
-										type="button"
-										onClick={() => void openPermissionPolicyFolder()}
-									>
-										打开权限配置目录
-									</button>
-								</div>
-							</div>
-							<div className="permission-setting-list">
-								<PermissionSettingRow
-									label="读取文件"
-									description="read、grep、find 和 ls"
-									value={permissionDefaults.read}
-									onChange={(read) => void updatePermissionDefaults({ read })}
-								/>
-								<PermissionSettingRow
-									label="修改文件"
-									description="write 和 edit"
-									value={permissionDefaults.write}
-									onChange={(write) => void updatePermissionDefaults({ write })}
-								/>
-								<PermissionSettingRow
-									label="命令执行"
-									description="Bash，可执行任意命令；Coding Agent 常用"
-									value={permissionDefaults.bash}
-									onChange={(bash) => void updatePermissionDefaults({ bash })}
-								/>
-								<PermissionSettingRow
-									label="MCP 工具"
-									description="调用已配置的 MCP 服务"
-									value={permissionDefaults.mcp}
-									onChange={(mcp) => void updatePermissionDefaults({ mcp })}
-								/>
-								<PermissionSettingRow
-									label="Skill"
-									description="读取和使用 Agent Skill"
-									value={permissionDefaults.skills}
-									onChange={(skills) => void updatePermissionDefaults({ skills })}
-								/>
-								<PermissionSettingRow
-									label="其他工具"
-									description="未单独列出的工具"
-									value={permissionDefaults.otherTools}
-									onChange={(otherTools) => void updatePermissionDefaults({ otherTools })}
-								/>
-								<PermissionSettingRow
-									label="项目外路径"
-									description="通过文件工具访问项目目录之外"
-									value={permissionDefaults.externalDirectory}
-									onChange={(externalDirectory) =>
-										setPermissionDefaults((current) => ({ ...current, externalDirectory }))
-									}
-								/>
-							</div>
-							<div className="permission-settings-footer">
-								<small>
-									直接允许命令执行可运行任意命令。改动即时保存，对所有 Agent
-									的后续工具调用生效；已弹出的请求仍需处理。
-								</small>
-								<span className="settings-status">{permissionSaving ? "保存中" : "已保存"}</span>
-							</div>
-						</section>
-						<section className="settings-card" hidden={settingsSection !== "search"}>
-							<div>
-								<h2>Tavily Search</h2>
-								<p>API Key 使用 Electron safeStorage 加密保存在本机，不会写入项目或日志。</p>
-							</div>
-							<div className="settings-status">
-								{settingsStatus?.tavilyApiKeyConfigured ? "已配置" : "未配置"}
-							</div>
-							<div className="settings-secret-field">
-								<input
-									type={tavilyKeyRevealed ? "text" : "password"}
-									value={tavilyApiKey}
-									onChange={(event) => setTavilyApiKey(event.target.value)}
-									placeholder={settingsStatus?.tavilyApiKeyConfigured ? "••••••••••••••••" : "tvly-…"}
-								/>
-								<button
-									className="settings-secret-toggle"
-									type="button"
-									aria-label={tavilyKeyRevealed ? "隐藏 Tavily API Key" : "显示 Tavily API Key"}
-									title={tavilyKeyRevealed ? "隐藏 Key" : "显示 Key"}
-									disabled={!settingsStatus?.tavilyApiKeyConfigured && !tavilyApiKey}
-									onClick={() => void toggleTavilyKeyReveal()}
-								>
-									{tavilyKeyRevealed ? (
-										<EyeOff size={14} strokeWidth={2} />
-									) : (
-										<Eye size={14} strokeWidth={2} />
-									)}
-								</button>
-							</div>
-							<div className="settings-actions">
-								<button
-									className="primary-button"
-									type="button"
-									onClick={() => void saveTavilyKey()}
-									disabled={!tavilyApiKey.trim()}
-								>
-									保存
-								</button>
-								<button
-									className="secondary-button"
-									type="button"
-									onClick={() => void clearTavilyKey()}
-									disabled={!settingsStatus?.tavilyApiKeyConfigured}
-								>
-									清除
-								</button>
-							</div>
-							<small>修改后，新启动或重新启动的 Agent 才会使用新 Key。</small>
-						</section>
-
 						<section className="settings-card" hidden={settingsSection !== "shell"}>
 							<div>
 								<h2>Shell</h2>
@@ -6856,7 +6510,7 @@ export function App() {
 			) : null}
 			{extensionDialog ? (
 				<ModalShell
-					title="权限请求"
+					title="扩展请求"
 					onClose={() => void respondToExtensionDialog({ cancelled: true })}
 					width="sm"
 					className="permission-modal"
@@ -6870,7 +6524,7 @@ export function App() {
 						className="permission-defer"
 						type="button"
 						onClick={() => {
-							setDeferredPermissionAgentId(extensionDialog.agentInstanceId);
+							setDeferredExtensionUiAgentId(extensionDialog.agentInstanceId);
 							setExtensionDialog(null);
 						}}
 					>
@@ -6878,9 +6532,9 @@ export function App() {
 					</button>
 					{extensionDialog.method === "select" ? (
 						<div className="permission-options">
-							{extensionDialog.options.map((option) => (
+							{extensionDialog.options.map((option, index) => (
 								<button
-									className={permissionChoicePresentation(option).className}
+									className={index === 0 ? "primary-button" : "secondary-button"}
 									type="button"
 									key={option}
 									onClick={() => void respondToExtensionDialog({ value: option })}
