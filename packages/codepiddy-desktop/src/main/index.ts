@@ -90,6 +90,7 @@ import {
 	parseExtensionUiResponseInput,
 	parseExternalUrl,
 	parseForkAgentSessionInput,
+	parseInstallTelemetryEnabled,
 	parseInvokeAgentBuiltinCommandInput,
 	parseMcpActionInput,
 	parseMcpProjectOverrideInput,
@@ -212,6 +213,7 @@ const channels = {
 	openExternalUrl: "codepiddy:app:open-external-url",
 	settingsSaveShell: "codepiddy:settings:shell:save",
 	settingsSaveShellCommandPrefix: "codepiddy:settings:shell-command-prefix:save",
+	settingsSaveInstallTelemetry: "codepiddy:settings:install-telemetry:save",
 	settingsSaveCacheWarming: "codepiddy:settings:cache-warming:save",
 	settingsSaveContextCompaction: "codepiddy:settings:context-compaction:save",
 	settingsSaveCodemode: "codepiddy:settings:codemode:save",
@@ -2636,6 +2638,9 @@ function registerIpcHandlers(
 	);
 	ipcMain.handle(channels.settingsSaveShellCommandPrefix, (_event, rawPrefix: unknown) =>
 		settingsStore.setShellCommandPrefix(parseShellCommandPrefix(rawPrefix)),
+	);
+	ipcMain.handle(channels.settingsSaveInstallTelemetry, (_event, rawEnabled: unknown) =>
+		settingsStore.setInstallTelemetrySettings(parseInstallTelemetryEnabled(rawEnabled)),
 	);
 	ipcMain.handle(channels.settingsSaveCacheWarming, async (_event, raw: unknown) => {
 		await settingsStore.setCacheWarmingSettings(parseCacheWarmingSettings(raw));

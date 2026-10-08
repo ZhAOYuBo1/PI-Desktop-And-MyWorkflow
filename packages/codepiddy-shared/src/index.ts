@@ -277,6 +277,17 @@ export interface ToolSettings {
 	defaultTools: PiBuiltinToolName[] | null;
 }
 
+export type InstallTelemetryEnvironmentOverride = "enabled" | "disabled" | null;
+
+export interface InstallTelemetrySettings {
+	/** Pi 原生 settings.json 中的 enableInstallTelemetry，默认 true。 */
+	enabled: boolean;
+	/** 环境变量存在时，这是 Pi 实际使用的值；否则与 enabled 相同。 */
+	effectiveEnabled: boolean;
+	/** PI_TELEMETRY 的规范化覆盖状态；null 表示未设置。 */
+	environmentOverride: InstallTelemetryEnvironmentOverride;
+}
+
 export interface CacheWarmingDecisionSummary {
 	warmCost: number;
 	missCost: number;
@@ -435,6 +446,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	restartCodePIddy(): Promise<void>;
 	saveShellPath(shellPath: string): Promise<SettingsStatus>;
 	saveShellCommandPrefix(prefix: string): Promise<SettingsStatus>;
+	saveInstallTelemetry(enabled: boolean): Promise<SettingsStatus>;
 	saveCacheWarmingSettings(input: CacheWarmingSettings): Promise<SettingsStatus>;
 	saveContextCompactionSettings(input: ContextCompactionSettings): Promise<SettingsStatus>;
 	saveCodemodeSettings(input: CodemodeSettings): Promise<SettingsStatus>;
@@ -641,6 +653,7 @@ export interface SettingsStatus {
 	shellPath: string | null;
 	/** Pi 原生 shellCommandPrefix；为 null 表示不添加命令前缀。 */
 	shellCommandPrefix: string | null;
+	installTelemetry: InstallTelemetrySettings;
 	cacheWarming: CacheWarmingSettings;
 	contextCompaction: ContextCompactionSettings;
 	codemode: CodemodeSettings;

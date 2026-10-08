@@ -13,6 +13,8 @@ import type {
 	CompactionSettings,
 	ContextCompactionSettings,
 	CredentialSource,
+	InstallTelemetryEnvironmentOverride,
+	InstallTelemetrySettings,
 	McpClientRegistration,
 	McpExposure,
 	McpOAuthInput,
@@ -149,6 +151,12 @@ function normalizeToolSettings(value: unknown): ToolSettings {
 	return {
 		defaultTools: [...new Set(record.defaultTools.filter(isPiBuiltinToolName))],
 	};
+}
+
+function normalizeInstallTelemetryEnvironmentOverride(value: string | undefined): InstallTelemetryEnvironmentOverride {
+	if (value === undefined) return null;
+	const normalized = value.toLowerCase();
+	return value === "1" || normalized === "true" || normalized === "yes" ? "enabled" : "disabled";
 }
 
 function isNotFound(error: unknown): boolean {
@@ -655,6 +663,35 @@ export class AppSettingsStore {
 		return this.status();
 	}
 
+	/**
+	 * 读写 Pi 原生 settings.json 的 enableInstallTelemetry。
+	 *
+	 * PI_TELEMETRY 优先于文件设置；这里同时返回规范化后的覆盖状态和实际生效值，
+	 * 避免界面把 settings.json 的值误当成 Pi 的真实行为。
+	 */
+	async getInstallTelemetrySettings(): Promise<InstallTelemetrySettings> {
+		let settings: Record<string, unknown> = {};
+		try {
+			settings = await this.readJsonRecord(this.piSettingsPath);
+		} catch {
+			// 配置损坏时设置页仍可打开；写入时会正常报错。
+		}
+		const enabled = Boolean(settings.enableInstallTelemetry ?? true);
+		const environmentOverride = normalizeInstallTelemetryEnvironmentOverride(process.env.PI_TELEMETRY);
+		return {
+			enabled,
+			effectiveEnabled: environmentOverride === null ? enabled : environmentOverride === "enabled",
+			environmentOverride,
+		};
+	}
+
+	async setInstallTelemetrySettings(enabled: boolean): Promise<SettingsStatus> {
+		const settings = await this.readJsonRecord(this.piSettingsPath);
+		settings.enableInstallTelemetry = enabled;
+		await this.writeJsonRecord(this.piSettingsPath, settings);
+		return this.status();
+	}
+
 	async getGitHubCliPath(): Promise<string | null> {
 		const settings = await this.readJsonRecord(this.shareSettingsPath);
 		return typeof settings.githubCliPath === "string" && settings.githubCliPath.trim()
@@ -1100,6 +1137,7 @@ export class AppSettingsStore {
 			encryptionAvailable: safeStorage.isEncryptionAvailable(),
 			shellPath: await this.getShellPath(),
 			shellCommandPrefix: await this.getShellCommandPrefix(),
+			installTelemetry: await this.getInstallTelemetrySettings(),
 			cacheWarming: await this.getCacheWarmingSettings(),
 			contextCompaction: await this.getContextCompactionSettings(),
 			codemode: await this.getCodemodeSettings(),

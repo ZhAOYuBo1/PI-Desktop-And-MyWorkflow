@@ -418,6 +418,10 @@ export function parseShellCommandPrefix(value: unknown): string {
 	return rawText(value, "Shell 命令前缀", 16_000, true).replace(/\r\n?/gu, "\n");
 }
 
+export function parseInstallTelemetryEnabled(value: unknown): boolean {
+	return booleanValue(value, "安装统计开关");
+}
+
 function workspaceRelativePath(value: unknown, label: string): string {
 	const result = text(value, label, 1000).replace(/\\/g, "/");
 	if (path.isAbsolute(result) || result.startsWith("/")) throw new Error(`${label}必须是项目内相对路径`);

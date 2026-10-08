@@ -1,4 +1,5 @@
 import {
+	Activity,
 	Archive,
 	ArchiveRestore,
 	ArrowUp,
@@ -88,7 +89,8 @@ export type AppIconName =
 	| "shield"
 	| "cloud"
 	| "gauge"
-	| "wrench";
+	| "wrench"
+	| "activity";
 
 const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	archive: Archive,
@@ -132,6 +134,7 @@ const APP_ICONS: Record<AppIconName, LucideIcon> = {
 	cloud: Cloud,
 	gauge: Gauge,
 	wrench: Wrench,
+	activity: Activity,
 };
 
 export function AppIcon({ name, size = 16, className = "" }: { name: AppIconName; size?: number; className?: string }) {

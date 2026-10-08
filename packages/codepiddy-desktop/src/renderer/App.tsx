@@ -17,6 +17,7 @@ import type {
 	AuthProviderSummary,
 	CacheWarmingMode,
 	CacheWarmingSettings,
+	InstallTelemetrySettings,
 	LaneKind,
 	PendingExtensionUiRequest,
 	PiRuntimeStatus,
@@ -1249,6 +1250,7 @@ const demoMode = import.meta.env.DEV && new URLSearchParams(window.location.sear
 type SettingsSectionId =
 	| "runtime"
 	| "shell"
+	| "telemetry"
 	| "tools"
 	| "codemode"
 	| "cache-warming"
@@ -1268,6 +1270,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 		items: [
 			{ id: "runtime", label: "Pi 运行时", icon: "settings" },
 			{ id: "shell", label: "Shell", icon: "terminal" },
+			{ id: "telemetry", label: "Telemetry", icon: "activity" },
 			{ id: "tools", label: "工具", icon: "wrench" },
 			{ id: "codemode", label: "Codemode", icon: "braces" },
 			{ id: "cache-warming", label: "缓存预热", icon: "cloud" },
@@ -1652,6 +1655,8 @@ export function App() {
 	const [shellCommandPrefix, setShellCommandPrefix] = useState("");
 	const [shellCommandPrefixSaving, setShellCommandPrefixSaving] = useState(false);
 	const [shellCommandPrefixError, setShellCommandPrefixError] = useState<string | null>(null);
+	const [installTelemetrySaving, setInstallTelemetrySaving] = useState(false);
+	const [installTelemetryError, setInstallTelemetryError] = useState<string | null>(null);
 	const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([]);
 	const [roleSkillAssignments, setRoleSkillAssignments] = useState<RoleSkillAssignments>({
 		"requirement-analysis": [],
@@ -2106,6 +2111,23 @@ export function App() {
 			return "Shell 命令前缀已保存；当前 Agent 已重新连接。";
 		} catch (caught) {
 			return `Shell 命令前缀已保存；刷新 Agent 失败：${clientErrorMessage(caught, "未知错误")}`;
+		}
+	}, []);
+
+	const refreshAfterTelemetryChange = useCallback(async (): Promise<string> => {
+		if (demoMode || !("codepiddy" in window)) return "安装统计设置已保存。";
+		const locator = lastActiveAgentLocatorRef.current;
+		if (!locator) return "安装统计设置已保存；新启动或重置后的 Agent 生效。";
+		const status = findAgentStatus(projectRef.current, locator);
+		if (!status) return "安装统计设置已保存；重新打开 Agent 后生效。";
+		if (status === "running" || status === "waiting") {
+			return "安装统计设置已保存；当前 Agent 正在运行，停止或重新连接后生效。";
+		}
+		try {
+			await window.codepiddy.reconnectAgent(locator);
+			return "安装统计设置已保存；当前 Agent 已重新连接。";
+		} catch (caught) {
+			return `安装统计设置已保存；刷新 Agent 失败：${clientErrorMessage(caught, "未知错误")}`;
 		}
 	}, []);
 
@@ -4673,6 +4695,7 @@ export function App() {
 		setSettingsStatus(status);
 		setShellCommandPrefix(status.shellCommandPrefix ?? "");
 		setShellCommandPrefixError(null);
+		setInstallTelemetryError(null);
 		setPiRuntimeStatus(piRuntime);
 		setAvailableSkills(skills);
 		setRoleSkillAssignments(assignments);
@@ -4760,6 +4783,33 @@ export function App() {
 			setShellCommandPrefixError(caught instanceof Error ? caught.message : "保存 Shell 命令前缀失败");
 		} finally {
 			setShellCommandPrefixSaving(false);
+		}
+	}
+
+	async function saveInstallTelemetry(enabled: boolean): Promise<void> {
+		if (!("codepiddy" in window) || installTelemetrySaving) return;
+		const previous = settingsStatus;
+		if (!previous) return;
+		const optimisticInstallTelemetry: InstallTelemetrySettings = {
+			...previous.installTelemetry,
+			enabled,
+			effectiveEnabled:
+				previous.installTelemetry.environmentOverride === null
+					? enabled
+					: previous.installTelemetry.effectiveEnabled,
+		};
+		setSettingsStatus({ ...previous, installTelemetry: optimisticInstallTelemetry });
+		setInstallTelemetrySaving(true);
+		setInstallTelemetryError(null);
+		try {
+			const next = await window.codepiddy.saveInstallTelemetry(enabled);
+			setSettingsStatus(next);
+			showSettingsToast(await refreshAfterTelemetryChange(), "success");
+		} catch (caught) {
+			setSettingsStatus(previous);
+			setInstallTelemetryError(caught instanceof Error ? caught.message : "保存安装统计设置失败");
+		} finally {
+			setInstallTelemetrySaving(false);
 		}
 	}
 
@@ -4930,6 +4980,7 @@ export function App() {
 
 	function renderMainContent() {
 		if (selection.type === "settings") {
+			const installTelemetry = settingsStatus?.installTelemetry ?? null;
 			return (
 				<div className="settings-page">
 					<aside className="settings-nav" aria-label="设置分类">
@@ -5207,6 +5258,51 @@ export function App() {
 									前缀会在每条命令前单独占行；空值会从 <code>settings.json</code> 中删除该字段。
 								</small>
 							</div>
+						</section>
+						<section className="settings-card" hidden={settingsSection !== "telemetry"}>
+							<div className="settings-card-heading">
+								<div>
+									<h2>Telemetry</h2>
+									<p>
+										控制 Pi 首次安装或更新后的匿名版本报告，以及 OpenRouter、NVIDIA NIM、Cloudflare 的
+										Provider 归属请求头。不包含 Prompt、代码、会话内容、API Key 或模型响应。
+									</p>
+								</div>
+								<div className="settings-status">
+									{installTelemetrySaving
+										? "保存中"
+										: (installTelemetry?.effectiveEnabled ?? true)
+											? "实际开启"
+											: "实际关闭"}
+								</div>
+							</div>
+							<SettingsCheckbox
+								checked={installTelemetry?.enabled ?? true}
+								disabled={installTelemetrySaving}
+								onChange={(checked) => void saveInstallTelemetry(checked)}
+							>
+								<strong>允许安装统计和 Provider 归属请求头</strong>
+								<small>
+									Pi 原生设置 <code>enableInstallTelemetry</code>，默认开启。改动写入{" "}
+									<code>settings.json</code>。
+								</small>
+							</SettingsCheckbox>
+							{installTelemetry?.environmentOverride ? (
+								<StateBlock
+									compact
+									tone="warning"
+									title={`PI_TELEMETRY 已覆盖为${installTelemetry.environmentOverride === "enabled" ? "开启" : "关闭"}`}
+								>
+									当前实际生效状态为
+									{installTelemetry.effectiveEnabled ? "开启" : "关闭"}，上面的文件设置暂时不会改变 Pi
+									行为。移除该环境变量后，settings.json 的值才会生效。
+								</StateBlock>
+							) : null}
+							{installTelemetryError ? <StateBlock compact tone="error" title={installTelemetryError} /> : null}
+							<small>
+								设置由 Agent 进程启动时读取。保存后空闲 Agent 会自动重连；运行中或等待授权的 Agent
+								在停止或重新连接后生效。PI_OFFLINE 存在时，安装统计请求会直接跳过。
+							</small>
 						</section>
 						<div className="settings-section-slot" hidden={settingsSection !== "codemode"}>
 							<CodemodeSettingsPanel
