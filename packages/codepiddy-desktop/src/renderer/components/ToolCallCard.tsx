@@ -2,6 +2,14 @@ import { memo, useState } from "react";
 import { CodemodeDetailsView } from "./CodemodeDetailsView.tsx";
 import { formatElapsed } from "./stream-stats.ts";
 import { resolveToolExpanded, type ToolPinMode, toggleToolPin } from "./tool-collapse.ts";
+import {
+	isNativeTool,
+	nativeToolAction,
+	parseToolArgs,
+	toolActionLabel,
+	toolDetailRows,
+	toolSummary,
+} from "./tool-display.ts";
 import { classifyToolFailure, toolFailureGuidance, toolFailureLabel } from "./tool-failure-utils.ts";
 import { ToolIcon, toolIconForTool } from "./tool-icons.tsx";
 
@@ -62,13 +70,22 @@ export const ToolCallCard = memo(function ToolCallCard({ item }: { item: ToolCal
 		item.status === "completed" && typeof item.startedAt === "number" && typeof item.completedAt === "number"
 			? formatElapsed(Math.max(0, item.completedAt - item.startedAt))
 			: null;
+	const args = parseToolArgs(item.args);
+	const action = nativeToolAction(item.name);
+	const summary = action ? toolSummary(item.name, args) : "";
+	const detailRows = action ? toolDetailRows(item.name, args) : [];
 	return (
 		<div className={`tool-block ${item.isError ? "error" : ""}`}>
 			{duration ? <span className="tool-elapsed">用时 {duration}</span> : null}
 			<button className="tool-summary" type="button" onClick={() => setPin(toggleToolPin(expanded))}>
 				<strong className="tool-title">
 					<ToolIcon name={toolIconForTool(item.name)} size={14} />
-					<span>{toolDisplayName(item.name)}</span>
+					<span className="tool-action">{action ? toolActionLabel(action) : toolDisplayName(item.name)}</span>
+					{summary ? (
+						<span className="tool-summary-text" title={summary}>
+							{summary}
+						</span>
+					) : null}
 				</strong>
 				<span className={`tool-status ${item.status === "running" ? "running" : item.isError ? "failed" : "done"}`}>
 					<ToolIcon
@@ -84,11 +101,28 @@ export const ToolCallCard = memo(function ToolCallCard({ item }: { item: ToolCal
 					{item.name.toLowerCase() === "codemode" ? (
 						<CodemodeDetailsView args={item.args} details={item.details} />
 					) : null}
-					{item.args && item.name.toLowerCase() !== "codemode" ? (
+					{isNativeTool(item.name) && detailRows.length > 0 ? (
+						<div className="tool-param-list">
+							{detailRows.map((row) => (
+								<div className="tool-param-row" key={`${row.label}:${row.value}`}>
+									<span className="tool-param-label">{row.label}</span>
+									<span className={`tool-param-value${row.mono ? " is-mono" : ""}`} title={row.value}>
+										{row.value}
+									</span>
+								</div>
+							))}
+						</div>
+					) : item.args && item.name.toLowerCase() !== "codemode" ? (
 						<>
 							<small>参数</small>
 							<pre>{item.args}</pre>
 						</>
+					) : null}
+					{isNativeTool(item.name) && item.args ? (
+						<details className="tool-raw-args">
+							<summary>原始参数</summary>
+							<pre>{item.args}</pre>
+						</details>
 					) : null}
 					{item.text ? (
 						<>

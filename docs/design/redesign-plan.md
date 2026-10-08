@@ -1611,6 +1611,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 48. [x] **批次 70：Telemetry 设置**：已实现 Pi 原生 `enableInstallTelemetry`；设置页「常规 > Telemetry」提供开关、行为说明、`PI_TELEMETRY` 环境变量覆盖状态和 Agent 重连。未实现 `enableAnalytics` / `trackingId`。提交 `cc55936ec`。
 49. [x] **批次 71：自定义 Provider 配置正确性与无损保存**：已完成并提交 `e46d0010e`。未知字段保留、字段补丁写回、Provider / 模型高级 JSON、统一 API `SelectMenu`、自定义 API 路径和 5 项单测均已验收。
 50. [ ] **批次 72：特殊模型目录**：由 Agent 进程 extension 读取 `modelRegistry.getAllModels()`，只读展示 chat / virtual / classifier / image、来源和可用性。RPC `get_available_models` 不能作为唯一数据源。不给 `models.json` 添加无效的 image / classifier 类型；不恢复已删除的 provider extension；不做无代码虚拟模型路由编排器。
+51. [ ] **批次 73：消息页只依赖 Pi core 原生的优化**：完整范围、审计证据、任务清单 T1-T15 和回归红线见 [desktop-transcript-optimization.md](./desktop-transcript-optimization.md)。原则是只做 Pi core 原生可实现的优化，不碰 `packages/coding-agent` / `coding-agent-runtime` / `packages/ai`，不做扩展 / MCP / subagent 专用卡。T15 长会话窗口化先搁置。
 
 ## 提交状态
 

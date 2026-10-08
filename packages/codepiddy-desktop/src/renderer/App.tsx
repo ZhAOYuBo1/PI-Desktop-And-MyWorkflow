@@ -72,7 +72,14 @@ import { SettingsCheckbox } from "./components/settings-checkbox.tsx";
 import { SettingsToastHost } from "./components/settings-toast-host.tsx";
 import { showSettingsToast } from "./components/settings-toast-store.ts";
 import { StateBlock } from "./components/state-block.tsx";
-import { estimateTokens, extractUsageOutput, type FinalStreamStats, formatElapsed } from "./components/stream-stats.ts";
+import {
+	estimateTokens,
+	extractUsageOutput,
+	extractUsageSummary,
+	type FinalStreamStats,
+	formatElapsed,
+	type MessageUsageSummary,
+} from "./components/stream-stats.ts";
 import { ThinkingControl } from "./components/ThinkingControl.tsx";
 import { ToolCallCard } from "./components/ToolCallCard.tsx";
 import { ToolSettingsPanel } from "./components/ToolSettingsPanel.tsx";
@@ -241,6 +248,10 @@ type TranscriptItem =
 			createdAt?: string;
 			streamStartedAt?: number;
 			streamStats?: FinalStreamStats;
+			/** Pi 原生 message.usage 的完整值；缺失时回退到字符估算。 */
+			usage?: MessageUsageSummary;
+			/** 生成这条回复时实际使用的 thinking level（Pi 原生字段）。 */
+			thinkingLevel?: string;
 			/** 生成这条回复时实际使用的模型，用于逐条显示模型名。 */
 			modelProvider?: string;
 			modelId?: string;
@@ -417,12 +428,19 @@ function finalizeAssistantTranscript(
 		const text = finalText || item.text;
 		const thinking = finalThinking || item.thinking;
 		if (status === "complete" && !text && !thinking) return [];
-		const usageOutput = messageRecord ? extractUsageOutput(messageRecord) : null;
+		const usage = messageRecord ? extractUsageSummary(messageRecord) : null;
+		const usageOutput = usage?.output ?? (messageRecord ? extractUsageOutput(messageRecord) : null);
 		const statsTokens = usageOutput ?? estimateTokens(text.length);
+		const thinkingLevel =
+			messageRecord && typeof messageRecord.thinkingLevel === "string" && messageRecord.thinkingLevel.trim()
+				? messageRecord.thinkingLevel
+				: undefined;
 		return [
 			{
 				...item,
 				...assistantModelRef(messageRecord),
+				...(usage ? { usage } : {}),
+				...(thinkingLevel ? { thinkingLevel } : {}),
 				text:
 					text ||
 					(status === "aborted" ? "本轮已中断。" : status === "error" ? errorMessage || "本轮回复失败。" : ""),
@@ -433,6 +451,7 @@ function finalizeAssistantTranscript(
 							streamStats: {
 								tokens: statsTokens,
 								estimated: usageOutput === null,
+								...(usage ? { usage } : {}),
 								...(typeof item.streamStartedAt === "number"
 									? { elapsedMs: Math.max(0, Date.now() - item.streamStartedAt) }
 									: {}),
@@ -472,8 +491,37 @@ function extractToolResultDetails(result: unknown): unknown {
 	return isRecord(result) ? result.details : undefined;
 }
 
+/**
+ * Pi 的 assistant message 把工具调用放在有序 content 部件里
+ * （`{ type: "toolCall", id, name, arguments }`），紧跟其后的 toolResult message
+ * 只带 toolCallId，不带参数。这里先把部件里的名字和参数收起来，历史工具卡
+ * 才不会在刷新后只剩 toolName、args 为空。
+ */
+function collectToolCallArguments(messages: unknown[]): Map<string, { name: string; args: string }> {
+	const result = new Map<string, { name: string; args: string }>();
+	for (const message of messages) {
+		if (!isRecord(message) || message.role !== "assistant" || !Array.isArray(message.content)) continue;
+		for (const part of message.content) {
+			if (!isRecord(part) || part.type !== "toolCall") continue;
+			const id = typeof part.id === "string" ? part.id : null;
+			if (!id) continue;
+			const name = typeof part.name === "string" && part.name ? part.name : "tool";
+			const rawArguments = part.arguments;
+			const args =
+				typeof rawArguments === "string"
+					? rawArguments
+					: rawArguments === undefined
+						? ""
+						: JSON.stringify(rawArguments, null, 2);
+			result.set(id, { name, args });
+		}
+	}
+	return result;
+}
+
 function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 	const items: TranscriptItem[] = [];
+	const toolCallArguments = collectToolCallArguments(messages);
 	for (const [index, message] of messages.entries()) {
 		if (!isRecord(message)) continue;
 		const text = extractMessageText(message.content);
@@ -483,11 +531,13 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 		const createdAt = historyTimestamp(message);
 		if (role === "toolResult") {
 			const patch = patchFromDetails(message.details);
+			const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : "";
+			const call = toolCallId ? toolCallArguments.get(toolCallId) : undefined;
 			items.push({
-				id: typeof message.toolCallId === "string" ? message.toolCallId : `history-tool-${index}`,
+				id: toolCallId || `history-tool-${index}`,
 				type: "tool",
-				name: typeof message.toolName === "string" ? message.toolName : "tool",
-				args: "",
+				name: (typeof message.toolName === "string" && message.toolName) || call?.name || "tool",
+				args: call?.args ?? "",
 				text: patch || text,
 				details: message.details,
 				status: "completed",
@@ -496,8 +546,13 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 			});
 		} else if (role === "assistant") {
 			const thinking = extractThinkingText(message.content);
-			const historyUsage = extractUsageOutput(message);
+			const usage = extractUsageSummary(message);
+			const historyUsage = usage?.output ?? extractUsageOutput(message);
 			const historyTokens = historyUsage ?? estimateTokens(text.length);
+			const thinkingLevel =
+				typeof message.thinkingLevel === "string" && message.thinkingLevel.trim()
+					? message.thinkingLevel
+					: undefined;
 			items.push({
 				id: `history-${index}`,
 				type: "assistant",
@@ -505,7 +560,17 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 				...(thinking ? { thinking } : {}),
 				status: assistantMessageStatus(message),
 				...(createdAt ? { createdAt } : {}),
-				...(historyTokens > 0 ? { streamStats: { tokens: historyTokens, estimated: historyUsage === null } } : {}),
+				...(usage ? { usage } : {}),
+				...(thinkingLevel ? { thinkingLevel } : {}),
+				...(historyTokens > 0
+					? {
+							streamStats: {
+								tokens: historyTokens,
+								estimated: historyUsage === null,
+								...(usage ? { usage } : {}),
+							},
+						}
+					: {}),
 				...assistantModelRef(message),
 			});
 		} else {
@@ -621,6 +686,43 @@ function buildTurnForkEntryMap(
 	return result;
 }
 
+/**
+ * 回复结束后的低对比元信息行：模型、思考级别、Pi 原生 usage 明细和成本。
+ * 模型从原来的标题行下沉到这里，避免每条回复顶部都挂一个大标题。
+ */
+function AssistantMeta({
+	item,
+	assistantModel,
+}: {
+	item: Extract<TranscriptItem, { type: "assistant" }>;
+	assistantModel?: string;
+}) {
+	const model = assistantModel || item.modelId;
+	const usage = item.usage;
+	const chips: string[] = [];
+	if (model) chips.push(model);
+	if (item.thinkingLevel) chips.push(`思考 ${item.thinkingLevel}`);
+	if (usage) {
+		const parts = [`输入 ${formatTokenCount(usage.input)}`, `输出 ${formatTokenCount(usage.output)}`];
+		if (usage.cacheRead > 0) parts.push(`缓存读 ${formatTokenCount(usage.cacheRead)}`);
+		if (usage.cacheWrite > 0) parts.push(`缓存写 ${formatTokenCount(usage.cacheWrite)}`);
+		if (usage.reasoning > 0) parts.push(`推理 ${formatTokenCount(usage.reasoning)}`);
+		parts.push(`合计 ${formatTokenCount(usage.total)}`);
+		chips.push(parts.join(" · "));
+		if (usage.cost > 0) chips.push(`$${usage.cost < 0.01 ? usage.cost.toFixed(4) : usage.cost.toFixed(2)}`);
+	}
+	if (chips.length === 0) return null;
+	return (
+		<div className="message-meta">
+			{chips.map((chip) => (
+				<span className="message-meta-chip" key={chip} title={chip}>
+					{chip}
+				</span>
+			))}
+		</div>
+	);
+}
+
 const TranscriptMessage = memo(function TranscriptMessage({
 	item,
 	assistantModel,
@@ -667,13 +769,7 @@ const TranscriptMessage = memo(function TranscriptMessage({
 				<div className={item.type === "user" ? "message-user-bubble" : "message-content-block"}>
 					<div className="message-role-label">
 						{item.type === "assistant" ? <span className="pi-response-dot" /> : null}
-						<strong>
-							{item.type === "assistant"
-								? `Pi${assistantModel ? ` · ${assistantModel}` : ""}`
-								: item.type === "user"
-									? "你"
-									: "系统"}
-						</strong>
+						<strong>{item.type === "assistant" ? "Pi" : item.type === "user" ? "你" : "系统"}</strong>
 						{item.type === "assistant" && assistantStatus ? (
 							<span className={`message-status status-${item.status}`}>{assistantStatus}</span>
 						) : null}
@@ -730,6 +826,9 @@ const TranscriptMessage = memo(function TranscriptMessage({
 							streamStartedAt={item.streamStartedAt}
 							streamStats={item.streamStats}
 						/>
+					) : null}
+					{item.type === "assistant" && showStats && item.status !== "streaming" ? (
+						<AssistantMeta item={item} assistantModel={assistantModel} />
 					) : null}
 				</div>
 				{item.text || (item.type === "user" && forkEntryId) ? (
@@ -989,6 +1088,17 @@ function buildTranscriptMarkers(items: TranscriptItem[]): TranscriptMarker[] {
 		});
 	}
 	return markers;
+}
+
+/** 复制整段对话时只取用户与助手正文，跳过工具 / 系统条目。 */
+function conversationPlainText(items: TranscriptItem[]): string {
+	return items
+		.flatMap((item) => {
+			if (item.type === "user") return [`你：${item.text}`];
+			if (item.type === "assistant" && item.text.trim()) return [`Pi：${item.text}`];
+			return [];
+		})
+		.join("\n\n");
 }
 
 const MINIMAP_MAGNIFY_RADIUS = 46;
@@ -5511,6 +5621,24 @@ export function App() {
 												disabled={busy}
 											>
 												克隆当前会话
+											</button>
+											<button
+												type="button"
+												role="menuitem"
+												onClick={() => {
+													setAgentActionsOpen(null);
+													const text = conversationPlainText(transcripts[agentId] ?? []);
+													if (!text.trim()) {
+														setSessionNotice("当前会话还没有可复制的消息");
+														return;
+													}
+													void navigator.clipboard
+														.writeText(text)
+														.then(() => setSessionNotice("已复制整段对话"))
+														.catch(() => setSessionNotice("复制失败，请重试"));
+												}}
+											>
+												复制整段对话
 											</button>
 											<button
 												role="menuitem"
