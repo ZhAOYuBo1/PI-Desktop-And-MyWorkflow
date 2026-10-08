@@ -84,7 +84,7 @@
 | `!command` Key | 缺失 | Pi 原生支持命令型 Key，客户端没有配置入口 |
 | `/scoped-models` | 已覆盖 | 客户端“常用模型范围”写入 `enabledModels`，模型选择器按常用/其他分组 |
 | `/llama` | 部分覆盖 | 客户端原生 router 连接、模型管理、HF 下载和量化选择已实现；真实 router 端到端测试待后续环境 |
-| 自定义 Provider | 部分覆盖 | `models.json` 基础字段可编辑；高级字段、`modelOverrides` 和 Provider extension 状态未覆盖，保存模型时还可能丢未知字段 |
+| 自定义 Provider | 已覆盖（静态 Provider） | 批次 71 已支持无损字段补丁、未知字段保留、Provider / Model 高级字段和自定义 API；自定义认证 / 协议 / 动态发现仍需 Provider extension |
 | 虚拟模型 | 缺失 | 只能由 extension / SDK 注册；客户端能选择注册后的模型，但不能识别虚拟模型或展示实际路由 |
 | Classifier models | 部分覆盖 | 内置目录可通过 Codemode 调用；RPC 不返回 classifier，自定义分类模型需要 Provider extension |
 | Image models | 部分覆盖 | 内置目录可通过 Codemode 调用；RPC 不返回 image，自定义图片模型需要 Provider extension |
@@ -400,7 +400,8 @@ CodePIddy 是客户端，不复制 Pi core 已公开的运行时能力。保留�
   不再复制 router、Hugging Face、load / unload / download 逻辑。
 - `/share` helper：保留客户端分享弹窗，优先复用 Pi core 分享流程，不复制 Radius / Gist 业务逻辑。
 
-批次 68 已实现该清理并通过验证，下一步进入 Shell aliases。
+批次 68 已实现该清理并通过验证；后续 Shell command prefix、Telemetry 和静态自定义 Provider
+已分别由批次 69-71 完成，下一步进入特殊模型只读目录。
 
 重复实现审计结果：Pi 1.0.1 的公开 SDK 导出没有 `LlamaClient` / `shareSession`，
 RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部文件路径或复制源码。
@@ -538,7 +539,7 @@ cost, promptCache, contextWindow, maxTokens, samplingParams, headers, compat
 22. [x] `/share`：批次 51-53 已实现并验收客户端原生分享、隐私确认、独立分享设置、品牌图标、Radius / GitHub CLI 回退和 viewer link。
 23. [x] `/bug` / 客户端诊断包：批次 54 已完成客户端原生诊断导出，收集版本、平台、Agent / Session / Provider / MCP / trust 状态、最近错误、日志路径和可选脱敏 Session JSONL，导出本地 ZIP，不上传。Pi 1.0.1 仍没有原生 `/bug`。
 
-批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`，第 26 项 Codemode 已由批次 61 实现并提交 `ec4dde669`，第 27 项 Tool Search / Tool Exposure 已由批次 62 实现并提交 `6815fc026`，第 28 项 Prompt Templates 已由批次 63 实现并提交 `8a9231079`。第 29 项 Pi Packages 已由批次 67 实现客户端设置页、runtime helper、安装 / 更新 / 移除 / 更新检查和项目信任边界。批次 68 已完成客户端边界清理，下一步进入第 30 项 Shell aliases。
+批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`，第 26 项 Codemode 已由批次 61 实现并提交 `ec4dde669`，第 27 项 Tool Search / Tool Exposure 已由批次 62 实现并提交 `6815fc026`，第 28 项 Prompt Templates 已由批次 63 实现并提交 `8a9231079`。第 29 项 Pi Packages 已由批次 67 实现客户端设置页、runtime helper、安装 / 更新 / 移除 / 更新检查和项目信任边界；批次 68 完成客户端边界清理，批次 69 完成 Shell command prefix，批次 70 完成 Telemetry，批次 71 完成静态自定义 Provider 无损配置。下一步进入第 34 项特殊模型只读目录。
 
 ### 阶段 4：高级运行时能力
 
@@ -568,35 +569,25 @@ cost, promptCache, contextWindow, maxTokens, samplingParams, headers, compat
     保存后空闲 Agent 自动重连，运行中 Agent 延后生效；未修改 Pi core。
 32. [x] Telemetry 设置：批次 70 已实现 Pi 原生 `enableInstallTelemetry`、`PI_TELEMETRY`
     覆盖状态和 Agent 重连，提交 `cc55936ec`；不提供没有实际消费方的 analytics 开关。
-33. [ ] 自定义 Provider / 虚拟模型 / classifier / image models：审计已完成，下一轮先实现
-    `models.json` 无损保存和高级静态 Provider 字段，再单独做特殊模型目录。
-
-批次 71 代码落点：
-
-1. `@codepiddy/shared` 增加与 Pi `models.json` 对齐的 Provider / Model / ModelOverride 类型，
-   保留未知字段所需的原始对象。
-2. `AppSettingsStore` 改为按字段补丁写回，未知 Provider / Model 字段不得丢失；编辑已有
-   `api` 时不强制收窄到当前四种类型。
-3. Provider 编辑器增加 `headers`、`authHeader`、`modelOverrides`，以及模型级
-   `api`、`baseUrl`、`cost`、`promptCache`、`inputLimits`、`samplingParams`、
-   `thinkingLevelMap`、`headers`、`compat`。
-4. 复杂嵌套字段使用结构化编辑或受控高级 JSON，不用无校验文本直接覆盖文件。
-5. 保存后空闲 Agent 自动重连，运行中 Agent 延后生效；单测覆盖未知字段保留、嵌套字段合并、
-   非法输入和删除字段。
-
-批次 72 只有在前一项完成后开始：由 Agent 进程 extension 读取
-`modelRegistry.getAllModels()`，生成 chat / virtual / classifier / image 只读目录快照。
-不要给 `models.json` 添加假 image / classifier 类型，也不要实现无代码虚拟模型路由编排器。
+33. [x] 静态自定义 Provider：批次 71 已完成无损保存，代码提交 `e46d0010e`。
+    Provider / Model / ModelOverride 类型对齐 schema，未知字段保留，按字段补丁写回；
+    Provider 级 `headers / authHeader / compat / modelOverrides` 和模型级 `api / baseUrl /
+    thinkingLevelMap / inputLimits / cost / promptCache / samplingParams / headers /
+    compat` 通过受控高级 JSON 编辑；API 统一走 `SelectMenu` 并支持自定义 API。
+34. [ ] 特殊模型只读目录：由 Agent 进程 extension 读取 `modelRegistry.getAllModels()`，生成
+    chat / virtual / classifier / image 只读目录快照。RPC `get_available_models` 不返回
+    classifier / image，不能作为唯一数据源。禁止给 `models.json` 添加假 image / classifier
+    类型，不恢复已删除的 provider extension，不实现无代码虚拟模型路由编排器。
 
 ### 阶段 5：回归和收尾
 
-33. 用 Pi 1.0.1 回归会话、Fork、模型、Thinking、压缩、diff、终端、MCP、登录。
-34. 跑：
+35. 用 Pi 1.0.1 回归会话、Fork、模型、Thinking、压缩、diff、终端、MCP、登录。
+36. 跑：
    - `npm run check`
    - `npm run typecheck --workspace=@codepiddy/desktop`
    - `npm run build:codepiddy`
-35. 更新 `PRODUCT.md`、`DESIGN.md`、`docs/design/redesign-plan.md` 和本文件。
-36. 按验收结果拆分提交并推送。
+37. 更新 `PRODUCT.md`、`DESIGN.md`、`docs/design/redesign-plan.md` 和本文件。
+38. 按验收结果拆分提交并推送。
 
 ## 本轮已提交的实现
 
