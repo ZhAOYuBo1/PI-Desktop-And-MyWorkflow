@@ -15,6 +15,8 @@ import type {
 	CredentialSource,
 	InstallTelemetryEnvironmentOverride,
 	InstallTelemetrySettings,
+	JsonObject,
+	JsonValue,
 	McpClientRegistration,
 	McpExposure,
 	McpOAuthInput,
@@ -25,10 +27,14 @@ import type {
 	McpServerInput,
 	McpServerSummary,
 	PiBuiltinToolName,
-	ProviderApi,
 	ProviderInput,
+	ProviderModelCost,
+	ProviderModelInput,
+	ProviderModelOverride,
 	ProviderModelSummary,
+	ProviderPromptCache,
 	ProviderSummary,
+	ProviderThinkingLevelMap,
 	RoleSkillAssignments,
 	SetRoleSkillAssignmentsInput,
 	SettingsStatus,
@@ -234,13 +240,178 @@ function normalizeShellExecutable(value: string | null): string | null {
 	return candidates.find((candidate) => existsSync(candidate)) ?? value;
 }
 
-function isProviderApi(value: unknown): value is ProviderApi {
-	return (
-		value === "openai-completions" ||
-		value === "openai-responses" ||
-		value === "anthropic-messages" ||
-		value === "google-generative-ai"
-	);
+const PROVIDER_KNOWN_FIELDS = new Set([
+	"name",
+	"baseUrl",
+	"apiKey",
+	"api",
+	"oauth",
+	"headers",
+	"compat",
+	"authHeader",
+	"models",
+	"modelOverrides",
+]);
+
+const PROVIDER_MODEL_KNOWN_FIELDS = new Set([
+	"id",
+	"name",
+	"api",
+	"baseUrl",
+	"reasoning",
+	"thinkingLevelMap",
+	"input",
+	"inputLimits",
+	"cost",
+	"promptCache",
+	"contextWindow",
+	"maxTokens",
+	"samplingParams",
+	"headers",
+	"compat",
+]);
+
+const MODEL_COST_KEYS = ["input", "output", "cacheRead", "cacheWrite"] as const;
+const PROVIDER_ADVANCED_FIELDS = new Set(["headers", "authHeader", "compat", "modelOverrides"]);
+const MODEL_ADVANCED_FIELDS = new Set([
+	"thinkingLevelMap",
+	"inputLimits",
+	"cost",
+	"promptCache",
+	"samplingParams",
+	"headers",
+	"compat",
+]);
+
+function cloneJsonValue(value: unknown, depth = 0): JsonValue | undefined {
+	if (depth > 32) return undefined;
+	if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+	if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+	if (Array.isArray(value)) {
+		const items: JsonValue[] = [];
+		for (const item of value) {
+			const cloned = cloneJsonValue(item, depth + 1);
+			if (cloned === undefined) return undefined;
+			items.push(cloned);
+		}
+		return items;
+	}
+	if (!isRecord(value)) return undefined;
+	const cloned: JsonObject = {};
+	for (const [key, item] of Object.entries(value)) {
+		const child = cloneJsonValue(item, depth + 1);
+		if (child === undefined) return undefined;
+		cloned[key] = child;
+	}
+	return cloned;
+}
+
+function cloneJsonObject(value: unknown): JsonObject | null {
+	const cloned = cloneJsonValue(value);
+	return cloned !== undefined && copiedJsonObject(cloned) ? cloned : null;
+}
+
+function copiedJsonObject(value: JsonValue): value is JsonObject {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extraJsonObject(value: Record<string, unknown>, knownFields: ReadonlySet<string>): JsonObject {
+	const extra: JsonObject = {};
+	for (const [key, item] of Object.entries(value)) {
+		if (knownFields.has(key)) continue;
+		const cloned = cloneJsonValue(item);
+		if (cloned !== undefined) extra[key] = cloned;
+	}
+	return extra;
+}
+
+function replaceUnknownFields(
+	target: Record<string, unknown>,
+	knownFields: ReadonlySet<string>,
+	extra: JsonObject | undefined,
+): void {
+	if (extra === undefined) return;
+	for (const key of Object.keys(target)) {
+		if (!knownFields.has(key)) delete target[key];
+	}
+	Object.assign(target, extra);
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function stringRecordOrUndefined(value: unknown): Record<string, string> | undefined {
+	if (!isRecord(value)) return undefined;
+	const result = stringRecord(value);
+	return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function normalizeThinkingLevelMap(value: unknown): ProviderThinkingLevelMap | undefined {
+	if (!isRecord(value)) return undefined;
+	const map: ProviderThinkingLevelMap = {};
+	for (const [level, mapped] of Object.entries(value)) {
+		if (mapped === null || typeof mapped === "string") map[level] = mapped;
+	}
+	return Object.keys(map).length > 0 ? map : undefined;
+}
+
+function normalizePromptCache(value: unknown): ProviderPromptCache | undefined {
+	if (!isRecord(value)) return undefined;
+	const promptCache: ProviderPromptCache = {};
+	if (finiteNumber(value.short) !== undefined) promptCache.short = value.short as number;
+	if (finiteNumber(value.long) !== undefined) promptCache.long = value.long as number;
+	return Object.keys(promptCache).length > 0 ? promptCache : undefined;
+}
+
+function normalizeModelCost(value: unknown): ProviderModelCost | undefined {
+	if (!isRecord(value)) return undefined;
+	const rates: Partial<ProviderModelCost> = {};
+	for (const key of MODEL_COST_KEYS) {
+		const rate = finiteNumber(value[key]);
+		if (rate === undefined) return undefined;
+		rates[key] = rate;
+	}
+	const tiers = Array.isArray(value.tiers)
+		? value.tiers.flatMap((tier) => {
+				if (!isRecord(tier)) return [];
+				const inputTokensAbove = finiteNumber(tier.inputTokensAbove);
+				const tierRates = MODEL_COST_KEYS.map((key) => finiteNumber(tier[key]));
+				if (inputTokensAbove === undefined || tierRates.some((rate) => rate === undefined)) return [];
+				return [
+					{
+						inputTokensAbove,
+						input: tierRates[0] as number,
+						output: tierRates[1] as number,
+						cacheRead: tierRates[2] as number,
+						cacheWrite: tierRates[3] as number,
+					},
+				];
+			})
+		: [];
+	const cost: ProviderModelCost = {
+		input: rates.input as number,
+		output: rates.output as number,
+		cacheRead: rates.cacheRead as number,
+		cacheWrite: rates.cacheWrite as number,
+	};
+	if (tiers.length > 0) cost.tiers = tiers;
+	return cost;
+}
+
+function normalizeProviderModelOverrides(value: unknown): Record<string, ProviderModelOverride> | undefined {
+	if (!isRecord(value)) return undefined;
+	const overrides: Record<string, ProviderModelOverride> = {};
+	for (const [modelId, override] of Object.entries(value)) {
+		const cloned = cloneJsonObject(override);
+		if (!modelId.trim() || cloned === null) continue;
+		overrides[modelId] = cloned;
+	}
+	return Object.keys(overrides).length > 0 ? overrides : undefined;
 }
 
 function providerCredentialSource(
@@ -289,16 +460,314 @@ function normalizeMcpServer(
 function normalizeProviderModel(value: unknown): ProviderModelSummary | null {
 	if (!isRecord(value) || typeof value.id !== "string" || value.id.trim() === "") return null;
 	const id = value.id.trim();
-	return {
+	const extra = extraJsonObject(value, PROVIDER_MODEL_KNOWN_FIELDS);
+	const model: ProviderModelSummary = {
 		id,
 		name: typeof value.name === "string" && value.name.trim() ? value.name.trim() : id,
-		contextWindow: typeof value.contextWindow === "number" ? value.contextWindow : 128_000,
-		maxTokens: typeof value.maxTokens === "number" ? value.maxTokens : 8192,
 		reasoning: value.reasoning === true,
 		input: Array.isArray(value.input)
 			? value.input.filter((item): item is "text" | "image" => item === "text" || item === "image")
 			: ["text"],
+		advanced: advancedJsonObject(value, MODEL_ADVANCED_FIELDS, extra),
+		extra,
 	};
+	const api = stringOrUndefined(value.api);
+	if (api) model.api = api;
+	const baseUrl = stringOrUndefined(value.baseUrl);
+	if (baseUrl) model.baseUrl = baseUrl;
+	const contextWindow = finiteNumber(value.contextWindow);
+	if (contextWindow !== undefined) model.contextWindow = contextWindow;
+	const maxTokens = finiteNumber(value.maxTokens);
+	if (maxTokens !== undefined) model.maxTokens = maxTokens;
+	const thinkingLevelMap = normalizeThinkingLevelMap(value.thinkingLevelMap);
+	if (thinkingLevelMap) model.thinkingLevelMap = thinkingLevelMap;
+	const inputLimits = cloneJsonObject(value.inputLimits);
+	if (inputLimits) model.inputLimits = inputLimits;
+	const cost = normalizeModelCost(value.cost);
+	if (cost) model.cost = cost;
+	const promptCache = normalizePromptCache(value.promptCache);
+	if (promptCache) model.promptCache = promptCache;
+	const samplingParams = cloneJsonObject(value.samplingParams);
+	if (samplingParams) model.samplingParams = samplingParams;
+	const headers = stringRecordOrUndefined(value.headers);
+	if (headers) model.headers = headers;
+	const compat = cloneJsonObject(value.compat);
+	if (compat) model.compat = compat;
+	return model;
+}
+
+function advancedJsonObject(
+	value: Record<string, unknown>,
+	advancedFields: ReadonlySet<string>,
+	extra: JsonObject,
+): JsonObject {
+	const advanced: JsonObject = { ...extra };
+	for (const key of advancedFields) {
+		if (!Object.hasOwn(value, key)) continue;
+		const cloned = cloneJsonValue(value[key]);
+		if (cloned !== undefined) advanced[key] = cloned;
+	}
+	return advanced;
+}
+
+function requireJsonObject(value: unknown, label: string): JsonObject {
+	const object = cloneJsonObject(value);
+	if (!object) throw new Error(`${label}必须是 JSON 对象`);
+	return object;
+}
+
+function setOptionalString(target: Record<string, unknown>, key: string, value: string | null | undefined): void {
+	if (value === undefined) return;
+	const normalized = typeof value === "string" ? value.trim() : "";
+	if (normalized) target[key] = normalized;
+	else delete target[key];
+}
+
+function setOptionalJsonObject(
+	target: Record<string, unknown>,
+	key: string,
+	value: JsonObject | null | undefined,
+	label: string,
+): void {
+	if (value === undefined) return;
+	if (value === null || Object.keys(value).length === 0) {
+		delete target[key];
+		return;
+	}
+	target[key] = requireJsonObject(value, label);
+}
+
+function assertNoReservedAdvancedFields(
+	advanced: JsonObject,
+	knownFields: ReadonlySet<string>,
+	allowedFields: ReadonlySet<string>,
+	label: string,
+): void {
+	for (const key of Object.keys(advanced)) {
+		if (knownFields.has(key) && !allowedFields.has(key)) {
+			throw new Error(`${label}不能包含字段 ${key}`);
+		}
+	}
+}
+
+function applyProviderAdvancedInput(entry: Record<string, unknown>, advanced: JsonObject): void {
+	assertNoReservedAdvancedFields(advanced, PROVIDER_KNOWN_FIELDS, PROVIDER_ADVANCED_FIELDS, "Provider 高级配置");
+	if (Object.hasOwn(advanced, "headers")) {
+		const value = advanced.headers;
+		if (value === null) {
+			delete entry.headers;
+		} else {
+			if (!isRecord(value) || Object.values(value).some((item) => typeof item !== "string")) {
+				throw new Error("Provider advanced.headers 必须是字符串对象");
+			}
+			const headers = stringRecord(value);
+			if (Object.keys(headers).length > 0) entry.headers = headers;
+			else delete entry.headers;
+		}
+	}
+	if (Object.hasOwn(advanced, "authHeader")) {
+		const value = advanced.authHeader;
+		if (value === null) delete entry.authHeader;
+		else if (typeof value === "boolean") entry.authHeader = value;
+		else throw new Error("Provider advanced.authHeader 必须是布尔值");
+	}
+	if (Object.hasOwn(advanced, "compat")) {
+		setOptionalJsonObject(entry, "compat", advanced.compat as JsonObject | null, "Provider advanced.compat");
+	}
+	if (Object.hasOwn(advanced, "modelOverrides")) {
+		const value = advanced.modelOverrides;
+		const overrides = value === null ? undefined : normalizeProviderModelOverrides(value as Record<string, unknown>);
+		if (overrides) entry.modelOverrides = overrides;
+		else delete entry.modelOverrides;
+	}
+	const extra = extraJsonObject(advanced, PROVIDER_ADVANCED_FIELDS);
+	replaceUnknownFields(entry, PROVIDER_KNOWN_FIELDS, extra);
+}
+
+function applyModelAdvancedInput(entry: Record<string, unknown>, advanced: JsonObject): void {
+	assertNoReservedAdvancedFields(advanced, PROVIDER_MODEL_KNOWN_FIELDS, MODEL_ADVANCED_FIELDS, "模型高级配置");
+	if (Object.hasOwn(advanced, "thinkingLevelMap")) {
+		const value = advanced.thinkingLevelMap;
+		if (value === null || (isRecord(value) && Object.keys(value).length === 0)) delete entry.thinkingLevelMap;
+		else {
+			const map = normalizeThinkingLevelMap(value);
+			if (!map) throw new Error("模型 advanced.thinkingLevelMap 必须是字符串或 null 对象");
+			entry.thinkingLevelMap = map;
+		}
+	}
+	for (const key of ["inputLimits", "samplingParams", "compat"] as const) {
+		if (!Object.hasOwn(advanced, key)) continue;
+		setOptionalJsonObject(entry, key, advanced[key] as JsonObject | null, `模型 advanced.${key}`);
+	}
+	if (Object.hasOwn(advanced, "cost")) {
+		const value = advanced.cost;
+		if (value === null || (isRecord(value) && Object.keys(value).length === 0)) delete entry.cost;
+		else {
+			const cost = normalizeModelCost(value);
+			if (!cost) throw new Error("模型 advanced.cost 必须包含 input / output / cacheRead / cacheWrite");
+			entry.cost = cost;
+		}
+	}
+	if (Object.hasOwn(advanced, "promptCache")) {
+		const value = advanced.promptCache;
+		if (value === null || (isRecord(value) && Object.keys(value).length === 0)) delete entry.promptCache;
+		else {
+			const promptCache = normalizePromptCache(value);
+			if (!promptCache) throw new Error("模型 advanced.promptCache 必须包含 short 或 long 数值");
+			entry.promptCache = promptCache;
+		}
+	}
+	if (Object.hasOwn(advanced, "headers")) {
+		const value = advanced.headers;
+		if (value === null) delete entry.headers;
+		else {
+			if (!isRecord(value) || Object.values(value).some((item) => typeof item !== "string")) {
+				throw new Error("模型 advanced.headers 必须是字符串对象");
+			}
+			const headers = stringRecord(value);
+			if (Object.keys(headers).length > 0) entry.headers = headers;
+			else delete entry.headers;
+		}
+	}
+	const extra = extraJsonObject(advanced, MODEL_ADVANCED_FIELDS);
+	replaceUnknownFields(entry, PROVIDER_MODEL_KNOWN_FIELDS, extra);
+}
+
+function applyProviderModelInput(
+	existing: Record<string, unknown>,
+	input: ProviderModelInput,
+): Record<string, unknown> {
+	const entry: Record<string, unknown> = { ...existing, id: input.id.trim() };
+	if (!entry.id) throw new Error("模型 ID 不能为空");
+
+	if (input.advanced !== undefined) {
+		applyModelAdvancedInput(entry, requireJsonObject(input.advanced, "模型高级字段"));
+	}
+	setOptionalString(entry, "name", input.name);
+	setOptionalString(entry, "api", input.api);
+	setOptionalString(entry, "baseUrl", input.baseUrl);
+
+	if (input.reasoning !== undefined) entry.reasoning = input.reasoning;
+	if (input.thinkingLevelMap !== undefined) {
+		const map = input.thinkingLevelMap === null ? undefined : normalizeThinkingLevelMap(input.thinkingLevelMap);
+		if (map) entry.thinkingLevelMap = map;
+		else delete entry.thinkingLevelMap;
+	}
+	if (input.input !== undefined) {
+		const values = [...new Set(input.input.filter((item) => item === "text" || item === "image"))];
+		if (values.length > 0) entry.input = values;
+		else delete entry.input;
+	}
+	if (input.inputLimits !== undefined) {
+		setOptionalJsonObject(entry, "inputLimits", input.inputLimits, "模型 inputLimits");
+	}
+	if (input.cost !== undefined) {
+		if (input.cost === null) {
+			delete entry.cost;
+		} else {
+			const cost = normalizeModelCost(input.cost);
+			if (!cost) throw new Error("模型 cost 必须包含 input / output / cacheRead / cacheWrite");
+			entry.cost = cost;
+		}
+	}
+	if (input.promptCache !== undefined) {
+		if (input.promptCache === null) {
+			delete entry.promptCache;
+		} else {
+			const promptCache = normalizePromptCache(input.promptCache);
+			if (!promptCache) throw new Error("模型 promptCache 必须包含 short 或 long 数值");
+			entry.promptCache = promptCache;
+		}
+	}
+	if (input.contextWindow !== undefined) {
+		if (input.contextWindow === null) delete entry.contextWindow;
+		else if (!Number.isFinite(input.contextWindow) || input.contextWindow <= 0) {
+			throw new Error("模型上下文窗口必须是正数");
+		} else entry.contextWindow = input.contextWindow;
+	}
+	if (input.maxTokens !== undefined) {
+		if (input.maxTokens === null) delete entry.maxTokens;
+		else if (!Number.isFinite(input.maxTokens) || input.maxTokens <= 0) {
+			throw new Error("模型最大 Token 必须是正数");
+		} else entry.maxTokens = input.maxTokens;
+	}
+	if (input.samplingParams !== undefined) {
+		setOptionalJsonObject(entry, "samplingParams", input.samplingParams, "模型 samplingParams");
+	}
+	if (input.headers !== undefined) {
+		if (input.headers === null) delete entry.headers;
+		else {
+			const headers = stringRecordOrUndefined(input.headers);
+			if (headers) entry.headers = headers;
+			else delete entry.headers;
+		}
+	}
+	if (input.compat !== undefined) {
+		setOptionalJsonObject(entry, "compat", input.compat, "模型 compat");
+	}
+	if (input.extra !== undefined) {
+		replaceUnknownFields(entry, PROVIDER_MODEL_KNOWN_FIELDS, requireJsonObject(input.extra, "模型高级字段"));
+	}
+	return entry;
+}
+
+function mergeProviderModels(existingValue: unknown, inputs: ProviderModelInput[]): Record<string, unknown>[] {
+	const existing = Array.isArray(existingValue)
+		? existingValue.filter((item): item is Record<string, unknown> => isRecord(item))
+		: [];
+	const used = new Set<number>();
+	const seenIds = new Set<string>();
+	return inputs.map((input) => {
+		const id = input.id.trim();
+		if (!id) throw new Error("模型 ID 不能为空");
+		if (seenIds.has(id)) throw new Error(`模型 ID 重复：${id}`);
+		seenIds.add(id);
+		const locator = input.originalId?.trim() || id;
+		const index = existing.findIndex(
+			(item, current) => !used.has(current) && typeof item.id === "string" && item.id.trim() === locator,
+		);
+		if (index >= 0) used.add(index);
+		return applyProviderModelInput(index >= 0 ? existing[index] : {}, input);
+	});
+}
+
+function applyProviderInput(existing: Record<string, unknown>, input: ProviderInput): Record<string, unknown> {
+	const entry: Record<string, unknown> = { ...existing };
+	if (input.advanced !== undefined) {
+		applyProviderAdvancedInput(entry, requireJsonObject(input.advanced, "Provider 高级字段"));
+	}
+	setOptionalString(entry, "name", input.name);
+	setOptionalString(entry, "baseUrl", input.baseUrl);
+	setOptionalString(entry, "api", input.api);
+
+	if (input.headers !== undefined) {
+		if (input.headers === null) delete entry.headers;
+		else {
+			const headers = stringRecordOrUndefined(input.headers);
+			if (headers) entry.headers = headers;
+			else delete entry.headers;
+		}
+	}
+	if (input.authHeader !== undefined) {
+		if (input.authHeader === null) delete entry.authHeader;
+		else entry.authHeader = input.authHeader;
+	}
+	setOptionalJsonObject(entry, "compat", input.compat, "Provider compat");
+	if (input.modelOverrides !== undefined) {
+		const modelOverrides =
+			input.modelOverrides === null ? undefined : normalizeProviderModelOverrides(input.modelOverrides);
+		if (modelOverrides) entry.modelOverrides = modelOverrides;
+		else delete entry.modelOverrides;
+	}
+	if (input.models !== undefined) {
+		const models = mergeProviderModels(entry.models, input.models);
+		if (models.length > 0) entry.models = models;
+		else delete entry.models;
+	}
+	if (input.extra !== undefined) {
+		replaceUnknownFields(entry, PROVIDER_KNOWN_FIELDS, requireJsonObject(input.extra, "Provider 高级字段"));
+	}
+	return entry;
 }
 
 /**
@@ -1046,10 +1515,11 @@ export class AppSettingsStore {
 			.filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]))
 			.map(([id, value]) => {
 				const credential = providerCredentialSource(value.apiKey, Boolean(keys[id]));
-				return {
+				const extra = extraJsonObject(value, PROVIDER_KNOWN_FIELDS);
+				const provider: ProviderSummary = {
 					id,
-					baseUrl: typeof value.baseUrl === "string" ? value.baseUrl : "",
-					api: isProviderApi(value.api) ? value.api : "openai-completions",
+					advanced: advancedJsonObject(value, PROVIDER_ADVANCED_FIELDS, extra),
+					extra,
 					credentialSource: credential.source,
 					credentialLabel: credential.label,
 					models: Array.isArray(value.models)
@@ -1058,6 +1528,20 @@ export class AppSettingsStore {
 								.filter((model): model is ProviderModelSummary => model !== null)
 						: [],
 				};
+				const name = stringOrUndefined(value.name);
+				if (name) provider.name = name;
+				const baseUrl = stringOrUndefined(value.baseUrl);
+				if (baseUrl) provider.baseUrl = baseUrl;
+				const api = stringOrUndefined(value.api);
+				if (api) provider.api = api;
+				const headers = stringRecordOrUndefined(value.headers);
+				if (headers) provider.headers = headers;
+				if (typeof value.authHeader === "boolean") provider.authHeader = value.authHeader;
+				const compat = cloneJsonObject(value.compat);
+				if (compat) provider.compat = compat;
+				const modelOverrides = normalizeProviderModelOverrides(value.modelOverrides);
+				if (modelOverrides) provider.modelOverrides = modelOverrides;
+				return provider;
 			})
 			.sort((left, right) => left.id.localeCompare(right.id));
 	}
@@ -1065,21 +1549,11 @@ export class AppSettingsStore {
 	async saveProvider(input: ProviderInput): Promise<ProviderSummary[]> {
 		const id = input.id.trim();
 		if (!/^[A-Za-z0-9._-]+$/.test(id)) throw new Error("Provider ID 只能包含字母、数字、点、下划线和连字符");
-		if (!input.baseUrl.trim()) throw new Error("baseUrl 不能为空");
-		if (!isProviderApi(input.api)) throw new Error("Provider API 类型无效");
-		const models = input.models
-			.map((model) => normalizeProviderModel(model))
-			.filter((model): model is ProviderModelSummary => model !== null);
-		if (models.length === 0) throw new Error("至少需要一个模型");
+		if ((input.models?.length ?? 0) > 200) throw new Error("单个 Provider 最多配置 200 个模型");
 		const config = await this.readJsonRecord(this.modelsConfigPath);
 		const providers = isRecord(config.providers) ? { ...config.providers } : {};
 		const existing = isRecord(providers[id]) ? (providers[id] as Record<string, unknown>) : {};
-		const entry: Record<string, unknown> = {
-			...existing,
-			baseUrl: input.baseUrl.trim(),
-			api: input.api,
-			models: models.map((model) => ({ ...model, input: model.input.length > 0 ? model.input : ["text"] })),
-		};
+		const entry = applyProviderInput(existing, input);
 		const secrets = await this.readSecrets();
 		const keys = { ...(secrets.providerApiKeys ?? {}) };
 		if (input.apiKey !== undefined) {
@@ -1090,8 +1564,6 @@ export class AppSettingsStore {
 			await this.writeSecrets(secrets);
 		}
 		if (keys[id]) entry.apiKey = `$${providerEnvName(id)}`;
-		else if (typeof existing.apiKey === "string" && !existing.apiKey.startsWith("$")) entry.apiKey = existing.apiKey;
-		else delete entry.apiKey;
 		providers[id] = entry;
 		await this.writeJsonRecord(this.modelsConfigPath, { ...config, providers });
 		return this.listProviders();

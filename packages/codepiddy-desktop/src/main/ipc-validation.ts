@@ -15,6 +15,8 @@ import type {
 	ExtensionUiResponseInput,
 	ForkAgentSessionInput,
 	InvokeAgentBuiltinCommandInput,
+	JsonObject,
+	JsonValue,
 	LaneKind,
 	LlamaCppAction,
 	McpActionInput,
@@ -33,7 +35,8 @@ import type {
 	PromptTemplateLocator,
 	PromptTemplateScope,
 	ProviderInput,
-	ProviderModelSummary,
+	ProviderModelInput,
+	ProviderModelOverride,
 	RenameWorkItemInput,
 	ResetAgentInput,
 	RunLlamaCppActionInput,
@@ -107,6 +110,54 @@ function nonNegativeSafeInteger(value: unknown, label: string): number {
 function booleanValue(value: unknown, label: string): boolean {
 	if (typeof value !== "boolean") throw new Error(`${label} 必须是布尔值`);
 	return value;
+}
+
+function jsonValue(value: unknown, label: string, depth = 0): JsonValue {
+	if (depth > 32) throw new Error(`${label} 嵌套过深`);
+	if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+	if (typeof value === "number") {
+		if (!Number.isFinite(value)) throw new Error(`${label} 必须是有限数值`);
+		return value;
+	}
+	if (Array.isArray(value)) return value.map((item) => jsonValue(item, label, depth + 1));
+	const object = record(value, label);
+	return Object.fromEntries(
+		Object.entries(object).map(([key, item]) => [key, jsonValue(item, `${label}.${key}`, depth + 1)] as const),
+	);
+}
+
+function jsonObject(value: unknown, label: string): JsonObject {
+	const parsed = jsonValue(value, label);
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new Error(`${label} 必须是 JSON 对象`);
+	}
+	return parsed;
+}
+
+function optionalJsonObject(value: unknown, label: string): JsonObject | null | undefined {
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	return jsonObject(value, label);
+}
+
+function optionalText(value: unknown, label: string, maximum: number): string | null | undefined {
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	return text(value, label, maximum, true);
+}
+
+function optionalStringRecord(value: unknown, label: string): Record<string, string> | null | undefined {
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	const input = record(value, label);
+	return Object.fromEntries(
+		Object.entries(input).flatMap(([key, item]) => {
+			if (typeof item !== "string") return [];
+			const normalizedKey = key.trim();
+			const normalizedValue = item.trim();
+			return normalizedKey && normalizedValue ? [[normalizedKey, normalizedValue] as const] : [];
+		}),
+	);
 }
 
 function role(value: unknown): AgentRole {
@@ -657,37 +708,106 @@ export function parseMcpActionInput(value: unknown): McpActionInput {
 	};
 }
 
+function optionalProviderPositiveNumber(value: unknown, label: string): number | null | undefined {
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+		throw new Error(`${label} 必须是正数`);
+	}
+	return value;
+}
+
+function providerThinkingLevelMapInput(value: unknown, label: string): ProviderModelInput["thinkingLevelMap"] {
+	if (value === undefined || value === null) return value;
+	const input = record(value, label);
+	return Object.fromEntries(
+		Object.entries(input).flatMap(([level, mapped]) => {
+			if (mapped !== null && typeof mapped !== "string") return [];
+			return [[level, mapped] as const];
+		}),
+	);
+}
+
+function providerPromptCacheInput(value: unknown, label: string): ProviderModelInput["promptCache"] {
+	if (value === undefined || value === null) return value;
+	const input = record(value, label);
+	const output: NonNullable<ProviderModelInput["promptCache"]> = {};
+	for (const key of ["short", "long"] as const) {
+		if (input[key] === undefined) continue;
+		const number = optionalProviderPositiveNumber(input[key], `${label}.${key}`);
+		if (typeof number === "number") output[key] = number;
+	}
+	return output;
+}
+
+function providerModelOverridesInput(
+	value: unknown,
+	label: string,
+): Record<string, ProviderModelOverride> | null | undefined {
+	if (value === undefined || value === null) return value;
+	const input = record(value, label);
+	return Object.fromEntries(
+		Object.entries(input).flatMap(([modelId, override]) => {
+			const normalizedId = modelId.trim();
+			if (!normalizedId) return [];
+			return [[normalizedId, jsonObject(override, `${label}.${normalizedId}`)] as const];
+		}),
+	);
+}
+
+function parseProviderModelInput(value: unknown): ProviderModelInput {
+	const model = record(value, "Provider model");
+	const result: ProviderModelInput = {
+		id: text(model.id, "模型 ID", 200),
+	};
+	if (model.originalId !== undefined) result.originalId = text(model.originalId, "原模型 ID", 200);
+	if (model.name !== undefined) result.name = text(model.name, "模型名称", 200, true);
+	result.api = optionalText(model.api, "模型 API", 200);
+	result.baseUrl = optionalText(model.baseUrl, "模型 baseUrl", 2000);
+	result.contextWindow = optionalProviderPositiveNumber(model.contextWindow, "上下文窗口");
+	result.maxTokens = optionalProviderPositiveNumber(model.maxTokens, "最大 Token");
+	if (model.reasoning !== undefined) result.reasoning = booleanValue(model.reasoning, "推理标记");
+	if (model.thinkingLevelMap !== undefined) {
+		result.thinkingLevelMap = providerThinkingLevelMapInput(model.thinkingLevelMap, "模型 thinkingLevelMap");
+	}
+	if (model.input !== undefined) {
+		if (!Array.isArray(model.input)) throw new Error("模型 input 必须是数组");
+		result.input = model.input.filter((item): item is "text" | "image" => item === "text" || item === "image");
+	}
+	result.inputLimits = optionalJsonObject(model.inputLimits, "模型 inputLimits");
+	result.cost = optionalJsonObject(model.cost, "模型 cost");
+	result.promptCache = providerPromptCacheInput(model.promptCache, "模型 promptCache");
+	result.samplingParams = optionalJsonObject(model.samplingParams, "模型 samplingParams");
+	result.headers = optionalStringRecord(model.headers, "模型 headers");
+	result.compat = optionalJsonObject(model.compat, "模型 compat");
+	if (model.advanced !== undefined) result.advanced = jsonObject(model.advanced, "模型高级字段");
+	if (model.extra !== undefined) result.extra = jsonObject(model.extra, "模型高级字段");
+	return result;
+}
+
 export function parseProviderInput(value: unknown): ProviderInput {
 	const input = record(value, "Provider");
-	if (
-		input.api !== "openai-completions" &&
-		input.api !== "openai-responses" &&
-		input.api !== "anthropic-messages" &&
-		input.api !== "google-generative-ai"
-	) {
-		throw new Error("Provider API 类型无效");
-	}
-	if (!Array.isArray(input.models)) throw new Error("Provider models 必须是数组");
-	const models = input.models.slice(0, 50).map((item): ProviderModelSummary => {
-		const model = record(item, "Provider model");
-		return {
-			id: text(model.id, "模型 ID", 200),
-			name: text(model.name, "模型名称", 200, true),
-			contextWindow: nonNegativeInteger(model.contextWindow, "上下文窗口"),
-			maxTokens: nonNegativeInteger(model.maxTokens, "最大 Token"),
-			reasoning: model.reasoning === true,
-			input: Array.isArray(model.input)
-				? model.input.filter((entry): entry is "text" | "image" => entry === "text" || entry === "image")
-				: ["text"],
-		};
-	});
-	return {
+	const result: ProviderInput = {
 		id: text(input.id, "Provider ID", 100),
-		baseUrl: text(input.baseUrl, "baseUrl", 2000),
-		api: input.api,
-		...(input.apiKey === undefined ? {} : { apiKey: text(input.apiKey, "API Key", 1000, true) }),
-		models,
+		name: optionalText(input.name, "Provider 名称", 200),
+		baseUrl: optionalText(input.baseUrl, "baseUrl", 2000),
+		api: optionalText(input.api, "Provider API", 200),
+		headers: optionalStringRecord(input.headers, "Provider headers"),
+		compat: optionalJsonObject(input.compat, "Provider compat"),
 	};
+	if (input.authHeader !== undefined) {
+		result.authHeader = input.authHeader === null ? null : booleanValue(input.authHeader, "Provider authHeader");
+	}
+	result.modelOverrides = providerModelOverridesInput(input.modelOverrides, "Provider modelOverrides");
+	if (input.apiKey !== undefined) result.apiKey = text(input.apiKey, "API Key", 1000, true);
+	if (input.advanced !== undefined) result.advanced = jsonObject(input.advanced, "Provider 高级字段");
+	if (input.extra !== undefined) result.extra = jsonObject(input.extra, "Provider 高级字段");
+	if (input.models !== undefined) {
+		if (!Array.isArray(input.models)) throw new Error("Provider models 必须是数组");
+		if (input.models.length > 200) throw new Error("单个 Provider 最多配置 200 个模型");
+		result.models = input.models.map(parseProviderModelInput);
+	}
+	return result;
 }
 
 export function parseSaveLlamaCppConfigInput(value: unknown): SaveLlamaCppConfigInput {

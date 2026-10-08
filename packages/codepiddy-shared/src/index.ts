@@ -846,22 +846,117 @@ export const PROVIDER_APIS = [
 	"openai-responses",
 	"anthropic-messages",
 	"google-generative-ai",
+	"google-vertex",
+	"bedrock-converse",
+	"mistral-conversations",
+	"pi-messages",
 ] as const;
-export type ProviderApi = (typeof PROVIDER_APIS)[number];
+/** models.json uses an open API id string; PROVIDER_APIS is only a UI suggestion list. */
+export type ProviderApi = string;
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
+export type JsonObject = { [key: string]: JsonValue | undefined };
+
+export interface ProviderModelCost {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	tiers?: Array<{
+		inputTokensAbove: number;
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+	}>;
+}
+
+export interface ProviderModelCostOverride extends JsonObject {
+	input?: number;
+	output?: number;
+	cacheRead?: number;
+	cacheWrite?: number;
+	tiers?: ProviderModelCost["tiers"];
+}
+
+export interface ProviderPromptCache extends JsonObject {
+	short?: number;
+	long?: number;
+}
+
+export type ProviderThinkingLevelMap = Record<string, string | null>;
 
 export interface ProviderModelSummary {
 	id: string;
 	name: string;
-	contextWindow: number;
-	maxTokens: number;
+	api?: string;
+	baseUrl?: string;
+	contextWindow?: number;
+	maxTokens?: number;
 	reasoning: boolean;
+	thinkingLevelMap?: ProviderThinkingLevelMap;
 	input: ("text" | "image")[];
+	inputLimits?: JsonObject;
+	cost?: ProviderModelCost;
+	promptCache?: ProviderPromptCache;
+	samplingParams?: JsonObject;
+	headers?: Record<string, string>;
+	compat?: JsonObject;
+	/** 可直接编辑并原样写回的高级字段与未知字段。 */
+	advanced: JsonObject;
+	/** Pi schema 之外的字段，保存时按对象合并回去。 */
+	extra: JsonObject;
+}
+
+export interface ProviderModelInput {
+	/** 编辑已有模型时用于定位原对象；改 ID 不会丢字段。 */
+	originalId?: string;
+	id: string;
+	name?: string;
+	api?: string | null;
+	baseUrl?: string | null;
+	contextWindow?: number | null;
+	maxTokens?: number | null;
+	reasoning?: boolean;
+	thinkingLevelMap?: ProviderThinkingLevelMap | null;
+	input?: ("text" | "image")[];
+	inputLimits?: JsonObject | null;
+	cost?: ProviderModelCostOverride | null;
+	promptCache?: ProviderPromptCache | null;
+	samplingParams?: JsonObject | null;
+	headers?: Record<string, string> | null;
+	compat?: JsonObject | null;
+	advanced?: JsonObject;
+	extra?: JsonObject;
+}
+
+export interface ProviderModelOverride extends JsonObject {
+	name?: string;
+	reasoning?: boolean;
+	thinkingLevelMap?: ProviderThinkingLevelMap;
+	input?: ("text" | "image")[];
+	inputLimits?: JsonObject;
+	cost?: ProviderModelCostOverride;
+	promptCache?: ProviderPromptCache;
+	contextWindow?: number;
+	maxTokens?: number;
+	samplingParams?: JsonObject;
+	headers?: Record<string, string>;
+	compat?: JsonObject;
 }
 
 export interface ProviderSummary {
 	id: string;
-	baseUrl: string;
-	api: ProviderApi;
+	name?: string;
+	baseUrl?: string;
+	api?: string;
+	headers?: Record<string, string>;
+	authHeader?: boolean;
+	compat?: JsonObject;
+	modelOverrides?: Record<string, ProviderModelOverride>;
+	advanced: JsonObject;
+	extra: JsonObject;
 	credentialSource: CredentialSource;
 	credentialLabel: string | null;
 	models: ProviderModelSummary[];
@@ -869,11 +964,18 @@ export interface ProviderSummary {
 
 export interface ProviderInput {
 	id: string;
-	baseUrl: string;
-	api: ProviderApi;
+	name?: string | null;
+	baseUrl?: string | null;
+	api?: string | null;
+	headers?: Record<string, string> | null;
+	authHeader?: boolean | null;
+	compat?: JsonObject | null;
+	modelOverrides?: Record<string, ProviderModelOverride> | null;
+	advanced?: JsonObject;
+	extra?: JsonObject;
 	/** 省略表示保持已有 Key；空字符串表示清除。 */
 	apiKey?: string;
-	models: ProviderModelSummary[];
+	models?: ProviderModelInput[];
 }
 
 export type LlamaCppModelStatus = "unloaded" | "loading" | "loaded" | "downloading" | "sleeping";
@@ -1054,7 +1156,7 @@ export const CUSTOM_PROVIDER_APIS = [
 	"anthropic-messages",
 	"google-generative-ai",
 ] as const;
-export type CustomProviderApi = (typeof CUSTOM_PROVIDER_APIS)[number];
+export type CustomProviderApi = string;
 
 export interface CustomProviderInput {
 	id: string;
