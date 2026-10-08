@@ -71,7 +71,8 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 里的「客户端边界清理」「进度日志」最后三条和「待办清单」），再读 PRODUCT.md、DESIGN.md、
 docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。
 
-批次 1-69 已实现；批次 68 提交为 `65607e721`，批次 69 Shell aliases 已验收并提交 `cab6fa4ff`。
+批次 1-69 已实现；批次 68 提交为 `65607e721`，批次 69 Shell aliases 代码提交为 `cab6fa4ff`，
+交接文档提交为 `c264019b2`。Telemetry 审计已完成，代码尚未开始。
 另一个 session 已提交 `ebd1ea58b`
 修复流式输出跟随滚动，以及 `873784d2c` 对齐文件树同层文件与目录缩进。
 当前 HEAD 以 `git log -1` 为准；`origin/main` 仍为 `29feb195e`，
@@ -97,7 +98,20 @@ Pi Packages 和 runtime 更新仍待验收；批次 68 边界清理已验收提�
 3. 合并写 settings.json；空闲 Agent 自动重连，运行中 Agent 延后生效。
 4. 单测覆盖合并写入、清除字段、保留其他 settings 和 NUL 输入。
 
-下一步进入 Telemetry 设置。
+Telemetry 审计结论：Pi 1.0.1 只有 `enableInstallTelemetry` 是真实生效的配置。首次安装或更新后
+Pi 会请求一次 `https://pi.dev/api/report-install?version=<version>`，不上传 Prompt、代码、
+会话内容、Provider Key 或模型请求正文；`PI_TELEMETRY` 环境变量优先于 settings.json，
+`PI_OFFLINE` 会跳过该统计请求。同一个开关还控制 OpenRouter / NVIDIA NIM / Cloudflare
+的 Provider 归属请求头。`enableAnalytics` / `trackingId` 目前没有实际消费方，不要提供假开关。
+
+下一轮实现 Telemetry 设置：
+1. 设置页新增「常规 > Telemetry」。
+2. 只读写 Pi 原生 `settings.json` 的 `enableInstallTelemetry`；合并写、保留其他字段。
+3. 状态里显示 `enabled`、环境变量覆盖状态和 `effectiveEnabled`；`PI_TELEMETRY` 存在时，
+   界面不能只显示 settings.json 中的值。
+4. 用 `SettingsCheckbox`；保存反馈走 `SettingsToast`，持久错误走 `StateBlock`。
+5. 空闲 Agent 自动重连，运行中 Agent 延后生效；单测覆盖默认值、合并写入、
+   环境变量覆盖、保留其他 settings 和非法输入。
 
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；
 复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现。
@@ -140,7 +154,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-08 Shell aliases 已验收并提交）
+## 当前状态（2026-10-08 Shell aliases 已验收，下一项 Telemetry）
 
 ### 客户端边界清理（批次 68 已验收并提交 `65607e721`）
 
@@ -165,6 +179,10 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - 批次 69 已实现并提交「常规 > Shell」的 `shellCommandPrefix`：使用多行文本框读写 Pi 原生
   `settings.json`，保留其他设置字段，空值删除字段，拒绝 NUL 输入；保存后空闲 Agent
   自动重连，运行中 Agent 延后生效。Shell 页面现在同时包含 bash 可执行文件和命令前缀。
+
+- Telemetry 审计已完成：Pi 1.0.1 的 `enableInstallTelemetry` 会在首次安装或更新后报告一次
+  当前版本，并控制 OpenRouter / NVIDIA / Cloudflare 的归属请求头；`PI_TELEMETRY` 可覆盖。
+  `enableAnalytics` / `trackingId` 在 1.0.1 中没有实际消费方，下一轮不提供假开关。
 
 - 阶段 4 第 29 项 Pi Packages 已实现：设置页新增「Agent > Pi Packages」，读取用户级和项目级
   `packages`，显示来源、作用域、版本、安装路径、资源摘要和扩展开关；支持安装、移除、
@@ -1468,6 +1486,16 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、Shell 命令前缀单测 4 项、
   `?demo=1` 桌面 / 900px 窄窗截图检查通过；真实 Electron 已重启。
 
+### 2026-10-08 Telemetry 审计（代码未改动）
+
+- Pi 1.0.1 的 `enableInstallTelemetry` 默认开启。首次安装或更新后检测到新 changelog 时，
+  Pi 会请求一次 `https://pi.dev/api/report-install?version=<version>`；请求不包含 Prompt、
+  代码、会话内容、Provider Key 或模型请求正文。
+- `PI_TELEMETRY` 环境变量优先于 settings.json；`PI_OFFLINE` 会让安装统计请求直接跳过。
+- 同一个开关还控制 OpenRouter、NVIDIA NIM、Cloudflare 的 Provider 归属请求头。
+- `enableAnalytics` / `trackingId` 只有设置字段和 tracking ID 生成逻辑，Pi 1.0.1 没有实际消费方。
+- 下一轮只做 `enableInstallTelemetry` 设置和多行说明 / 环境变量覆盖状态，不做 analytics 开关。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1517,6 +1545,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 45. [x] **批次 67：Pi Packages 设置与运行时包管理**：实现用户 / 项目级包列表、npm / Git / 本地路径安装、移除、单包更新、更新检查、项目信任校验、资源摘要和按包 extension 开关；开启后 Agent 显式加载对应 extension，关闭后不加载。helper 使用 runtime bundle，不解析 `pi list`，不更新 Pi 运行时。完整 runtime 包根、内置 runtime 更新脚本和命令说明适配已提交 `3db8f6a37`。待验收。
 46. [x] **批次 68：客户端边界清理（已验收并提交 `65607e721`）**：删除 `permission-extension`、Tavily `web_search` 自建 MCP、`provider-extension`、`role-guard-extension`；保留 `review`、`retry`、`cache-warming`、自研 Skills、角色提示词和角色 Skill 分配；审计确认 `llama.cpp` 与 `/share` 暂无公开 Pi core 入口，只保留 GUI / 配置适配。下一步实现 Shell aliases。
 47. [x] **批次 69：Shell aliases / Shell command prefix**：设置页「常规 > Shell」已支持 Pi 原生 `shellCommandPrefix` 多行编辑、清除、合并写入和 Agent 重连；单测覆盖合并写入、清除、保留其他 settings 与 NUL 校验。已验收并提交 `cab6fa4ff`。
+48. [ ] **批次 70：Telemetry 设置**：只实现 Pi 原生 `enableInstallTelemetry`；设置页「常规 > Telemetry」提供开关、行为说明、`PI_TELEMETRY` 环境变量覆盖状态和 Agent 重连。暂不实现 `enableAnalytics` / `trackingId`。
 
 ## 提交状态
 

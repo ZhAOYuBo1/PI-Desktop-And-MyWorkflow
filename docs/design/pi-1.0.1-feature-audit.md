@@ -153,7 +153,7 @@
 | Shell aliases | 已覆盖 | 「常规 > Shell」读写 Pi 原生 `shellCommandPrefix`，支持多行前缀、清除和保存后 Agent 重连 |
 | Cache Warming | 部分覆盖 | 批次 58 已实现设置（`cacheWarming` off/streaming/idle、`showCacheMissNotices`）和最近一次预热决策的费用状态；Pi RPC 未暴露 `session.cacheWarmingStatus` 的实时 state / nextWarmAt，客户端通过 `cache_warming_decision` 扩展事件读取决策数据 |
 | Retry 设置 | 部分覆盖 | 通过 Pi settings 写默认值，没有完整设置 UI |
-| Telemetry | 缺失 | 没有 Pi 原生 telemetry 设置 UI |
+| Telemetry | 缺失 | 已审计；下一轮只实现 `enableInstallTelemetry`，暂不做没有实际消费方的 analytics 开关 |
 | Update / rollback | 已覆盖 | 客户端 Pi 运行时更新和回退 |
 
 ### 交互、终端与 UI
@@ -406,6 +406,34 @@ CodePIddy 是客户端，不复制 Pi core 已公开的运行时能力。保留�
 RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部文件路径或复制源码。
 因此本轮不迁移、不搬源码，保留现有 GUI / 配置适配，等待 Pi 提供稳定公开入口。
 
+## Telemetry 审计（2026-10-08）
+
+### Pi 1.0.1 的实际行为
+
+- `enableInstallTelemetry` 默认 `true`，由 SettingsManager 读取。
+- 首次安装，或版本更新后检测到新的 changelog 时，Pi 会请求一次
+  `https://pi.dev/api/report-install?version=<version>`。请求只带版本和 User-Agent，
+  不上传 Prompt、代码、会话内容、Provider Key 或模型请求正文。
+- `PI_TELEMETRY` 环境变量优先于 `enableInstallTelemetry`，可用 `1/true/yes` 强制开启，
+  或用 `0/false/no` 强制关闭；`PI_OFFLINE` 存在时跳过安装统计请求。
+- 同一个 `isInstallTelemetryEnabled()` 还控制 OpenRouter、NVIDIA NIM、Cloudflare 的
+  Provider 归属请求头。关闭安装遥测时，这些归属头也会移除。
+- `enableAnalytics` 和 `trackingId` 字段存在，首次设置流程可以生成 tracking ID，
+  但 Pi 1.0.1 核心没有实际消费 `getEnableAnalytics()` / `getTrackingId()` 的逻辑。
+
+### 下一轮实现边界
+
+客户端只做 `enableInstallTelemetry` 的真实设置入口，不做 analytics 假开关：
+
+1. 设置页新增「常规 > Telemetry」。
+2. 用 `SettingsCheckbox` 控制 `enableInstallTelemetry`，合并写 Pi 原生 `settings.json`，
+   保留其他字段。
+3. 读取并显示 `PI_TELEMETRY` 是否存在；生效值由环境变量覆盖时，界面要明确标记，
+   不能只显示 settings.json 中的值。
+4. 保存反馈走 `SettingsToast`，持久错误走 `StateBlock`。
+5. 配置由 Agent 进程启动时读取；保存后空闲 Agent 自动重连，运行中 Agent 延后生效。
+6. 单测覆盖默认值、合并写入、保留其他 settings、环境变量覆盖和错误输入。
+
 ## 后续任务清单
 
 ### 阶段 0：清理和控制版本（已完成）
@@ -476,18 +504,20 @@ RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部
     `shellCommandPrefix`，不维护独立 alias 列表。该值会作为前缀拼到每次 bash 命令前，
     可用于启用 alias 展开或加载用户 shell 配置。设置页放在「常规 > Shell」，空字符串表示清除。
     保存后空闲 Agent 自动重连，运行中 Agent 延后生效；未修改 Pi core。
-32. Telemetry 设置
+32. Telemetry 设置：只实现 Pi 原生 `enableInstallTelemetry` 和多行说明 / 环境变量覆盖提示；
+    暂不实现 `enableAnalytics` / `trackingId`，直到 Pi core 真正消费它们。
 33. 自定义 Provider / 虚拟模型 / classifier / image models
 
-Shell aliases 下一轮代码落点：
+Telemetry 下一轮代码落点：
 
-1. `@codepiddy/shared` 增加 shell command prefix 的设置类型和状态字段。
-2. `AppSettingsStore` 合并读写 Pi 原生 `settings.json` 的 `shellCommandPrefix`；空值删除字段。
-3. main / preload / IPC 增加 get / save 接口，输入限制长度并拒绝 NUL。
-4. 设置页「常规 > Shell」增加多行文本框、保存 / 清除和示例说明；临时反馈走 `SettingsToast`，
-   持久错误走 `StateBlock`。
-5. 保存后空闲 Agent 自动重连；运行中 Agent 提示停止或重连后生效。
-6. 单测覆盖合并写入、清除字段、保留其他 settings 字段和非法输入。
+1. `@codepiddy/shared` 增加 install telemetry 设置摘要和保存接口；状态中同时返回
+   `enabled`、`effectiveEnabled`、`environmentOverride`。
+2. `AppSettingsStore` 合并读写 Pi 原生 `settings.json` 的 `enableInstallTelemetry`；
+   读取 `PI_TELEMETRY`，按 Pi 的 truthy 规则计算生效值。
+3. main / preload / IPC 增加 get / save 接口，只接受布尔值，不暴露任意环境变量或命令。
+4. 设置页「常规 > Telemetry」增加 `SettingsCheckbox`、环境变量覆盖提示和保存后的 Agent 重连；
+   临时反馈走 `SettingsToast`，持久错误走 `StateBlock`。
+5. 单测覆盖默认 true、合并写入、保留其他 settings、`PI_TELEMETRY` 覆盖和非法输入。
 
 ### 阶段 5：回归和收尾
 
