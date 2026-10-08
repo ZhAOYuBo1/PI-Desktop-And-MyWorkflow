@@ -18,7 +18,7 @@
 
 截图和 `node_modules` 一样在 `.artifacts/` 里，**已被 gitignore**，只在当前机器上存在，重新克隆后需要重跑一遍才能复现。
 
-### 恢复提示词（压缩后直接发这一段）
+### 历史恢复提示词（已被下方最新提示词替代，不要直接使用）
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」「进度日志」最后三条和「待办清单」），
@@ -64,6 +64,55 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 真实客户端：先 build，再 Start-Process node_modules\electron\dist\electron.exe -ArgumentList "." -WorkingDirectory packages\codepiddy-desktop。
 ```
 
+### 最新恢复提示词（压缩后直接发这一段）
+
+```text
+继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」
+里的「客户端边界清理决定」「进度日志」最后三条和「待办清单」），再读 PRODUCT.md、DESIGN.md、
+docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。
+
+批次 1-67 已提交到本地 `main`；批次 67 代码提交 `3db8f6a37`，当前 HEAD 以 `git log -1` 为准。
+`origin/main` 仍为 `29feb195e`，尚未推送。工作树应干净；如果看到上一轮被否决的
+`subagents.defaultExtensions` / permission forwarding 补丁，先撤销，不要继续实现。
+
+下一轮先做「客户端边界清理」，不要直接进入 Shell aliases：
+1. 删除 `@codepiddy/permission-extension`，不要再维护第二套权限系统、权限转发或
+   `pi-subagents` 特判。Pi 原生只保留工具白/黑名单、MCP exposure 和 trust 边界。
+2. 删除 Tavily `web_search` 自建 MCP：移除 `@codepiddy/tavily-search-mcp`、专用设置、
+   自动 `mcp.json` 条目、`TAVILY_API_KEY` 注入和角色提示词里的 Web Search Contract。
+   需要 web search 时由用户通过通用 MCP 配置。
+3. 删除未加载的 `@codepiddy/provider-extension`、`@codepiddy/role-guard-extension`。
+4. 保留 `review`、`retry`、`cache-warming`、内置 Agent Skills、角色提示词注入和角色 Skill 分配。
+   Agent 启动继续用 `--no-extensions` 隔离第三方扩展，显式列表只保留保留项。
+5. `llama.cpp` 桌面管理器和 `/share` helper 不要继续复制 Pi core 内部实现；
+   GUI 可保留，但优先接入 Pi core 导出的 SDK、CLI 或 RPC。core 无公开入口时先停手，不要搬 core 代码。
+
+阶段 3 已全部完成；阶段 4 第 24-29 项 Cache Warming、上下文压缩、Codemode、
+Tool Search / Tool Exposure、Prompt Templates、Pi Packages 都已实现。
+Pi Packages 和 runtime 更新仍待验收，但边界清理优先。
+
+统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；
+复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现。
+字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、
+思考强度波场、会话树、工作区面板、变更历史、内部终端、设置分区、MCP / Provider 配置、
+Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode、
+Prompt 模板、工作区文件工作台和统一组件规则都已实现，不要重做。
+文件搜索和终端多标签已取消，不再推进。
+
+Pi core 可更新，禁止改 `packages/coding-agent`；外壳增强走 Pi 扩展点或
+`packages/codepiddy-desktop` 的 main / renderer / preload。
+UI 改完 build 通过后自动重启 Electron，不用询问用户。
+
+仓库在 E:\mypi，依赖已装好。改完必须跑：
+  npm run check
+  npm run typecheck --workspace=@codepiddy/desktop
+  npm run build:codepiddy
+
+要看效果：cd packages/codepiddy-desktop && npx vite --host 127.0.0.1 --port 5173，
+浏览器开 http://127.0.0.1:5173/?demo=1（必须带 ?demo=1），用 Playwright 截图自查。
+真实客户端：先 build，再自动重启 Electron。
+```
+
 **容易踩的坑**
 
 - `npm run check` 内部会跑 `biome check --write`，它会重排格式，diff 变大是正常的，不是改错了。
@@ -83,7 +132,26 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-08 Pi Packages / runtime 适配已实现并提交，待验收）
+## 当前状态（2026-10-08 客户端边界清理决策已记录，尚未实现）
+
+### 客户端边界清理决定（批次 68 候选，尚未改代码）
+
+- 保留的自研扩展功能：`review` 变更 diff、`retry` 网关并发错误兜底、
+  `cache-warming` 决策状态桥、内置 Agent Skills、角色提示词注入和角色 Skill 分配。
+- 删除的非原生功能：`@codepiddy/permission-extension`、Tavily `web_search` 自建 MCP、
+  `@codepiddy/tavily-search-mcp`、未加载的 `@codepiddy/provider-extension` 和
+  `@codepiddy/role-guard-extension`。
+- 删除范围包括 Tavily 专用设置、自动写入 `mcp.json` 的 `web_search` 条目、
+  `TAVILY_API_KEY` 注入和角色提示词里的 Web Search Contract；web search 若仍需要，
+  由用户在通用 MCP 页面自行配置。
+- `llama.cpp` 桌面管理器和 `/share` helper 目前重复实现了 Pi core 已有能力。
+  后续只保留 GUI / 配置适配，优先调用 Pi core 导出的 SDK、CLI 或 RPC；core 没有公开入口时，
+  不要继续复制 core 内部实现。
+- Agent 启动的 `--no-extensions` 仍用于隔离第三方扩展；显式列表在清理后只保留
+  `review`、`retry`、`cache-warming`。清理 permission 后不要恢复第二套权限协议，
+  也不要再特判 `pi-subagents`。
+- 上一轮尝试加入的 `subagents.defaultExtensions` / permission forwarding 兼容补丁已被否决并撤销，
+  不要再恢复。
 
 - 阶段 4 第 29 项 Pi Packages 已实现：设置页新增「Agent > Pi Packages」，读取用户级和项目级
   `packages`，显示来源、作用域、版本、安装路径、资源摘要和扩展开关；支持安装、移除、
@@ -1355,6 +1423,21 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
   桌面 / 安装弹窗 / 窄窗截图检查通过；真实 Electron 已重启。
 - 代码提交：`3db8f6a37 feat(desktop): add Pi package controls and complete runtime root`。
 
+### 2026-10-08 批次 68 候选：客户端边界清理决策（尚未改代码）
+
+- 结论：CodePIddy 保留客户端编排、配置、展示和产品层；不再复制 Pi core 已公开的运行时能力。
+- 保留自研扩展：`review` 变更 diff、`retry` 网关并发错误兜底、`cache-warming` 状态桥、
+  内置 Agent Skills、角色提示词注入、角色 Skill 分配。
+- 删除非原生功能：`permission-extension`、Tavily `web_search` 自建 MCP、
+  `provider-extension`、`role-guard-extension`。
+- Tavily 删除范围：专用设置、`web_search` 自动 MCP 条目、`TAVILY_API_KEY` 注入、
+  角色提示词中的 Web Search Contract 和 `packages/codepiddy-tavily-search-mcp`。
+- 重复实现处理：`llama.cpp` 桌面管理器和 `/share` helper 只保留 GUI / 配置适配，
+  优先调用 Pi core 的 SDK / CLI / RPC；core 未公开的能力不要搬源码。
+- 已撤销上一轮未提交的 `subagents.defaultExtensions` 和 permission forwarding 兼容补丁。
+- 下一轮执行顺序：边界清理代码和测试 -> `npm run check` + desktop typecheck +
+  `build:codepiddy` -> 真实 Electron 验证 -> 再进入阶段 4 第 30 项 Shell aliases。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1402,6 +1485,7 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 43. [x] **支线 66：工作区文件操作撤销栈**：每项目 30 条撤销栈、隐藏回收目录、工具栏撤销、`Ctrl/Cmd+Z`，覆盖新建、重命名、复制、移动、删除；代码提交 `a1a2c0870`，支线至此收口。
 44. [x] **阶段 4 第 29 项：Pi Packages 审计**：确认配置格式、用户 / 项目作用域、npm / Git / 本地路径、安装位置、CLI 与 `DefaultPackageManager` 能力，以及 `--no-extensions` 对 package extension 的隔离边界；下一步实现客户端原生 Pi Packages 设置页。
 45. [x] **批次 67：Pi Packages 设置与运行时包管理**：实现用户 / 项目级包列表、npm / Git / 本地路径安装、移除、单包更新、更新检查、项目信任校验、资源摘要和按包 extension 开关；开启后 Agent 显式加载对应 extension，关闭后不加载。helper 使用 runtime bundle，不解析 `pi list`，不更新 Pi 运行时。完整 runtime 包根、内置 runtime 更新脚本和命令说明适配已提交 `3db8f6a37`。待验收。
+46. [ ] **批次 68：客户端边界清理（最高优先级，尚未改代码）**：删除 `permission-extension`、Tavily `web_search` 自建 MCP、`provider-extension`、`role-guard-extension`；保留 `review`、`retry`、`cache-warming`、自研 Skills、角色提示词和角色 Skill 分配；`llama.cpp` 与 `/share` 不再复制 Pi core 实现，只保留 GUI / 配置适配。完成后先验收再做 Shell aliases。
 
 ## 提交状态
 
@@ -1476,7 +1560,11 @@ subagent / codemode 的宿主解析。
 | 2026-10-07 | Prompt 模板由客户端管理用户 / 项目 Markdown 文件，模板名就是 `/命令名`；保存或删除后空闲 Agent 自动重连并刷新命令菜单 | Pi 不提供模板管理 RPC；模板在 Agent 启动时加载，运行中的 Session 不会自动重载 |
 | 2026-10-07 | 工作区文件管理参考 `dsh-plugin-workbench` 的能力，但只适配到 CodePIddy 的 core / main / preload / renderer，不照搬其主题、emoji 和宿主补丁 | 保持项目视觉与安全边界；文件写入必须继续受项目路径、realpath 和 Agent write lease 约束 |
 | 2026-10-07 | 文件操作撤销栈按参考项目实现：隐藏回收目录、`Ctrl/Cmd+Z`、工具栏撤销入口，覆盖新建、重命名、复制、移动、删除 | 用户明确要求直接按参考项目方案，不再自行设计删除恢复机制 |
+| 2026-10-08 | 保留 `review`、`retry`、`cache-warming`、自研 Agent Skills、角色提示词和角色 Skill 分配 | 用户确认这些是有价值的客户端功能，不随边界清理删除 |
+| 2026-10-08 | 删除 `permission-extension`、Tavily `web_search` 自建 MCP、未加载的 `provider-extension` 和 `role-guard-extension` | 权限与专用 web search 是自研非原生功能；未加载包没有保留价值 |
+| 2026-10-08 | `llama.cpp` 和 `/share` 的客户端实现只保留 GUI / 配置适配，优先复用 Pi core 的 SDK / CLI / RPC | 客户端不应继续复制 Pi core 的内部实现 |
 
 ## 待用户确认
 
 - Pi Packages、package 资源和 runtime 更新适配待用户验收；批次 63-67 尚在本地 `main`，未推送。
+- 批次 68 客户端边界清理方案已确认，尚未开始改代码；下一轮优先执行。

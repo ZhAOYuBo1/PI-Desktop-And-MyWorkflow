@@ -403,9 +403,36 @@ Pi 1.0.1 的 `--no-extensions` 会禁用自动发现的 extensions 和内置 ext
    - `?demo=1` 覆盖空列表、已安装包、extension 开关、安装弹窗、移除确认和错误状态。
    - 真实验收至少覆盖用户级 npm 包列表、安装本地测试包、移除本地测试包和刷新。
 
-实现时必须继续保留现有 Agent 启动参数 `--no-extensions` 和显式扩展列表；只有用户明确开启的
-package extension 才会追加到显式列表，不得自动修改 permission / review / retry / cache-warming
-扩展的加载策略。
+2026-10-08 边界清理后，Agent 启动继续用 `--no-extensions` 隔离第三方扩展，但显式扩展只保留
+`review` / `retry` / `cache-warming`。`permission` 和 Tavily `web_search` 自建 MCP 将删除，
+不能再恢复第二套权限协议或专用 web search 注入。
+
+## 客户端边界清理决定（2026-10-08）
+
+CodePIddy 是客户端，不复制 Pi core 已公开的运行时能力。保留客户端自己的产品层和统一配置 / 展示，
+删除无必要的自研运行时实现。
+
+保留：
+
+- `@codepiddy/review-extension`：变更 diff。
+- `@codepiddy/retry-extension`：网关并发错误兜底。
+- `@codepiddy/cache-warming-extension`：把核心决策事件桥接到客户端状态文件。
+- `codepiddy-agent-skills`、角色提示词注入、角色 Skill 分配。
+
+删除：
+
+- `@codepiddy/permission-extension`，包括第二套权限策略、权限弹窗、权限转发和 `pi-subagents` 特判。
+- Tavily `web_search` 自建 MCP：`packages/codepiddy-tavily-search-mcp`、专用设置、
+  自动 `mcp.json` 条目、`TAVILY_API_KEY` 注入和 Web Search Contract。
+- 未加载的 `@codepiddy/provider-extension` 和 `@codepiddy/role-guard-extension`。
+
+重复实现处理：
+
+- `llama.cpp` 桌面管理器：保留设置 / 操作界面，优先调用 Pi core 的 provider / extension 能力，
+  不再复制 router、Hugging Face、load / unload / download 逻辑。
+- `/share` helper：保留客户端分享弹窗，优先复用 Pi core 分享流程，不复制 Radius / Gist 业务逻辑。
+
+下一轮先实现该清理，再继续阶段 4 第 30 项 Shell aliases。
 
 ## 后续任务清单
 
@@ -417,6 +444,9 @@ package extension 才会追加到显式列表，不得自动修改 permission / 
 4. 已用 RPC smoke test 验证固定 bundle 的 state / messages / tree / models / commands。
 
 ### 阶段 1：MCP 统一
+
+2026-10-08 更新：本阶段第 5-8 项关于保留 Tavily `web_search` 的结论已被
+「客户端边界清理决定」替代；下一轮删除专用 Tavily MCP 和设置，只保留通用 MCP 配置。
 
 5. [x] 保留客户端 Tavily / `web_search` 独立设置卡和加密 Key。
 6. [x] 删除 `CODEPIDDY_TAVILY_MCP_ENTRY` 独立注入通道。
@@ -446,7 +476,7 @@ package extension 才会追加到显式列表，不得自动修改 permission / 
 22. [x] `/share`：批次 51-53 已实现并验收客户端原生分享、隐私确认、独立分享设置、品牌图标、Radius / GitHub CLI 回退和 viewer link。
 23. [x] `/bug` / 客户端诊断包：批次 54 已完成客户端原生诊断导出，收集版本、平台、Agent / Session / Provider / MCP / trust 状态、最近错误、日志路径和可选脱敏 Session JSONL，导出本地 ZIP，不上传。Pi 1.0.1 仍没有原生 `/bug`。
 
-批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`，第 26 项 Codemode 已由批次 61 实现并提交 `ec4dde669`，第 27 项 Tool Search / Tool Exposure 已由批次 62 实现并提交 `6815fc026`，第 28 项 Prompt Templates 已由批次 63 实现并提交 `8a9231079`。第 29 项 Pi Packages 已由批次 67 实现客户端设置页、runtime helper、安装 / 更新 / 移除 / 更新检查和项目信任边界；下一步进入第 30 项 Shell aliases。
+批次 53 已完成并验收第 22 项 `/share`；批次 54 已完成第 23 项客户端诊断包导出，并顺带完成统一 UI 组件规则。阶段 3 已全部完成；阶段 4 第 24 项 Cache Warming 已由批次 58 实现并提交 `c17b64abf`，第 25 项自动压缩 / 分支摘要 / per-model compaction overrides 已由批次 60 实现并提交 `db4e91195`，第 26 项 Codemode 已由批次 61 实现并提交 `ec4dde669`，第 27 项 Tool Search / Tool Exposure 已由批次 62 实现并提交 `6815fc026`，第 28 项 Prompt Templates 已由批次 63 实现并提交 `8a9231079`。第 29 项 Pi Packages 已由批次 67 实现客户端设置页、runtime helper、安装 / 更新 / 移除 / 更新检查和项目信任边界。下一轮先执行「客户端边界清理决定」，然后进入第 30 项 Shell aliases。
 
 ### 阶段 4：高级运行时能力
 
@@ -468,9 +498,10 @@ package extension 才会追加到显式列表，不得自动修改 permission / 
 解析，并校验 SDK 入口、commands、host peers 和 `quickjs-wasi`。更新内置 runtime 使用
 `npm run update:pi-runtime -- <version>`；只替换 `dist/bundle` 不再被视为有效更新。
 内置命令说明从 `dist/core/slash-commands.js` 读取，不再回退为统一的“Pi 内置命令”文案。
-30. Shell aliases
-31. Telemetry 设置
-32. 自定义 Provider / 虚拟模型 / classifier / image models
+30. 客户端边界清理：删除 permission / Tavily / 未加载扩展，复用 Pi core 的 llama / share 能力。
+31. Shell aliases
+32. Telemetry 设置
+33. 自定义 Provider / 虚拟模型 / classifier / image models
 
 ### 阶段 5：回归和收尾
 

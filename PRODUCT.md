@@ -44,6 +44,16 @@ CodePIddy 是一个基于 Pi 的桌面编码工作台：管理项目、工作项
 
 每个状态都要设计过。默认、悬停、聚焦、选中、禁用、空、错误、加载——缺一个都算没做完。
 
+## 客户端边界
+
+CodePIddy 保留客户端自己的编排、配置、展示和产品层能力，但不复制 Pi core 已经公开的运行时能力。
+
+- 客户端负责：项目 / Agent 编排、GUI、设置、文件工作台、终端、会话展示、诊断、分享入口和统一的本地配置。
+- Pi core 负责：Agent loop、工具注册、MCP / Codemode / Tool Search、模型运行时、认证、trust、packages、compaction、cache warming、retry 和 session 存储。
+- 客户端增强只能通过 Pi 扩展点或 Pi 导出的 SDK / CLI / RPC 接入；core 没有公开入口时，不搬 core 内部实现。
+- `review` 变更 diff、`retry` 网关并发兜底、`cache-warming` 状态桥、自研 Skills、角色提示词和角色 Skill 分配是保留的客户端扩展。
+- 不再维护自研 permission 系统、Tavily 专用 `web_search` MCP 或未加载的 provider / role-guard 扩展。
+
 ## Accessibility & Inclusion
 
 没有硬性合规要求。本轮按 WCAG AA 执行：正文与背景对比度不低于 4.5:1，大字号不低于 3:1，动效提供 `prefers-reduced-motion` 降级，聚焦态必须可见。
