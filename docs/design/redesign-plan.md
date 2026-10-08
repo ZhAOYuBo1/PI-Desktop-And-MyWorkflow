@@ -73,7 +73,8 @@ docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs
 
 批次 1-68 已完成；批次 68 提交为 `65607e721`。另一个 session 已提交 `ebd1ea58b`
 修复流式输出跟随滚动。当前 HEAD 以 `git log -1` 为准；`origin/main` 仍为 `29feb195e`，
-本地领先 13 个提交，尚未推送。工作树应干净；不要恢复已删除的 permission / Tavily 专用实现。
+本地领先数量以 `git rev-list --count origin/main..HEAD` 为准，尚未推送。工作树应干净；
+不要恢复已删除的 permission / Tavily 专用实现。
 
 批次 68 已完成客户端边界清理：
 1. 删除 `@codepiddy/permission-extension`、Tavily `web_search` 自建 MCP、
