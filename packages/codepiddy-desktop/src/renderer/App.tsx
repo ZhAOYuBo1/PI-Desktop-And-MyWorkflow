@@ -1549,46 +1549,48 @@ const TranscriptPane = memo(function TranscriptPane({
 			inert={visible ? undefined : true}
 		>
 			<div className="transcript" ref={scroll.scrollRef} onScroll={scroll.handleScroll}>
-				{items.length === 0 ? (
-					<div className="transcript-placeholder compact">
-						<div className="state-mark state-mark-conversation">
-							<AppIcon name="message-question" size={18} />
+				<div className="transcript-content" ref={scroll.contentRef}>
+					{items.length === 0 ? (
+						<div className="transcript-placeholder compact">
+							<div className="state-mark state-mark-conversation">
+								<AppIcon name="message-question" size={18} />
+							</div>
+							<h2>{displayName}</h2>
+							<p>发送一条消息开始工作。Agent 会检查当前工作目录中实际存在的材料。</p>
+							{kickoffPrompt ? (
+								<button className="quick-start-button" type="button" onClick={onUseKickoff}>
+									使用默认交接提示
+								</button>
+							) : null}
 						</div>
-						<h2>{displayName}</h2>
-						<p>发送一条消息开始工作。Agent 会检查当前工作目录中实际存在的材料。</p>
-						{kickoffPrompt ? (
-							<button className="quick-start-button" type="button" onClick={onUseKickoff}>
-								使用默认交接提示
-							</button>
-						) : null}
-					</div>
-				) : (
-					<TranscriptTurns
-						items={items}
-						assistantModel={assistantModel}
-						modelLabels={modelLabels}
-						idPrefix={agentId}
-						running={running}
-						collapsedRounds={collapsedRounds}
-						onToggleRound={onToggleRound}
-						forkEntryIds={forkEntryIds}
-						forkingEntryId={forkingEntryId}
-						onFork={onFork}
-					/>
-				)}
-				{activity ? (
-					<div className="transcript-runtime-status">
-						<output className={`agent-activity activity-${activity.kind}`} aria-live="polite">
-							<span className="activity-dots" aria-hidden="true">
-								<span />
-								<span />
-								<span />
-							</span>
-							<span className="activity-label">{activity.label}</span>
-							{activity.queued > 0 ? <small>{activity.queued} 条排队</small> : null}
-						</output>
-					</div>
-				) : null}
+					) : (
+						<TranscriptTurns
+							items={items}
+							assistantModel={assistantModel}
+							modelLabels={modelLabels}
+							idPrefix={agentId}
+							running={running}
+							collapsedRounds={collapsedRounds}
+							onToggleRound={onToggleRound}
+							forkEntryIds={forkEntryIds}
+							forkingEntryId={forkingEntryId}
+							onFork={onFork}
+						/>
+					)}
+					{activity ? (
+						<div className="transcript-runtime-status">
+							<output className={`agent-activity activity-${activity.kind}`} aria-live="polite">
+								<span className="activity-dots" aria-hidden="true">
+									<span />
+									<span />
+									<span />
+								</span>
+								<span className="activity-label">{activity.label}</span>
+								{activity.queued > 0 ? <small>{activity.queued} 条排队</small> : null}
+							</output>
+						</div>
+					) : null}
+				</div>
 			</div>
 		</div>
 	);

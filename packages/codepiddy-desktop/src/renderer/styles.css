@@ -202,6 +202,23 @@ button { color: inherit; }
   padding: var(--cp-space-xl) var(--cp-space-xl);
 }
 
+/* 滚动容器只负责视口，内容盒是 ResizeObserver 观察的对象：
+   流式输出只改这里的高度。min-height 让空态仍能占满视口并居中。 */
+.transcript-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* flex 列里的 auto 左右 margin 会让 .turn-group 缩到内容宽度；
+   显式撑满并居中，保持原来的 760px 消息列。 */
+.transcript-content > .turn-group {
+  width: 100%;
+  margin-right: 0;
+  margin-left: 0;
+  align-self: center;
+}
+
 .transcript-placeholder.compact {
   min-height: 100%;
 }
