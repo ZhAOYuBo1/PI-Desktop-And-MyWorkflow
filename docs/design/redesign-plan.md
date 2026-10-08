@@ -72,7 +72,8 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。
 
 批次 1-68 已完成；批次 68 提交为 `65607e721`。另一个 session 已提交 `ebd1ea58b`
-修复流式输出跟随滚动。当前 HEAD 以 `git log -1` 为准；`origin/main` 仍为 `29feb195e`，
+修复流式输出跟随滚动，以及 `873784d2c` 对齐文件树同层文件与目录缩进。
+当前 HEAD 以 `git log -1` 为准；`origin/main` 仍为 `29feb195e`，
 本地领先数量以 `git rev-list --count origin/main..HEAD` 为准，尚未推送。工作树应干净；
 不要恢复已删除的 permission / Tavily 专用实现。
 
@@ -1499,7 +1500,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 
 ## 提交状态
 
-批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64-66 工作区文件工作台、批次 67 Pi Packages 和批次 68 边界清理仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`。提交哈希以 `git log -1` 为准。
+批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64-66 工作区文件工作台、批次 67 Pi Packages 和批次 68 边界清理仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
