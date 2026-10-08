@@ -71,8 +71,8 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 里的「客户端边界清理」「进度日志」最后三条和「待办清单」），再读 PRODUCT.md、DESIGN.md、
 docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。
 
-批次 1-69 已实现；批次 68 提交为 `65607e721`，批次 69 Shell aliases 代码提交为 `cab6fa4ff`，
-交接文档提交为 `c264019b2`。Telemetry 审计已完成，代码尚未开始。
+批次 1-70 已实现；批次 68 提交为 `65607e721`，批次 69 Shell aliases 代码提交为 `cab6fa4ff`，
+批次 70 Telemetry 代码提交为 `cc55936ec`。本轮 Provider / 特殊模型审计已完成，代码尚未开始。
 另一个 session 已提交 `ebd1ea58b`
 修复流式输出跟随滚动，以及 `873784d2c` 对齐文件树同层文件与目录缩进。
 当前 HEAD 以 `git log -1` 为准；`origin/main` 仍为 `29feb195e`，
@@ -87,8 +87,9 @@ docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs
 4. `llama.cpp` 桌面管理器和 `/share` helper 已完成审计：Pi 1.0.1 的公开 SDK 导出里没有
    `LlamaClient`、`shareSession` 或对应 RPC；GUI 暂时保留，不继续扩展，也不搬 core 源码。
 
-阶段 3 已全部完成；阶段 4 第 24-29 项 Cache Warming、上下文压缩、Codemode、
-Tool Search / Tool Exposure、Prompt Templates、Pi Packages 都已实现。
+阶段 3 已全部完成；阶段 4 第 24-32 项 Cache Warming、上下文压缩、Codemode、
+Tool Search / Tool Exposure、Prompt Templates、Pi Packages、Shell command prefix
+和 Telemetry 都已实现。
 Pi Packages 和 runtime 更新仍待验收；批次 68 边界清理已验收提交。
 批次 69 已实现 Shell aliases（审计文档第 31 项；旧计划里的第 30 项）：
 1. 客户端 UI / IPC 只读写 Pi 原生 `settings.json` 的 `shellCommandPrefix`，
@@ -98,20 +99,35 @@ Pi Packages 和 runtime 更新仍待验收；批次 68 边界清理已验收提�
 3. 合并写 settings.json；空闲 Agent 自动重连，运行中 Agent 延后生效。
 4. 单测覆盖合并写入、清除字段、保留其他 settings 和 NUL 输入。
 
-Telemetry 审计结论：Pi 1.0.1 只有 `enableInstallTelemetry` 是真实生效的配置。首次安装或更新后
-Pi 会请求一次 `https://pi.dev/api/report-install?version=<version>`，不上传 Prompt、代码、
-会话内容、Provider Key 或模型请求正文；`PI_TELEMETRY` 环境变量优先于 settings.json，
-`PI_OFFLINE` 会跳过该统计请求。同一个开关还控制 OpenRouter / NVIDIA NIM / Cloudflare
-的 Provider 归属请求头。`enableAnalytics` / `trackingId` 目前没有实际消费方，不要提供假开关。
+批次 70 已实现 Telemetry 设置：设置页「常规 > Telemetry」控制 Pi 原生
+`enableInstallTelemetry`，显示 `PI_TELEMETRY` 覆盖后的实际生效状态；默认开启，不提供
+`enableAnalytics` / `trackingId` 假开关。保存后空闲 Agent 自动重连，单测 5 项通过。
 
-下一轮实现 Telemetry 设置：
-1. 设置页新增「常规 > Telemetry」。
-2. 只读写 Pi 原生 `settings.json` 的 `enableInstallTelemetry`；合并写、保留其他字段。
-3. 状态里显示 `enabled`、环境变量覆盖状态和 `effectiveEnabled`；`PI_TELEMETRY` 存在时，
-   界面不能只显示 settings.json 中的值。
-4. 用 `SettingsCheckbox`；保存反馈走 `SettingsToast`，持久错误走 `StateBlock`。
-5. 空闲 Agent 自动重连，运行中 Agent 延后生效；单测覆盖默认值、合并写入、
-   环境变量覆盖、保留其他 settings 和非法输入。
+下一轮实现批次 71：自定义 Provider 配置正确性与无损保存。Pi 1.0.1 审计结论：
+1. 支持内置 API 协议的静态 Provider 才走 `models.json`；自定义认证、协议、动态发现和流式实现
+   必须使用 Provider extension。
+2. `models.json` 支持 Provider 级 `name / baseUrl / apiKey / api / oauth / headers /
+   authHeader / compat / models / modelOverrides`，以及模型级 `api / baseUrl / reasoning /
+   thinkingLevelMap / input / inputLimits / cost / promptCache / contextWindow / maxTokens /
+   samplingParams / headers / compat`。
+3. 当前客户端只展示简单字段，保存时会重建 `models` 数组，可能丢失未知高级字段；`PROVIDER_APIS`
+   也错误限制为四种 API。第一批必须先修无损写回和高级静态字段。
+4. 不给 `models.json` 添加 image / classifier 类型开关。实测 `type: "image"` 会被 schema 忽略，
+   自定义 classifier / image 只能由 Provider extension 注册。
+5. 虚拟模型只能由 extension / SDK `registerVirtualModel()` 注册；客户端可选择注册后的模型，
+   但不能只靠 JSON 创建路由。不要实现无代码路由编排器。
+6. RPC `get_available_models` 只返回 chat catalog；虚拟模型注册后会出现，classifier / image
+   不在 RPC 列表。批次 72 再用 Agent extension 读取 `modelRegistry.getAllModels()` 生成只读目录。
+7. `pi-auth-helper.mjs` 当前不加载 package extension，extension Provider 的登录状态不会显示；
+   第三方 extension 认证桥接要单独评估，继续遵守显式启用和信任边界。
+
+批次 71 必须：
+1. Provider / Model / ModelOverride 类型对齐 Pi schema，保留原始对象和未知字段。
+2. 按字段补丁写回，不得用 UI 已知字段重建并覆盖整个模型对象。
+3. 支持 Provider 级 `headers / authHeader / modelOverrides` 和主要模型高级字段。
+4. 复杂嵌套字段使用结构化编辑或受控高级 JSON，不用无校验文本直接覆盖文件。
+5. 保存后空闲 Agent 自动重连，运行中 Agent 延后生效；单测覆盖未知字段保留、嵌套合并、
+   删除字段和非法输入。
 
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；
 复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`。不要再新增第二套实现。
@@ -154,7 +170,7 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-08 Shell aliases 已验收，下一项 Telemetry）
+## 当前状态（2026-10-08 Telemetry 已验收，下一项自定义 Provider 配置正确性）
 
 ### 客户端边界清理（批次 68 已验收并提交 `65607e721`）
 
@@ -180,9 +196,19 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
   `settings.json`，保留其他设置字段，空值删除字段，拒绝 NUL 输入；保存后空闲 Agent
   自动重连，运行中 Agent 延后生效。Shell 页面现在同时包含 bash 可执行文件和命令前缀。
 
-- Telemetry 审计已完成：Pi 1.0.1 的 `enableInstallTelemetry` 会在首次安装或更新后报告一次
-  当前版本，并控制 OpenRouter / NVIDIA / Cloudflare 的归属请求头；`PI_TELEMETRY` 可覆盖。
-  `enableAnalytics` / `trackingId` 在 1.0.1 中没有实际消费方，下一轮不提供假开关。
+- 批次 70 已实现并提交 Telemetry 设置 `cc55936ec`：设置页「常规 > Telemetry」控制 Pi 原生
+  `enableInstallTelemetry`，显示 `PI_TELEMETRY` 覆盖后的实际生效状态；默认开启，
+  `enableAnalytics` / `trackingId` 没有实际消费方，不提供假开关。单测 5 项通过。
+
+- 自定义 Provider / 虚拟模型 / classifier / image models 审计已完成：
+  - 静态兼容接口走 `models.json`，支持 Provider / Model / `modelOverrides` 高级字段；
+    当前客户端只覆盖简单字段，保存模型时会重建数组，可能丢失未知字段。
+  - 自定义认证、协议、动态发现和流式实现必须使用 Provider extension。
+  - 虚拟模型只能通过 extension / SDK `registerVirtualModel()` 注册，不能写进 `models.json`。
+  - 内置 classifier / image 通过 Codemode 使用；自定义 classifier / image 必须由 Provider
+    extension 注册。`models.json` 中的 `type: "image"` 实测会被忽略。
+  - RPC `get_available_models` 只返回 chat catalog；虚拟模型会出现，classifier / image 不出现。
+  - 批次 71 先做 `models.json` 无损保存和高级静态字段；批次 72 再做特殊模型只读目录。
 
 - 阶段 4 第 29 项 Pi Packages 已实现：设置页新增「Agent > Pi Packages」，读取用户级和项目级
   `packages`，显示来源、作用域、版本、安装路径、资源摘要和扩展开关；支持安装、移除、
@@ -1486,15 +1512,32 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、Shell 命令前缀单测 4 项、
   `?demo=1` 桌面 / 900px 窄窗截图检查通过；真实 Electron 已重启。
 
-### 2026-10-08 Telemetry 审计（代码未改动）
+### 2026-10-08 批次 70：Telemetry 设置（已验收并提交 `cc55936ec`）
 
-- Pi 1.0.1 的 `enableInstallTelemetry` 默认开启。首次安装或更新后检测到新 changelog 时，
-  Pi 会请求一次 `https://pi.dev/api/report-install?version=<version>`；请求不包含 Prompt、
-  代码、会话内容、Provider Key 或模型请求正文。
-- `PI_TELEMETRY` 环境变量优先于 settings.json；`PI_OFFLINE` 会让安装统计请求直接跳过。
-- 同一个开关还控制 OpenRouter、NVIDIA NIM、Cloudflare 的 Provider 归属请求头。
-- `enableAnalytics` / `trackingId` 只有设置字段和 tracking ID 生成逻辑，Pi 1.0.1 没有实际消费方。
-- 下一轮只做 `enableInstallTelemetry` 设置和多行说明 / 环境变量覆盖状态，不做 analytics 开关。
+- 设置页新增「常规 > Telemetry」，用 `SettingsCheckbox` 控制 Pi 原生 `settings.json`
+  的 `enableInstallTelemetry`。
+- 状态返回 `enabled`、`effectiveEnabled` 和 `PI_TELEMETRY` 覆盖状态；环境变量存在时
+  界面显示实际生效值，不再把文件值冒充生效值。
+- `PI_OFFLINE`、匿名版本报告、Provider 归属请求头和隐私范围写入页面说明。
+- `enableAnalytics` / `trackingId` 没有实际消费方，不提供假开关。
+- 合并写 settings.json，保留其他字段；保存后空闲 Agent 自动重连，运行中 Agent 延后生效。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、Telemetry 单测 5 项、
+  `?demo=1` 桌面 / 900px 窄窗截图检查通过；真实 Electron 已重启。
+
+### 2026-10-08 自定义 Provider / 特殊模型审计（代码未改动）
+
+- 静态自定义 Provider 走 `models.json`；当前客户端只覆盖简单字段，保存模型时会重建
+  `models` 数组，可能删除未知高级字段。`PROVIDER_APIS` 还错误限制为四种 API。
+- `models.json` 的 Provider / Model / `modelOverrides` schema 已写入
+  `pi-1.0.1-feature-audit.md`；第一批实现必须无损写回并补齐主要高级静态字段。
+- 虚拟模型只能由 extension / SDK `registerVirtualModel()` 注册；不能写进 `models.json`，
+  也不做无代码路由编排器。
+- 实测 `models.json` 中的 `type: "image"` 会被忽略并作为 chat 模型加载；自定义
+  classifier / image 必须由 Provider extension 声明 `type`、`classifiers` 或 `images`。
+- 内置 1.0.1 无网络目录枚举到 59 个 image、20 个 classifier 和 42 个 Provider；
+  `get_available_models` RPC 只返回 chat，classifier / image 不出现。
+- `pi-auth-helper.mjs` 不加载 package extension，extension Provider 的登录状态不会显示；
+  第三方 extension 认证桥接要单独评估，不能恢复自动加载所有扩展。
 
 ## 待办清单（按优先级，下一批从这里挑）
 
@@ -1545,11 +1588,13 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 45. [x] **批次 67：Pi Packages 设置与运行时包管理**：实现用户 / 项目级包列表、npm / Git / 本地路径安装、移除、单包更新、更新检查、项目信任校验、资源摘要和按包 extension 开关；开启后 Agent 显式加载对应 extension，关闭后不加载。helper 使用 runtime bundle，不解析 `pi list`，不更新 Pi 运行时。完整 runtime 包根、内置 runtime 更新脚本和命令说明适配已提交 `3db8f6a37`。待验收。
 46. [x] **批次 68：客户端边界清理（已验收并提交 `65607e721`）**：删除 `permission-extension`、Tavily `web_search` 自建 MCP、`provider-extension`、`role-guard-extension`；保留 `review`、`retry`、`cache-warming`、自研 Skills、角色提示词和角色 Skill 分配；审计确认 `llama.cpp` 与 `/share` 暂无公开 Pi core 入口，只保留 GUI / 配置适配。下一步实现 Shell aliases。
 47. [x] **批次 69：Shell aliases / Shell command prefix**：设置页「常规 > Shell」已支持 Pi 原生 `shellCommandPrefix` 多行编辑、清除、合并写入和 Agent 重连；单测覆盖合并写入、清除、保留其他 settings 与 NUL 校验。已验收并提交 `cab6fa4ff`。
-48. [ ] **批次 70：Telemetry 设置**：只实现 Pi 原生 `enableInstallTelemetry`；设置页「常规 > Telemetry」提供开关、行为说明、`PI_TELEMETRY` 环境变量覆盖状态和 Agent 重连。暂不实现 `enableAnalytics` / `trackingId`。
+48. [x] **批次 70：Telemetry 设置**：已实现 Pi 原生 `enableInstallTelemetry`；设置页「常规 > Telemetry」提供开关、行为说明、`PI_TELEMETRY` 环境变量覆盖状态和 Agent 重连。未实现 `enableAnalytics` / `trackingId`。提交 `cc55936ec`。
+49. [ ] **批次 71：自定义 Provider 配置正确性与无损保存**：先修 `models.json` 未知字段保留，再补齐 Provider 级 `headers / authHeader / modelOverrides` 和模型级 `api / baseUrl / cost / promptCache / inputLimits / samplingParams / thinkingLevelMap / headers / compat`。禁止用当前 UI 字段重建并覆盖模型；复杂字段使用结构化编辑或受控高级 JSON。
+50. [ ] **批次 72：特殊模型目录**：在批次 71 完成后，由 Agent 进程 extension 读取 `modelRegistry.getAllModels()`，只读展示 chat / virtual / classifier / image、来源和可用性。不给 `models.json` 添加无效的 image / classifier 类型；不做无代码虚拟模型路由编排器。
 
 ## 提交状态
 
-批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64-66 工作区文件工作台、批次 67 Pi Packages、批次 68 边界清理和批次 69 Shell command prefix 仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`，批次 69 提交 `cab6fa4ff`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
+批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64-66 工作区文件工作台、批次 67 Pi Packages、批次 68 边界清理、批次 69 Shell command prefix 和批次 70 Telemetry 仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`，批次 69 提交 `cab6fa4ff`，批次 70 提交 `cc55936ec`。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1626,4 +1671,5 @@ subagent / codemode 的宿主解析。
 
 ## 待用户确认
 
-- Pi Packages、package 资源和 runtime 更新待用户验收；批次 68 已验收提交。批次 63-68 尚在本地 `main`，未推送。
+- Pi Packages、package 资源和 runtime 更新待用户验收；批次 63-70 尚在本地 `main`，未推送。
+- 自定义 Provider / 特殊模型审计已完成，下一轮批次 71 先做 `models.json` 无损保存和高级静态字段。

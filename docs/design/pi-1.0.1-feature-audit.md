@@ -84,10 +84,10 @@
 | `!command` Key | 缺失 | Pi 原生支持命令型 Key，客户端没有配置入口 |
 | `/scoped-models` | 已覆盖 | 客户端“常用模型范围”写入 `enabledModels`，模型选择器按常用/其他分组 |
 | `/llama` | 部分覆盖 | 客户端原生 router 连接、模型管理、HF 下载和量化选择已实现；真实 router 端到端测试待后续环境 |
-| 自定义 Provider | 部分覆盖 | `models.json` 支持基础 Provider，没有 Provider extension 管理 |
-| 虚拟模型 | 缺失 | 没有虚拟模型注册和路由状态 UI |
-| Classifier models | 缺失 | Pi 1.0.1 可通过 codemode 调用，客户端无 UI |
-| Image models | 缺失 | Pi 1.0.1 支持 codemode 图片生成，客户端无 UI |
+| 自定义 Provider | 部分覆盖 | `models.json` 基础字段可编辑；高级字段、`modelOverrides` 和 Provider extension 状态未覆盖，保存模型时还可能丢未知字段 |
+| 虚拟模型 | 缺失 | 只能由 extension / SDK 注册；客户端能选择注册后的模型，但不能识别虚拟模型或展示实际路由 |
+| Classifier models | 部分覆盖 | 内置目录可通过 Codemode 调用；RPC 不返回 classifier，自定义分类模型需要 Provider extension |
+| Image models | 部分覆盖 | 内置目录可通过 Codemode 调用；RPC 不返回 image，自定义图片模型需要 Provider extension |
 
 ### 会话、上下文与分支
 
@@ -149,11 +149,11 @@
 | Tool rendering | 缺失 | Pi 1.0.1 支持任意工具 renderer，客户端没有扩展入口 |
 | Skills | 已覆盖 | 角色 Skill 分配 |
 | Prompt Templates | 已覆盖 | 批次 63 已实现用户 / 项目模板增删改、`/模板名` 插入和保存后的 Agent / 命令菜单刷新 |
-| Packages | 缺失 | 没有 Pi package 安装、更新、移除 UI |
+| Packages | 已覆盖 | 批次 67 已有 Pi package 列表、安装、更新、移除、资源摘要和按包 extension 开关 |
 | Shell aliases | 已覆盖 | 「常规 > Shell」读写 Pi 原生 `shellCommandPrefix`，支持多行前缀、清除和保存后 Agent 重连 |
 | Cache Warming | 部分覆盖 | 批次 58 已实现设置（`cacheWarming` off/streaming/idle、`showCacheMissNotices`）和最近一次预热决策的费用状态；Pi RPC 未暴露 `session.cacheWarmingStatus` 的实时 state / nextWarmAt，客户端通过 `cache_warming_decision` 扩展事件读取决策数据 |
 | Retry 设置 | 部分覆盖 | 通过 Pi settings 写默认值，没有完整设置 UI |
-| Telemetry | 缺失 | 已审计；下一轮只实现 `enableInstallTelemetry`，暂不做没有实际消费方的 analytics 开关 |
+| Telemetry | 已覆盖 | 批次 70 已实现 `enableInstallTelemetry`、`PI_TELEMETRY` 覆盖状态和 Agent 重连；不提供没有实际消费方的 analytics 开关 |
 | Update / rollback | 已覆盖 | 客户端 Pi 运行时更新和回退 |
 
 ### 交互、终端与 UI
@@ -421,9 +421,9 @@ RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部
 - `enableAnalytics` 和 `trackingId` 字段存在，首次设置流程可以生成 tracking ID，
   但 Pi 1.0.1 核心没有实际消费 `getEnableAnalytics()` / `getTrackingId()` 的逻辑。
 
-### 下一轮实现边界
+### 实现结果（批次 70，提交 `cc55936ec`）
 
-客户端只做 `enableInstallTelemetry` 的真实设置入口，不做 analytics 假开关：
+客户端只做 `enableInstallTelemetry` 的真实设置入口，不提供 analytics 假开关：
 
 1. 设置页新增「常规 > Telemetry」。
 2. 用 `SettingsCheckbox` 控制 `enableInstallTelemetry`，合并写 Pi 原生 `settings.json`，
@@ -433,6 +433,68 @@ RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部
 4. 保存反馈走 `SettingsToast`，持久错误走 `StateBlock`。
 5. 配置由 Agent 进程启动时读取；保存后空闲 Agent 自动重连，运行中 Agent 延后生效。
 6. 单测覆盖默认值、合并写入、保留其他 settings、环境变量覆盖和错误输入。
+
+## 自定义 Provider / 虚拟模型 / classifier / image models 审计（2026-10-08）
+
+### 结论
+
+这四项不能按同一层配置实现：
+
+- 支持内置 API 协议的静态 Provider 走 `models.json`，客户端可以直接提供完整编辑入口。
+- 需要自定义认证、请求协议、动态发现或流式实现的 Provider 必须使用 Provider extension。
+- 虚拟模型只能通过 extension 或 SDK 的 `registerVirtualModel()` 注册，不能写进 `models.json`。
+- classifier / image 内置模型可以经 Codemode 使用；自定义 classifier / image 实现必须由 Provider
+  extension 注册，`models.json` 不能声明这两种类型。
+
+### `models.json` 实际能力
+
+Provider 级字段包括：
+
+```text
+name, baseUrl, apiKey, api, oauth, headers, authHeader, compat,
+models, modelOverrides
+```
+
+模型级字段包括：
+
+```text
+id, name, api, baseUrl, reasoning, thinkingLevelMap, input, inputLimits,
+cost, promptCache, contextWindow, maxTokens, samplingParams, headers, compat
+```
+
+`modelOverrides` 可覆盖内置或 extension 模型的名字、输入、缓存、价格、限制、采样参数和兼容性，
+但不能注册 image / classifier 类型。schema 见 `dist/core/model-config.d.ts` 的
+`ModelDefinitionSchema`、`ModelOverrideSchema` 和 `ProviderConfigSchema`。
+
+实测在 `models.json` 的模型对象中加入 `"type": "image"` 会被忽略，模型仍作为 chat 模型加载，
+因此客户端不能提供“把 models.json 模型改成图片模型”的假配置。
+
+### 客户端当前差距
+
+- Provider 编辑器只覆盖 `id / baseUrl / api / apiKey` 和简单的模型字段。
+- `headers`、`authHeader`、`compat`、`modelOverrides`、`inputLimits`、`promptCache`、`cost`、
+  `thinkingLevelMap`、模型级 `api / baseUrl / samplingParams / headers` 都没有入口。
+- 保存 Provider 时会重新生成整个 `models` 数组，原 `models.json` 中的未知高级字段可能丢失。
+- `PROVIDER_APIS` 只允许四种 API；Pi 实际还支持更多协议，手写其他 `api` 的 Provider 无法通过
+  当前 UI 保存。
+- `get_available_models` RPC 来自 chat catalog；虚拟模型注册后会出现，但 classifier / image
+  不在 RPC 列表中。
+- `pi-auth-helper.mjs` 没有加载 package extension，因此 extension Provider 的登录状态不会显示在
+  Provider 设置页。
+
+### 实现顺序
+
+1. 先修 Provider 配置正确性：无损写回、未知字段保留、高级静态字段和 `modelOverrides`。
+2. 再新增特殊模型目录：由 Agent 进程的 CodePIddy extension 读取
+   `modelRegistry.getAllModels()`，区分 chat / virtual / classifier / image，并写入客户端可读快照。
+3. Provider package extension 的登录 / 状态桥接单独评估。helper 若加载第三方 extension，必须沿用
+   当前显式启用和信任边界，不能恢复自动加载所有扩展。
+
+不做：
+
+- 不给 `models.json` 增加没有作用的 image / classifier 类型开关。
+- 不做无代码虚拟模型路由编排器。
+- 不恢复已删除的 `@codepiddy/provider-extension` 或第二套 Provider 系统。
 
 ## 后续任务清单
 
@@ -504,20 +566,27 @@ RPC 也没有对应命令；若要让 GUI 直接复用 core，只能引用内部
     `shellCommandPrefix`，不维护独立 alias 列表。该值会作为前缀拼到每次 bash 命令前，
     可用于启用 alias 展开或加载用户 shell 配置。设置页放在「常规 > Shell」，空字符串表示清除。
     保存后空闲 Agent 自动重连，运行中 Agent 延后生效；未修改 Pi core。
-32. Telemetry 设置：只实现 Pi 原生 `enableInstallTelemetry` 和多行说明 / 环境变量覆盖提示；
-    暂不实现 `enableAnalytics` / `trackingId`，直到 Pi core 真正消费它们。
-33. 自定义 Provider / 虚拟模型 / classifier / image models
+32. [x] Telemetry 设置：批次 70 已实现 Pi 原生 `enableInstallTelemetry`、`PI_TELEMETRY`
+    覆盖状态和 Agent 重连，提交 `cc55936ec`；不提供没有实际消费方的 analytics 开关。
+33. [ ] 自定义 Provider / 虚拟模型 / classifier / image models：审计已完成，下一轮先实现
+    `models.json` 无损保存和高级静态 Provider 字段，再单独做特殊模型目录。
 
-Telemetry 下一轮代码落点：
+批次 71 代码落点：
 
-1. `@codepiddy/shared` 增加 install telemetry 设置摘要和保存接口；状态中同时返回
-   `enabled`、`effectiveEnabled`、`environmentOverride`。
-2. `AppSettingsStore` 合并读写 Pi 原生 `settings.json` 的 `enableInstallTelemetry`；
-   读取 `PI_TELEMETRY`，按 Pi 的 truthy 规则计算生效值。
-3. main / preload / IPC 增加 get / save 接口，只接受布尔值，不暴露任意环境变量或命令。
-4. 设置页「常规 > Telemetry」增加 `SettingsCheckbox`、环境变量覆盖提示和保存后的 Agent 重连；
-   临时反馈走 `SettingsToast`，持久错误走 `StateBlock`。
-5. 单测覆盖默认 true、合并写入、保留其他 settings、`PI_TELEMETRY` 覆盖和非法输入。
+1. `@codepiddy/shared` 增加与 Pi `models.json` 对齐的 Provider / Model / ModelOverride 类型，
+   保留未知字段所需的原始对象。
+2. `AppSettingsStore` 改为按字段补丁写回，未知 Provider / Model 字段不得丢失；编辑已有
+   `api` 时不强制收窄到当前四种类型。
+3. Provider 编辑器增加 `headers`、`authHeader`、`modelOverrides`，以及模型级
+   `api`、`baseUrl`、`cost`、`promptCache`、`inputLimits`、`samplingParams`、
+   `thinkingLevelMap`、`headers`、`compat`。
+4. 复杂嵌套字段使用结构化编辑或受控高级 JSON，不用无校验文本直接覆盖文件。
+5. 保存后空闲 Agent 自动重连，运行中 Agent 延后生效；单测覆盖未知字段保留、嵌套字段合并、
+   非法输入和删除字段。
+
+批次 72 只有在前一项完成后开始：由 Agent 进程 extension 读取
+`modelRegistry.getAllModels()`，生成 chat / virtual / classifier / image 只读目录快照。
+不要给 `models.json` 添加假 image / classifier 类型，也不要实现无代码虚拟模型路由编排器。
 
 ### 阶段 5：回归和收尾
 
