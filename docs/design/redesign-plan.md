@@ -75,8 +75,8 @@ docs/design/desktop-transcript-optimization.md。
 
 批次 1-71 已实现并验收；批次 68 提交 `65607e721`，批次 69 Shell aliases 提交 `cab6fa4ff`，
 批次 70 Telemetry 提交 `cc55936ec`，批次 71 Provider 无损保存提交 `e46d0010e`。
-支线 74「工作区文档预览」提交 `48247a85a` 并已推送。
-当前 HEAD 以 `git log -1` 为准（写这份提示词时是 `48247a85a`）；`origin/main` 已同步，
+支线 74「工作区文档预览」代码提交 `48247a85a`，交接文档提交 `d9af491c7`，都已推送。
+当前 HEAD 以 `git log -1` 为准（写这份提示词时是 `d9af491c7`）；`origin/main` 已同步，
 `git rev-list --count origin/main..HEAD` 应为 0，工作树应干净。
 不要恢复已删除的 permission / Tavily 专用实现。
 
