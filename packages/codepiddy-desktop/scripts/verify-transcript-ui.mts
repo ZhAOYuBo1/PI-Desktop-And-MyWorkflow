@@ -8,6 +8,8 @@
  *   - T3 Agent 操作菜单里的「复制整段对话」
  *   - T4 react-markdown 渲染（标题 / 列表 / 表格 / 高亮代码 / 行内代码 / 链接 / 数学）
  *   - T5 消息内文件 chip 打开工作区文件视图；不在项目里的文件提示而不打开坏标签页
+ *   - T6-T8 原生 session entries：compaction / context_edit / model_change /
+ *     thinking_level_change 按时间线显示
  *
  *   node --import tsx packages/codepiddy-desktop/scripts/verify-transcript-ui.mts
  */
@@ -155,6 +157,79 @@ async function verifyTranscriptUi(page: Page): Promise<void> {
 		.locator('.workspace-file-tab-main[title="notes/小明.txt"]')
 		.first()
 		.waitFor({ state: "visible", timeout: 6000 });
+
+	// T6-T8：原生 session entries 渲染为时间线事件行。
+	await visibleText(page, ".transcript-event-compaction", "压缩前 12,480 tokens", "T6 compaction 行");
+	const compactionRow = page.locator(".transcript-event-compaction").first();
+	await compactionRow.locator("summary").click();
+	await visibleText(page, ".transcript-event-disclosure pre", "登录流程", "T6 compaction 摘要");
+	await visibleText(page, ".transcript-event-context_edit", "上下文条目已编辑", "T7 context_edit 行");
+	await visibleText(page, ".transcript-event-model_change", "openai/gpt-5.5", "T8 model_change 行");
+	await visibleText(page, ".transcript-event-thinking_level_change", "high", "T8 thinking_level_change 行");
+
+	// T10：会话内搜索、高亮、命中折叠过程组时自动展开。
+	await page.getByRole("button", { name: "搜索当前会话" }).first().click();
+	const searchInput = page.locator(".transcript-search-bar input");
+	await searchInput.waitFor({ state: "visible", timeout: 6000 });
+	await searchInput.fill("WorkPanel.tsx");
+	await page.waitForTimeout(150);
+	assert(
+		(await page.locator(".transcript-search-count").innerText()).includes("/"),
+		"T10 搜索栏应显示匹配计数",
+	);
+	const processToggle = page.locator(".turn-process-toggle").first();
+	assert(
+		(await processToggle.getAttribute("aria-expanded")) === "true",
+		"T10 命中折叠过程组时应自动展开",
+	);
+	assert(
+		(await page.locator(".transcript-entry.is-search-match").count()) > 0,
+		"T10 搜索命中应高亮对应条目",
+	);
+
+	// T11：助手回复的 thinking / text 按内容顺序渲染。
+	const finalAssistant = page.locator(".message-assistant").last();
+	const thinkingPart = finalAssistant.locator(".assistant-thinking-part").first();
+	const textPart = finalAssistant.locator(".assistant-text-part").first();
+	await thinkingPart.waitFor({ state: "visible", timeout: 6000 });
+	await textPart.waitFor({ state: "visible", timeout: 6000 });
+	const thinkingBox = await thinkingPart.boundingBox();
+	const textBox = await textPart.boundingBox();
+	assert(
+		thinkingBox !== null && textBox !== null && thinkingBox.y < textBox.y,
+		"T11 thinking part 应排在 text part 前面",
+	);
+
+	// T14：助手回合提供重放入口，点击后回填该轮用户消息。
+	await page.locator(".transcript-search-close").click();
+	const replayButton = finalAssistant.locator(".message-replay").first();
+	await replayButton.waitFor({ state: "visible", timeout: 6000 });
+	await replayButton.click();
+	const composer = page.locator(".composer textarea").first();
+	assert(
+		(await composer.inputValue()).includes("按照交接文档实现登录功能"),
+		"T14 重放应回填原用户消息",
+	);
+
+	// T12：思考显示模式从本机偏好恢复；详细模式默认展开 thinking。
+	await page.evaluate(() =>
+		localStorage.setItem("codepiddy.transcript.thinkingDisplayMode", "detailed"),
+	);
+	await page.goto(`${DEV_SERVER_URL}/?demo=1`, { waitUntil: "networkidle" });
+	await page.waitForTimeout(500);
+	const trustLaterAgain = page.locator(".project-trust-modal").getByRole("button", { name: "稍后" });
+	if ((await trustLaterAgain.count()) > 0) await trustLaterAgain.click();
+	await page.locator(".agent-row").filter({ hasText: "Coding Agent" }).first().click();
+	await page.waitForTimeout(250);
+	assert(
+		(await page.locator(".message-assistant").last().locator(".assistant-thinking-part").first().getAttribute("open")) !== null,
+		"T12 详细模式应默认展开 thinking",
+	);
+	await page.evaluate(() => localStorage.setItem("codepiddy.transcript.smoothStreaming", "false"));
+	assert(
+		(await page.evaluate(() => localStorage.getItem("codepiddy.transcript.smoothStreaming"))) === "false",
+		"T13 平滑流式偏好可持久化",
+	);
 }
 
 async function main(): Promise<void> {
@@ -178,6 +253,7 @@ async function main(): Promise<void> {
 		await verifyTranscriptUi(page);
 		console.log(
 			"transcript UI verification passed: T1 tool rows, T2 message meta, T3 copy entry, T4 markdown, T5 file chip (open + missing-file toast)",
+			"T6-T8 native session entries, T10 in-session search, T11 ordered assistant parts, T12/T13 transcript preferences, T14 replay",
 		);
 	} finally {
 		await browser?.close();

@@ -3,7 +3,7 @@
 状态：进行中。本文件是压缩后的恢复入口，保持简短；实现细节看代码和 git log。
 
 进度：T1-T5 已完成并提交 `46f63909f`（T1/T2/T3 原始提交 `4f3183067`，功能生效验证脚本 `204733bff`）。
-下一步：T6（渲染 `compaction` 行），然后按 T7 → T14 顺序继续。T15 先搁置。
+T6-T14 已完成当前工作树实现，等待最终验收和提交；T15 先搁置。
 
 ## 目标与边界
 
@@ -29,14 +29,14 @@
       点击前先 `statWorkspaceFile` 校验；直接打不开时按文件名在项目内找唯一同名项
       （`searchProjectFiles`），命中就打开那个路径。都没有或有歧义（例如构建产物
       basename）只弹提示，不打开读不到的标签页。文件名识别支持中文（Unicode）。
-- [ ] T6 渲染 `compaction` 行（tokensBefore + 可折叠 summary）
-- [ ] T7 渲染 `context_edit` 行
-- [ ] T8 渲染 `model_change` / `thinking_level_change` 行
-- [ ] T10 会话内搜索 + 高亮 + 命中折叠过程组自动展开
-- [ ] T11 助手回合 + 部件（part）模型：`thinking / text / toolCall` 有序部件
-- [ ] T12 Thinking 显示模式（compact / detailed），依赖 T11
-- [ ] T13 平滑流式输出 + 光标，尊重 reduced-motion
-- [ ] T14 分支 / 重放入口放到助手回合（`fork` 与 draft 回填已有）
+- [x] T6 渲染 `compaction` 行（tokensBefore + 可折叠 summary）
+- [x] T7 渲染 `context_edit` 行
+- [x] T8 渲染 `model_change` / `thinking_level_change` 行
+- [x] T10 会话内搜索 + 高亮 + 命中折叠过程组自动展开
+- [x] T11 助手回合 + 部件（part）模型：`thinking / text / toolCall` 有序部件
+- [x] T12 Thinking 显示模式（compact / detailed），依赖 T11
+- [x] T13 平滑流式输出 + 光标，尊重 reduced-motion
+- [x] T14 分支 / 重放入口放到助手回合（`fork` 与 draft 回填已有）
 - [ ] T15 长会话窗口化 + minimap 配套（先搁置）
 
 ## 不做
@@ -55,7 +55,7 @@
 1. 读本文件 + `docs/design/reference-pi-desktop.md`。
 2. `git log --oneline -10`，对照上面勾选状态确认进度。
 3. `npm run check` 确认基线。
-4. 按 T6 → T14 顺序继续；每步 `npm run check`，renderer 改动再跑
+4. T6 → T14 已实现；下一步只保留 T15。每步 `npm run check`，renderer 改动再跑
    `npm run build:renderer --workspace=@codepiddy/desktop`。
 5. UI 改动要跑功能生效验证：`npm run verify:transcript --workspace=@codepiddy/desktop`
    （起真实 Vite + Chromium，加载 `?demo=1` 断言渲染结果；新增 UI 断言就扩展这个脚本）。

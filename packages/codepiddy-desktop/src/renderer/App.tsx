@@ -85,12 +85,23 @@ import { ToolCallCard } from "./components/ToolCallCard.tsx";
 import { ToolSettingsPanel } from "./components/ToolSettingsPanel.tsx";
 import { thinkingLevelLabel } from "./components/thinking-levels.ts";
 import {
+	normalizeThinkingDisplayMode,
+	readTranscriptSmoothStreaming,
+	readTranscriptThinkingDisplayMode,
+	type ThinkingDisplayMode,
+	writeTranscriptSmoothStreaming,
+	writeTranscriptThinkingDisplayMode,
+} from "./components/transcript-preferences.ts";
+import { findTranscriptSearchMatches, transcriptItemMatches } from "./components/transcript-search.ts";
+import { transcriptSearchRanges } from "./components/transcript-search-dom.ts";
+import {
 	formatTurnElapsed,
 	groupTranscriptIntoTurns,
 	resolveTurnCollapsed,
 	splitTurnEntries,
 	turnElapsedMs,
 } from "./components/turn-group.ts";
+import { useSmoothText } from "./components/use-smooth-text.ts";
 import { useTranscriptScroll } from "./components/use-transcript-scroll.ts";
 import { WorkPanel } from "./components/WorkPanel.tsx";
 import { demoProject } from "./demo-project.ts";
@@ -234,6 +245,9 @@ type TranscriptItem =
 	| {
 			id: string;
 			type: "user";
+			/** Pi SessionEntry id，历史事件行按它去重。 */
+			entryId?: string;
+			parentId?: string | null;
 			text: string;
 			images?: AgentImageAttachment[];
 			delivery?: "steer" | "followUp";
@@ -242,8 +256,11 @@ type TranscriptItem =
 	| {
 			id: string;
 			type: "assistant";
+			entryId?: string;
+			parentId?: string | null;
 			text: string;
 			thinking?: string;
+			parts?: AssistantTranscriptPart[];
 			status: AssistantMessageStatus;
 			createdAt?: string;
 			streamStartedAt?: number;
@@ -256,17 +273,72 @@ type TranscriptItem =
 			modelProvider?: string;
 			modelId?: string;
 	  }
-	| { id: string; type: "system"; text: string; createdAt?: string }
+	| {
+			id: string;
+			type: "system";
+			entryId?: string;
+			parentId?: string | null;
+			text: string;
+			createdAt?: string;
+	  }
 	| {
 			id: string;
 			type: "tool";
+			entryId?: string;
+			parentId?: string | null;
 			name: string;
 			args: string;
 			text: string;
 			details?: unknown;
 			status: "running" | "completed";
 			isError: boolean;
+			startedAt?: number;
+			completedAt?: number;
+	  }
+	| {
+			id: string;
+			type: "compaction";
+			entryId?: string;
+			parentId?: string | null;
+			text: string;
+			summary: string;
+			tokensBefore: number;
+			createdAt?: string;
+	  }
+	| {
+			id: string;
+			type: "context_edit";
+			entryId?: string;
+			parentId?: string | null;
+			text: string;
+			targetId: string;
+			replacement: string;
+			createdAt?: string;
+	  }
+	| {
+			id: string;
+			type: "model_change";
+			entryId?: string;
+			parentId?: string | null;
+			text: string;
+			modelProvider?: string;
+			modelId: string;
+			createdAt?: string;
+	  }
+	| {
+			id: string;
+			type: "thinking_level_change";
+			entryId?: string;
+			parentId?: string | null;
+			text: string;
+			thinkingLevel: string;
+			createdAt?: string;
 	  };
+
+type AssistantTranscriptPart =
+	| { type: "thinking"; key: string; text: string }
+	| { type: "text"; key: string; text: string }
+	| { type: "toolCall"; key: string; id: string; name: string; args: string };
 
 interface ToolRecoveryOffer {
 	toolName: string;
@@ -421,6 +493,7 @@ function finalizeAssistantTranscript(
 	const status = messageRecord ? assistantMessageStatus(messageRecord) : fallbackStatus;
 	const finalText = messageRecord ? extractMessageText(messageRecord.content) : "";
 	const finalThinking = messageRecord ? extractThinkingText(messageRecord.content) : "";
+	const finalParts = messageRecord ? assistantTranscriptParts(messageRecord.content) : [];
 	const errorMessage =
 		messageRecord && typeof messageRecord.errorMessage === "string" ? messageRecord.errorMessage : "";
 	return items.flatMap((item) => {
@@ -441,6 +514,7 @@ function finalizeAssistantTranscript(
 				...assistantModelRef(messageRecord),
 				...(usage ? { usage } : {}),
 				...(thinkingLevel ? { thinkingLevel } : {}),
+				...(finalParts.length > 0 ? { parts: finalParts } : {}),
 				text:
 					text ||
 					(status === "aborted" ? "本轮已中断。" : status === "error" ? errorMessage || "本轮回复失败。" : ""),
@@ -499,7 +573,11 @@ function extractToolResultDetails(result: unknown): unknown {
  */
 function collectToolCallArguments(messages: unknown[]): Map<string, { name: string; args: string }> {
 	const result = new Map<string, { name: string; args: string }>();
-	for (const message of messages) {
+	for (const rawMessage of messages) {
+		const message =
+			isRecord(rawMessage) && rawMessage.type === "message" && isRecord(rawMessage.message)
+				? rawMessage.message
+				: rawMessage;
 		if (!isRecord(message) || message.role !== "assistant" || !Array.isArray(message.content)) continue;
 		for (const part of message.content) {
 			if (!isRecord(part) || part.type !== "toolCall") continue;
@@ -519,6 +597,90 @@ function collectToolCallArguments(messages: unknown[]): Map<string, { name: stri
 	return result;
 }
 
+function toolCallPartArgs(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (value === undefined) return "";
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
+}
+
+/**
+ * Assistant content is ordered (`thinking` / `text` / `toolCall`). Keep the
+ * order so the transcript can render the same sequence the model produced,
+ * instead of collapsing thinking above all text.
+ */
+function assistantTranscriptParts(value: unknown): AssistantTranscriptPart[] {
+	if (typeof value === "string") return value.trim() ? [{ type: "text", key: "text-0", text: value }] : [];
+	if (!Array.isArray(value)) return [];
+	const parts: AssistantTranscriptPart[] = [];
+	for (const rawPart of value) {
+		if (!isRecord(rawPart)) continue;
+		if (rawPart.type === "thinking" && typeof rawPart.thinking === "string") {
+			if (rawPart.thinking)
+				parts.push({ type: "thinking", key: `thinking-${parts.length}`, text: rawPart.thinking });
+			continue;
+		}
+		if (rawPart.type === "text" && typeof rawPart.text === "string") {
+			if (rawPart.text) parts.push({ type: "text", key: `text-${parts.length}`, text: rawPart.text });
+			continue;
+		}
+		if (rawPart.type === "toolCall" && typeof rawPart.id === "string") {
+			parts.push({
+				type: "toolCall",
+				key: `toolCall-${parts.length}`,
+				id: rawPart.id,
+				name: typeof rawPart.name === "string" && rawPart.name ? rawPart.name : "tool",
+				args: toolCallPartArgs(rawPart.arguments),
+			});
+		}
+	}
+	return parts;
+}
+
+function appendAssistantPart(
+	parts: AssistantTranscriptPart[] | undefined,
+	type: "thinking" | "text",
+	delta: string,
+): AssistantTranscriptPart[] {
+	const next = [...(parts ?? [])];
+	const last = next.at(-1);
+	if (last?.type === type) {
+		next[next.length - 1] = { type, key: last.key, text: last.text + delta };
+	} else {
+		next.push({ type, key: `${type}-${next.length}`, text: delta });
+	}
+	return next;
+}
+
+function partialAssistantParts(value: unknown): AssistantTranscriptPart[] | undefined {
+	if (!isRecord(value) || !("content" in value)) return undefined;
+	const parts = assistantTranscriptParts(value.content);
+	return parts.length > 0 ? parts : undefined;
+}
+
+function hasRenderableAssistantParts(item: Extract<TranscriptItem, { type: "assistant" }>): boolean {
+	return Boolean(item.parts?.some((part) => (part.type === "thinking" || part.type === "text") && part.text.trim()));
+}
+
+function historyEntryId(entry: Record<string, unknown>): string | undefined {
+	return typeof entry.id === "string" && entry.id ? entry.id : undefined;
+}
+
+function historyEntryParentId(entry: Record<string, unknown>): string | null | undefined {
+	if (entry.parentId === null) return null;
+	return typeof entry.parentId === "string" ? entry.parentId : undefined;
+}
+
+function historyEntryTimestamp(entry: Record<string, unknown>): string | null {
+	const value = entry.timestamp;
+	if (typeof value === "number" && Number.isFinite(value)) return new Date(value).toISOString();
+	if (typeof value === "string" && !Number.isNaN(Date.parse(value))) return value;
+	return null;
+}
+
 /**
  * 消息里只写了 basename 时（例如 `index.ts`），在项目里按文件名找精确同名项。
  * 唯一匹配才算数；找不到或有歧义都返回空数组，交给调用方提示。
@@ -534,16 +696,104 @@ async function findProjectFileMatches(projectRoot: string, path: string): Promis
 	}
 }
 
-function normalizeHistory(messages: unknown[]): TranscriptItem[] {
+function normalizeHistory(values: unknown[]): TranscriptItem[] {
 	const items: TranscriptItem[] = [];
-	const toolCallArguments = collectToolCallArguments(messages);
-	for (const [index, message] of messages.entries()) {
-		if (!isRecord(message)) continue;
+	const toolCallArguments = collectToolCallArguments(values);
+	for (const [index, value] of values.entries()) {
+		if (!isRecord(value)) continue;
+		const entry = value;
+		const entryId = historyEntryId(entry);
+		const parentId = historyEntryParentId(entry);
+		if (entry.type === "compaction") {
+			const summary = typeof entry.summary === "string" ? entry.summary : "";
+			const tokensBefore =
+				typeof entry.tokensBefore === "number" && Number.isFinite(entry.tokensBefore) ? entry.tokensBefore : 0;
+			const createdAt = historyEntryTimestamp(entry);
+			items.push({
+				id: entryId ?? `history-compaction-${index}`,
+				type: "compaction",
+				text: `上下文已压缩 · 压缩前 ${formatTokenCount(tokensBefore)} tokens`,
+				summary,
+				tokensBefore,
+				...(entryId ? { entryId } : {}),
+				...(parentId !== undefined ? { parentId } : {}),
+				...(createdAt ? { createdAt } : {}),
+			});
+			continue;
+		}
+		if (entry.type === "context_edit") {
+			const targetId = typeof entry.targetId === "string" ? entry.targetId : "";
+			const replacement = extractMessageText(entry.replacement);
+			const createdAt = historyEntryTimestamp(entry);
+			items.push({
+				id: entryId ?? `history-context-edit-${index}`,
+				type: "context_edit",
+				text: targetId ? `上下文条目已编辑 · ${targetId}` : "上下文条目已编辑",
+				targetId,
+				replacement,
+				...(entryId ? { entryId } : {}),
+				...(parentId !== undefined ? { parentId } : {}),
+				...(createdAt ? { createdAt } : {}),
+			});
+			continue;
+		}
+		if (entry.type === "model_change") {
+			const modelId = typeof entry.modelId === "string" ? entry.modelId : "unknown";
+			const modelProvider = typeof entry.provider === "string" ? entry.provider : undefined;
+			const createdAt = historyEntryTimestamp(entry);
+			items.push({
+				id: entryId ?? `history-model-change-${index}`,
+				type: "model_change",
+				text: `切换模型 · ${modelProvider ? `${modelProvider}/` : ""}${modelId}`,
+				...(modelProvider ? { modelProvider } : {}),
+				modelId,
+				...(entryId ? { entryId } : {}),
+				...(parentId !== undefined ? { parentId } : {}),
+				...(createdAt ? { createdAt } : {}),
+			});
+			continue;
+		}
+		if (entry.type === "thinking_level_change") {
+			const thinkingLevel = typeof entry.thinkingLevel === "string" ? entry.thinkingLevel : "unknown";
+			const createdAt = historyEntryTimestamp(entry);
+			items.push({
+				id: entryId ?? `history-thinking-change-${index}`,
+				type: "thinking_level_change",
+				text: `思考强度 · ${thinkingLevel}`,
+				thinkingLevel,
+				...(entryId ? { entryId } : {}),
+				...(parentId !== undefined ? { parentId } : {}),
+				...(createdAt ? { createdAt } : {}),
+			});
+			continue;
+		}
+		if (entry.type === "branch_summary") {
+			const summary = typeof entry.summary === "string" ? entry.summary : "";
+			const createdAt = historyEntryTimestamp(entry);
+			items.push({
+				id: entryId ?? `history-branch-summary-${index}`,
+				type: "system",
+				text: summary ? `分支摘要\n\n${summary}` : "分支摘要",
+				...(entryId ? { entryId } : {}),
+				...(parentId !== undefined ? { parentId } : {}),
+				...(createdAt ? { createdAt } : {}),
+			});
+			continue;
+		}
+		const message =
+			entry.type === "message"
+				? isRecord(entry.message)
+					? entry.message
+					: null
+				: typeof entry.role === "string"
+					? entry
+					: null;
+		if (!message) continue;
 		const text = extractMessageText(message.content);
 		const images = extractMessageImages(message.content, index);
 		const role = message.role;
 		if (!text && !(role === "user" && images.length > 0)) continue;
-		const createdAt = historyTimestamp(message);
+		const createdAt = historyEntryTimestamp(entry) ?? historyTimestamp(message);
 		if (role === "toolResult") {
 			const patch = patchFromDetails(message.details);
 			const toolCallId = typeof message.toolCallId === "string" ? message.toolCallId : "";
@@ -551,6 +801,8 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 			items.push({
 				id: toolCallId || `history-tool-${index}`,
 				type: "tool",
+				...(entryId ? { entryId } : {}),
+				...(parentId !== undefined ? { parentId } : {}),
 				name: (typeof message.toolName === "string" && message.toolName) || call?.name || "tool",
 				args: call?.args ?? "",
 				text: patch || text,
@@ -561,6 +813,7 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 			});
 		} else if (role === "assistant") {
 			const thinking = extractThinkingText(message.content);
+			const parts = assistantTranscriptParts(message.content);
 			const usage = extractUsageSummary(message);
 			const historyUsage = usage?.output ?? extractUsageOutput(message);
 			const historyTokens = historyUsage ?? estimateTokens(text.length);
@@ -571,8 +824,11 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 			items.push({
 				id: `history-${index}`,
 				type: "assistant",
+				...(entryId ? { entryId } : {}),
+				...(parentId !== undefined ? { parentId } : {}),
 				text,
 				...(thinking ? { thinking } : {}),
+				...(parts.length > 0 ? { parts } : {}),
 				status: assistantMessageStatus(message),
 				...(createdAt ? { createdAt } : {}),
 				...(usage ? { usage } : {}),
@@ -592,6 +848,8 @@ function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 			items.push({
 				id: `history-${index}`,
 				type: role === "user" ? "user" : "system",
+				...(entryId ? { entryId } : {}),
+				...(parentId !== undefined ? { parentId } : {}),
 				text,
 				...(role === "user" && images.length > 0 ? { images } : {}),
 				...(createdAt ? { createdAt } : {}),
@@ -738,6 +996,80 @@ function AssistantMeta({
 	);
 }
 
+function AssistantThinkingPart({ text, mode }: { text: string; mode: ThinkingDisplayMode }) {
+	const [open, setOpen] = useState(mode === "detailed");
+	useEffect(() => {
+		setOpen(mode === "detailed");
+	}, [mode]);
+	return (
+		<details
+			className="thinking-block assistant-thinking-part"
+			open={open}
+			onToggle={(event) => setOpen(event.currentTarget.open)}
+		>
+			<summary>思考过程</summary>
+			<p>{text}</p>
+		</details>
+	);
+}
+
+function AssistantTextPart({
+	text,
+	streaming,
+	smoothStreaming,
+	onOpenFile,
+}: {
+	text: string;
+	streaming: boolean;
+	smoothStreaming: boolean;
+	onOpenFile?: (path: string) => void;
+}) {
+	const reducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+	const enabled = smoothStreaming && !reducedMotion;
+	const displayText = useSmoothText(text, streaming, enabled);
+	const showCursor = streaming && enabled && displayText.length < text.length;
+	return (
+		<div className={`assistant-text-part${showCursor ? " smooth-cursor" : ""}`}>
+			<MessageContent text={displayText} onOpenFile={onOpenFile} />
+			{showCursor ? <span className="stream-cursor" aria-hidden="true" /> : null}
+		</div>
+	);
+}
+
+function AssistantParts({
+	parts,
+	streaming,
+	thinkingDisplayMode,
+	smoothStreaming,
+	onOpenFile,
+}: {
+	parts: AssistantTranscriptPart[];
+	streaming: boolean;
+	thinkingDisplayMode: ThinkingDisplayMode;
+	smoothStreaming: boolean;
+	onOpenFile?: (path: string) => void;
+}) {
+	const visibleParts = parts.filter((part) => part.type !== "toolCall" && part.text.trim());
+	if (visibleParts.length === 0) return null;
+	return (
+		<div className="assistant-parts">
+			{visibleParts.map((part) =>
+				part.type === "thinking" ? (
+					<AssistantThinkingPart key={part.key} text={part.text} mode={thinkingDisplayMode} />
+				) : (
+					<AssistantTextPart
+						key={part.key}
+						text={part.text}
+						streaming={streaming}
+						smoothStreaming={smoothStreaming}
+						onOpenFile={onOpenFile}
+					/>
+				),
+			)}
+		</div>
+	);
+}
+
 const TranscriptMessage = memo(function TranscriptMessage({
 	item,
 	assistantModel,
@@ -746,6 +1078,10 @@ const TranscriptMessage = memo(function TranscriptMessage({
 	forkPending,
 	onFork,
 	onOpenFile,
+	replayText,
+	onReplay,
+	thinkingDisplayMode,
+	smoothStreaming,
 }: {
 	item: Extract<TranscriptItem, { type: "user" | "assistant" | "system" }>;
 	assistantModel?: string;
@@ -754,6 +1090,10 @@ const TranscriptMessage = memo(function TranscriptMessage({
 	forkPending?: boolean;
 	onFork?(entryId: string): void;
 	onOpenFile?(path: string): void;
+	replayText?: string;
+	onReplay?(text: string): void;
+	thinkingDisplayMode: ThinkingDisplayMode;
+	smoothStreaming: boolean;
 }) {
 	const [copied, setCopied] = useState(false);
 	const messageTime = formatMessageTime(item.createdAt);
@@ -795,11 +1135,16 @@ const TranscriptMessage = memo(function TranscriptMessage({
 					</div>
 					{/* 元信息（模型 / 思考级别 / usage / 成本）放在正文上方，每条回复都有。 */}
 					{item.type === "assistant" ? <AssistantMeta item={item} assistantModel={assistantModel} /> : null}
-					{item.type === "assistant" && item.thinking ? (
-						<details className="thinking-block">
-							<summary>思考过程</summary>
-							<p>{item.thinking}</p>
-						</details>
+					{item.type === "assistant" && hasRenderableAssistantParts(item) ? (
+						<AssistantParts
+							parts={item.parts ?? []}
+							streaming={item.status === "streaming"}
+							thinkingDisplayMode={thinkingDisplayMode}
+							smoothStreaming={smoothStreaming}
+							onOpenFile={onOpenFile}
+						/>
+					) : item.type === "assistant" && item.thinking ? (
+						<AssistantThinkingPart text={item.thinking} mode={thinkingDisplayMode} />
 					) : null}
 					{item.type === "user" && item.images?.length ? (
 						<div className="message-image-grid">
@@ -813,14 +1158,14 @@ const TranscriptMessage = memo(function TranscriptMessage({
 							))}
 						</div>
 					) : null}
-					{item.type === "assistant" && item.status === "streaming" && !item.text ? (
+					{item.type === "assistant" && item.status === "streaming" && !item.text && !item.thinking ? (
 						<output className="message-streaming-placeholder" aria-live="polite">
 							<span className="sr-only">Pi 正在生成回复</span>
 							<span aria-hidden="true" />
 							<span aria-hidden="true" />
 							<span aria-hidden="true" />
 						</output>
-					) : systemOutputIsLong ? (
+					) : item.type === "assistant" && hasRenderableAssistantParts(item) ? null : systemOutputIsLong ? (
 						<details className="system-output-fold">
 							<summary>
 								<span>系统输出</span>
@@ -862,6 +1207,18 @@ const TranscriptMessage = memo(function TranscriptMessage({
 								<span>{forkPending ? "Fork 中…" : "Fork"}</span>
 							</button>
 						) : null}
+						{item.type === "assistant" && replayText ? (
+							<button
+								className="message-action message-replay"
+								type="button"
+								aria-label="重放这轮用户消息"
+								title="重放这轮用户消息"
+								onClick={() => onReplay?.(replayText)}
+							>
+								<AppIcon name="activity" size={14} />
+								<span>重放</span>
+							</button>
+						) : null}
 						{item.text ? (
 							<button
 								className="message-action message-copy"
@@ -881,6 +1238,49 @@ const TranscriptMessage = memo(function TranscriptMessage({
 	);
 });
 
+const TranscriptEventRow = memo(function TranscriptEventRow({
+	item,
+}: {
+	item: Extract<TranscriptItem, { type: "compaction" | "context_edit" | "model_change" | "thinking_level_change" }>;
+}) {
+	const icon =
+		item.type === "compaction"
+			? "gauge"
+			: item.type === "context_edit"
+				? "edit"
+				: item.type === "model_change"
+					? "activity"
+					: "sparkles";
+	return (
+		<div className={`transcript-event-row transcript-event-${item.type}`}>
+			<div className="transcript-event-rail" aria-hidden="true">
+				<AppIcon name={icon} size={13} />
+			</div>
+			<div className="transcript-event-body">
+				<div className="transcript-event-title">{item.text}</div>
+				{item.type === "compaction" && item.summary ? (
+					<details className="transcript-event-disclosure">
+						<summary>查看压缩摘要</summary>
+						<pre>{item.summary}</pre>
+					</details>
+				) : null}
+				{item.type === "context_edit" && item.replacement ? (
+					<details className="transcript-event-disclosure">
+						<summary>查看替换内容</summary>
+						<pre>{item.replacement}</pre>
+					</details>
+				) : null}
+				{item.type === "model_change" && item.modelProvider ? (
+					<span className="transcript-event-meta">{item.modelProvider}</span>
+				) : null}
+				{item.type === "thinking_level_change" ? (
+					<span className="transcript-event-meta">{thinkingLevelLabel(item.thinkingLevel)}</span>
+				) : null}
+			</div>
+		</div>
+	);
+});
+
 const TranscriptTurns = memo(function TranscriptTurns({
 	items,
 	assistantModel,
@@ -893,6 +1293,11 @@ const TranscriptTurns = memo(function TranscriptTurns({
 	forkingEntryId,
 	onFork,
 	onOpenFile,
+	onReplay,
+	searchQuery,
+	activeSearchItemId,
+	thinkingDisplayMode,
+	smoothStreaming,
 }: {
 	items: TranscriptItem[];
 	assistantModel?: string;
@@ -907,6 +1312,11 @@ const TranscriptTurns = memo(function TranscriptTurns({
 	forkingEntryId: string | null;
 	onFork(entryId: string): void;
 	onOpenFile?(path: string): void;
+	onReplay?(text: string): void;
+	searchQuery?: string;
+	activeSearchItemId?: string | null;
+	thinkingDisplayMode: ThinkingDisplayMode;
+	smoothStreaming: boolean;
 }) {
 	const turns = groupTranscriptIntoTurns(items);
 	const latestTurnId = turns[turns.length - 1]?.id;
@@ -919,25 +1329,38 @@ const TranscriptTurns = memo(function TranscriptTurns({
 				const finalAssistantIds = new Set(
 					tail.filter((entry) => entry.item.type === "assistant").map((entry) => entry.item.id),
 				);
-				const collapsed = resolveTurnCollapsed(collapsedRounds[key], {
-					isLatest: turn.id === latestTurnId,
-					running,
-				});
+				const turnUserText = head.find((entry) => entry.item.type === "user")?.item.text;
+				const searchMatchInMiddle =
+					Boolean(searchQuery?.trim()) &&
+					middle.some((entry) => transcriptItemMatches(entry.item, searchQuery ?? ""));
+				const collapsed = searchMatchInMiddle
+					? false
+					: resolveTurnCollapsed(collapsedRounds[key], {
+							isLatest: turn.id === latestTurnId,
+							running,
+						});
 				const elapsed = turnElapsedMs(turn);
 				const renderEntry = (entry: TranscriptItem, index: number) => {
 					const entryModel =
 						entry.type === "assistant" && entry.modelId
 							? (modelLabels?.get(`${entry.modelProvider ?? ""}/${entry.modelId}`) ?? entry.modelId)
 							: assistantModel;
+					const searchMatch = Boolean(searchQuery?.trim()) && transcriptItemMatches(entry, searchQuery ?? "");
 					return (
 						<div
-							className={`transcript-entry entry-${entry.type}`}
+							className={`transcript-entry entry-${entry.type}${searchMatch ? " is-search-match" : ""}${entry.id === activeSearchItemId ? " is-search-active" : ""}`}
 							data-transcript-index={index}
 							data-minimap-id={entry.id}
+							data-transcript-entry-id={entry.id}
 							key={entry.id}
 						>
 							{entry.type === "tool" ? (
 								<ToolCallCard item={entry} />
+							) : entry.type === "compaction" ||
+								entry.type === "context_edit" ||
+								entry.type === "model_change" ||
+								entry.type === "thinking_level_change" ? (
+								<TranscriptEventRow item={entry} />
 							) : (
 								<TranscriptMessage
 									item={entry}
@@ -955,6 +1378,10 @@ const TranscriptTurns = memo(function TranscriptTurns({
 									}
 									onFork={onFork}
 									onOpenFile={onOpenFile}
+									replayText={entry.type === "assistant" ? turnUserText : undefined}
+									onReplay={onReplay}
+									thinkingDisplayMode={thinkingDisplayMode}
+									smoothStreaming={smoothStreaming}
 								/>
 							)}
 						</div>
@@ -1391,7 +1818,8 @@ type SettingsSectionId =
 	| "share"
 	| "skills"
 	| "prompts"
-	| "packages";
+	| "packages"
+	| "transcript";
 
 const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: string; icon: AppIconName }[] }[] = [
 	{
@@ -1422,6 +1850,7 @@ const SETTINGS_NAV: { label: string; items: { id: SettingsSectionId; label: stri
 			{ id: "skills", label: "Agent Skills", icon: "sparkles" },
 			{ id: "prompts", label: "Prompt 模板", icon: "message-question" },
 			{ id: "packages", label: "Pi Packages", icon: "package" },
+			{ id: "transcript", label: "消息页", icon: "message-question" },
 		],
 	},
 ];
@@ -1624,12 +2053,19 @@ const TranscriptPane = memo(function TranscriptPane({
 	forkingEntryId,
 	onFork,
 	onOpenFile,
+	onReplay,
 	initialOffset,
 	onScrollPosition,
 	onElement,
 	onShowJumpChange,
 	onController,
 	onUseKickoff,
+	searchOpen,
+	searchQuery,
+	onSearchQueryChange,
+	onSearchClose,
+	thinkingDisplayMode,
+	smoothStreaming,
 }: {
 	agentId: string;
 	displayName: string;
@@ -1648,12 +2084,19 @@ const TranscriptPane = memo(function TranscriptPane({
 	forkingEntryId: string | null;
 	onFork(entryId: string): void;
 	onOpenFile?(path: string): void;
+	onReplay?(text: string): void;
 	initialOffset: number | null;
 	onScrollPosition(offset: number): void;
 	onElement(agentId: string, element: HTMLDivElement | null): void;
 	onShowJumpChange(showJump: boolean): void;
 	onController(controller: { runJump: (position: () => void) => void; jumpToLatest: () => void } | null): void;
 	onUseKickoff(): void;
+	searchOpen: boolean;
+	searchQuery: string;
+	onSearchQueryChange(query: string): void;
+	onSearchClose(): void;
+	thinkingDisplayMode: ThinkingDisplayMode;
+	smoothStreaming: boolean;
 }) {
 	const scroll = useTranscriptScroll({
 		initialOffset,
@@ -1675,6 +2118,46 @@ const TranscriptPane = memo(function TranscriptPane({
 		return () => onController(null);
 	}, [onController, scroll.runJump, scroll.jumpToLatest]);
 
+	const searchMatches = useMemo(
+		() => (searchQuery.trim() ? findTranscriptSearchMatches(items, searchQuery) : []),
+		[items, searchQuery],
+	);
+	const [searchIndex, setSearchIndex] = useState(0);
+	const activeSearchItemId = searchMatches[searchIndex]?.itemId ?? null;
+	const searchInputRef = useRef<HTMLInputElement | null>(null);
+	useEffect(() => {
+		void searchQuery;
+		setSearchIndex(0);
+	}, [searchQuery]);
+	useEffect(() => {
+		if (!searchOpen) return;
+		const frame = requestAnimationFrame(() => searchInputRef.current?.focus());
+		return () => cancelAnimationFrame(frame);
+	}, [searchOpen]);
+	useEffect(() => {
+		setSearchIndex((current) => Math.min(current, Math.max(0, searchMatches.length - 1)));
+	}, [searchMatches.length]);
+	useEffect(() => {
+		const root = scroll.scrollRef.current;
+		if (!root || typeof CSS === "undefined" || !CSS.highlights) return;
+		CSS.highlights.delete("transcript-search");
+		if (!visible || !searchOpen || !searchQuery.trim() || searchMatches.length === 0) return;
+		const ranges = transcriptSearchRanges(root, searchQuery);
+		if (ranges.length === 0 || typeof Highlight === "undefined") return;
+		const highlight = new Highlight(...ranges);
+		CSS.highlights.set("transcript-search", highlight);
+		return () => {
+			if (CSS.highlights?.get("transcript-search") === highlight) CSS.highlights.delete("transcript-search");
+		};
+	}, [searchMatches, searchOpen, searchQuery, scroll.scrollRef, visible]);
+	useEffect(() => {
+		if (!searchOpen || !activeSearchItemId) return;
+		const root = scroll.scrollRef.current;
+		const target = root?.querySelector<HTMLElement>(`[data-transcript-entry-id="${CSS.escape(activeSearchItemId)}"]`);
+		if (!target) return;
+		scroll.runJump(() => target.scrollIntoView({ block: "center", behavior: "auto" }));
+	}, [activeSearchItemId, scroll.runJump, searchOpen, scroll.scrollRef]);
+
 	return (
 		<div
 			className="transcript-pane"
@@ -1682,6 +2165,67 @@ const TranscriptPane = memo(function TranscriptPane({
 			aria-hidden={visible ? undefined : true}
 			inert={visible ? undefined : true}
 		>
+			{searchOpen ? (
+				<search className="transcript-search-bar">
+					<AppIcon name="search" size={14} />
+					<input
+						ref={searchInputRef}
+						value={searchQuery}
+						onChange={(event) => onSearchQueryChange(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key === "Escape") {
+								event.preventDefault();
+								onSearchClose();
+							} else if (event.key === "Enter") {
+								event.preventDefault();
+								if (searchMatches.length > 0) {
+									setSearchIndex((current) =>
+										event.shiftKey
+											? (current - 1 + searchMatches.length) % searchMatches.length
+											: (current + 1) % searchMatches.length,
+									);
+								}
+							}
+						}}
+						placeholder="搜索当前会话"
+						aria-label="搜索当前会话"
+					/>
+					<span className="transcript-search-count">
+						{searchQuery.trim()
+							? searchMatches.length > 0
+								? `${searchIndex + 1}/${searchMatches.length}`
+								: "无匹配"
+							: ""}
+					</span>
+					<button
+						type="button"
+						className="transcript-search-step"
+						disabled={searchMatches.length === 0}
+						aria-label="上一个匹配"
+						onClick={() =>
+							setSearchIndex((current) =>
+								searchMatches.length > 0 ? (current - 1 + searchMatches.length) % searchMatches.length : 0,
+							)
+						}
+					>
+						<AppIcon name="arrow-up" size={13} />
+					</button>
+					<button
+						type="button"
+						className="transcript-search-step"
+						disabled={searchMatches.length === 0}
+						aria-label="下一个匹配"
+						onClick={() =>
+							setSearchIndex((current) => (searchMatches.length > 0 ? (current + 1) % searchMatches.length : 0))
+						}
+					>
+						<AppIcon name="arrow-up" size={13} className="transcript-search-next" />
+					</button>
+					<button type="button" className="transcript-search-close" aria-label="关闭搜索" onClick={onSearchClose}>
+						<AppIcon name="close" size={13} />
+					</button>
+				</search>
+			) : null}
 			<div className="transcript" ref={scroll.scrollRef} onScroll={scroll.handleScroll}>
 				<div className="transcript-content" ref={scroll.contentRef}>
 					{items.length === 0 ? (
@@ -1710,6 +2254,11 @@ const TranscriptPane = memo(function TranscriptPane({
 							forkingEntryId={forkingEntryId}
 							onFork={onFork}
 							onOpenFile={onOpenFile}
+							onReplay={onReplay}
+							searchQuery={searchQuery}
+							activeSearchItemId={activeSearchItemId}
+							thinkingDisplayMode={thinkingDisplayMode}
+							smoothStreaming={smoothStreaming}
 						/>
 					)}
 					{activity ? (
@@ -1773,6 +2322,11 @@ export function App() {
 	const [busy, setBusy] = useState(false);
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
+	const [transcriptSearch, setTranscriptSearch] = useState<{ agentId: string; query: string } | null>(null);
+	const [thinkingDisplayMode, setThinkingDisplayMode] = useState<ThinkingDisplayMode>(
+		readTranscriptThinkingDisplayMode,
+	);
+	const [smoothStreaming, setSmoothStreaming] = useState(readTranscriptSmoothStreaming);
 	const [error, setError] = useState<string | null>(null);
 	const [extensionDialog, setExtensionDialog] = useState<ExtensionDialogState | null>(null);
 	const [settingsStatus, setSettingsStatus] = useState<SettingsStatus | null>(null);
@@ -1874,6 +2428,18 @@ export function App() {
 						{
 							id: "demo-assistant-final",
 							type: "assistant",
+							parts: [
+								{
+									type: "thinking",
+									key: "thinking-0",
+									text: "先确认文件面板的边界，再按文件、更改和运行三个视图整理结果。",
+								},
+								{
+									type: "text",
+									key: "text-1",
+									text: "工作区面板已补齐文件、更改和运行视图。\n\n### 关键修改\n\n- 文件视图：目录树 + 全宽预览\n- 更改视图：按文件分组的 diff\n\n| 视图 | 状态 |\n| --- | --- |\n| 文件 | 完成 |\n| 更改 | 完成 |\n\n```ts\nconst entries = toolItems.map(projectToolToPanel).filter(Boolean);\n```\n\n行内代码 `WorkPanel.tsx` 与链接 [Pi 文档](https://example.com/pi)。\n\n行内公式 $E = mc^2$ 也应正常渲染。\n\n另外像 `chunk-50EJBNHG.js` 这种来自其它目录的文件不在当前项目里；`小明.txt` 这种项目内唯一同名文件仍能定位。\n\n基础检查已经通过，工作区导航和 diff 展示已更新。",
+								},
+							],
 							text: "工作区面板已补齐文件、更改和运行视图。\n\n### 关键修改\n\n- 文件视图：目录树 + 全宽预览\n- 更改视图：按文件分组的 diff\n\n| 视图 | 状态 |\n| --- | --- |\n| 文件 | 完成 |\n| 更改 | 完成 |\n\n```ts\nconst entries = toolItems.map(projectToolToPanel).filter(Boolean);\n```\n\n行内代码 `WorkPanel.tsx` 与链接 [Pi 文档](https://example.com/pi)。\n\n行内公式 $E = mc^2$ 也应正常渲染。\n\n另外像 `chunk-50EJBNHG.js` 这种来自其它目录的文件不在当前项目里；`小明.txt` 这种项目内唯一同名文件仍能定位。\n\n基础检查已经通过，工作区导航和 diff 展示已更新。",
 							status: "complete",
 							streamStats: { tokens: 150, estimated: false, elapsedMs: 6000 },
@@ -1887,6 +2453,37 @@ export function App() {
 								cost: 0.0012,
 							},
 							thinkingLevel: "high",
+						},
+						{
+							id: "demo-model-change",
+							type: "model_change",
+							text: "切换模型 · openai/gpt-5.5",
+							modelProvider: "openai",
+							modelId: "gpt-5.5",
+							createdAt: "2026-09-17T09:31:00.000Z",
+						},
+						{
+							id: "demo-thinking-change",
+							type: "thinking_level_change",
+							text: "思考强度 · high",
+							thinkingLevel: "high",
+							createdAt: "2026-09-17T09:31:05.000Z",
+						},
+						{
+							id: "demo-context-edit",
+							type: "context_edit",
+							text: "上下文条目已编辑 · history-user",
+							targetId: "history-user",
+							replacement: "替换后的上下文内容",
+							createdAt: "2026-09-17T09:31:10.000Z",
+						},
+						{
+							id: "demo-compaction",
+							type: "compaction",
+							text: "上下文已压缩 · 压缩前 12,480 tokens",
+							summary: "前面的实现细节已汇总为登录流程、工作区面板和文件变更三个部分。",
+							tokensBefore: 12480,
+							createdAt: "2026-09-17T09:31:15.000Z",
 						},
 					],
 				}
@@ -2708,16 +3305,30 @@ export function App() {
 				}
 				return;
 			}
-			if (type === "agent_history" && Array.isArray(event.messages)) {
+			if (type === "agent_history" && (Array.isArray(event.entries) || Array.isArray(event.messages))) {
+				const historyValues = Array.isArray(event.entries)
+					? (event.entries as unknown[])
+					: (event.messages as unknown[]);
 				// 保留仍在流式的本地 assistant 条目，避免历史快照把回复抹掉。
 				setTranscripts((current) => ({
 					...current,
 					[agentInstanceId]: beginTranscriptHistoryMerge(
 						current[agentInstanceId] ?? [],
-						normalizeHistory(event.messages as unknown[]),
+						normalizeHistory(historyValues),
 						activeAssistantIds.current.get(agentInstanceId),
 					),
 				}));
+				return;
+			}
+			if (type === "entry_appended" && isRecord(event.entry) && event.entry.type !== "message") {
+				const appended = normalizeHistory([event.entry])[0];
+				if (appended) {
+					updateTranscript(agentInstanceId, (items) => {
+						const entryId = "entryId" in appended ? appended.entryId : undefined;
+						if (entryId && items.some((item) => "entryId" in item && item.entryId === entryId)) return items;
+						return [...items, appended];
+					});
+				}
 				return;
 			}
 			if (type === "message_start") {
@@ -2733,6 +3344,7 @@ export function App() {
 							type: "assistant",
 							text: "",
 							thinking: "",
+							parts: [],
 							status: "streaming",
 							createdAt: new Date().toISOString(),
 							streamStartedAt: Date.now(),
@@ -2748,6 +3360,7 @@ export function App() {
 					const update = assistantEvent;
 					if (update.type === "text_delta" && typeof update.delta === "string") {
 						const delta = update.delta;
+						const snapshotParts = partialAssistantParts(update.partial);
 						pendingToolFailures.current.delete(agentInstanceId);
 						setToolRecoveryOffers((current) => {
 							if (!(agentInstanceId in current)) return current;
@@ -2767,6 +3380,7 @@ export function App() {
 										id,
 										type: "assistant",
 										text: delta,
+										parts: snapshotParts ?? [{ type: "text", key: "text-0", text: delta }],
 										status: "streaming",
 										createdAt: new Date().toISOString(),
 										streamStartedAt: Date.now(),
@@ -2778,6 +3392,7 @@ export function App() {
 									? {
 											...item,
 											text: item.text + delta,
+											parts: snapshotParts ?? appendAssistantPart(item.parts, "text", delta),
 											status: "streaming",
 											...(typeof item.streamStartedAt === "number" ? {} : { streamStartedAt: Date.now() }),
 											...(item.modelId ? {} : assistantModelRef(update.partial)),
@@ -2788,6 +3403,7 @@ export function App() {
 					}
 					if (update.type === "thinking_delta" && typeof update.delta === "string") {
 						const delta = update.delta;
+						const snapshotParts = partialAssistantParts(update.partial);
 						const id = activeAssistantIds.current.get(agentInstanceId) ?? crypto.randomUUID();
 						if (!activeAssistantIds.current.has(agentInstanceId))
 							activeAssistantIds.current.set(agentInstanceId, id);
@@ -2802,6 +3418,7 @@ export function App() {
 										type: "assistant",
 										text: "",
 										thinking: delta,
+										parts: snapshotParts ?? [{ type: "thinking", key: "thinking-0", text: delta }],
 										status: "streaming",
 										createdAt: new Date().toISOString(),
 										streamStartedAt: Date.now(),
@@ -2813,6 +3430,7 @@ export function App() {
 									? {
 											...item,
 											thinking: (item.thinking ?? "") + delta,
+											parts: snapshotParts ?? appendAssistantPart(item.parts, "thinking", delta),
 											status: "streaming",
 											...(typeof item.streamStartedAt === "number" ? {} : { streamStartedAt: Date.now() }),
 											...(item.modelId ? {} : assistantModelRef(update.partial)),
@@ -2927,6 +3545,26 @@ export function App() {
 			}
 			if (type === "compaction_end") {
 				updateAgentActivity(agentInstanceId, null);
+				const result = isRecord(event.result) ? event.result : null;
+				if (event.aborted !== true && result) {
+					const summary = typeof result.summary === "string" ? result.summary : "";
+					const tokensBefore =
+						typeof result.tokensBefore === "number" && Number.isFinite(result.tokensBefore)
+							? result.tokensBefore
+							: 0;
+					const id = crypto.randomUUID();
+					updateTranscript(agentInstanceId, (items) => [
+						...items,
+						{
+							id,
+							type: "compaction",
+							text: `上下文已压缩 · 压缩前 ${formatTokenCount(tokensBefore)} tokens`,
+							summary,
+							tokensBefore,
+							createdAt: new Date().toISOString(),
+						},
+					]);
+				}
 				void refreshAgentSessionSnapshot(locator);
 				return;
 			}
@@ -4802,6 +5440,14 @@ export function App() {
 	}, [modelPickerAgentId, modelPickerSelectedIndex]);
 
 	useEffect(() => {
+		writeTranscriptThinkingDisplayMode(thinkingDisplayMode);
+	}, [thinkingDisplayMode]);
+
+	useEffect(() => {
+		writeTranscriptSmoothStreaming(smoothStreaming);
+	}, [smoothStreaming]);
+
+	useEffect(() => {
 		const handleKeyDown = (event: KeyboardEvent): void => {
 			if (event.key !== "Escape" || event.defaultPrevented) return;
 			if (extensionDialog) return;
@@ -5581,6 +6227,32 @@ export function App() {
 								onConfigChanged={refreshAfterPiPackageChange}
 							/>
 						</div>
+						<section className="settings-card" hidden={settingsSection !== "transcript"}>
+							<div className="settings-card-heading">
+								<div>
+									<h2>消息页</h2>
+									<p>控制回复中的思考过程展开方式和流式文本的释放节奏。</p>
+								</div>
+								<div className="settings-status">本机设置</div>
+							</div>
+							<div className="settings-field">
+								<span>思考显示</span>
+								<SelectMenu
+									label="思考显示模式"
+									value={thinkingDisplayMode}
+									options={[
+										{ value: "compact", label: "简洁", description: "思考过程默认折叠，按需展开" },
+										{ value: "detailed", label: "详细", description: "思考过程默认展开显示" },
+									]}
+									onChange={(value) => setThinkingDisplayMode(normalizeThinkingDisplayMode(value))}
+								/>
+							</div>
+							<SettingsCheckbox checked={smoothStreaming} onChange={(checked) => setSmoothStreaming(checked)}>
+								<strong>平滑流式输出</strong>
+								<small>把较大的流式文本分片平滑释放；系统开启“减少动态效果”时自动关闭。</small>
+							</SettingsCheckbox>
+							<small>这些偏好只保存在本机客户端，不会写入 Pi 会话或修改 Pi 运行时。</small>
+						</section>
 
 						<div className="settings-section-slot" hidden={settingsSection !== "providers"}>
 							<ProviderSettings
@@ -5659,6 +6331,17 @@ export function App() {
 						</div>
 						{agentId ? (
 							<div className="agent-header-actions">
+								<IconButton
+									label={transcriptSearch?.agentId === agentId ? "关闭会话搜索" : "搜索当前会话"}
+									active={transcriptSearch?.agentId === agentId}
+									onClick={() =>
+										setTranscriptSearch((current) =>
+											current?.agentId === agentId ? null : { agentId, query: "" },
+										)
+									}
+								>
+									<AppIcon name="search" />
+								</IconButton>
 								<IconButton
 									label={workPanelVisible ? "隐藏文件管理器" : "显示文件管理器"}
 									active={workPanelVisible}
@@ -5783,6 +6466,10 @@ export function App() {
 													});
 												}}
 												onOpenFile={openFileInWorkPanel}
+												onReplay={(text) => {
+													setDrafts((current) => ({ ...current, [paneAgentId]: text }));
+													window.requestAnimationFrame(() => composerInputRef.current?.focus());
+												}}
 												initialOffset={scrollPositions.current[paneAgentId] ?? null}
 												onScrollPosition={(offset) => rememberScrollPosition(paneAgentId, offset)}
 												onElement={handlePaneElement}
@@ -5794,6 +6481,23 @@ export function App() {
 														[paneAgentId]: paneSlot?.kickoffPrompt ?? "",
 													}))
 												}
+												searchOpen={transcriptSearch?.agentId === paneAgentId}
+												searchQuery={
+													transcriptSearch?.agentId === paneAgentId ? transcriptSearch.query : ""
+												}
+												onSearchQueryChange={(query) =>
+													setTranscriptSearch(() => ({
+														agentId: paneAgentId,
+														query,
+													}))
+												}
+												onSearchClose={() =>
+													setTranscriptSearch((current) =>
+														current?.agentId === paneAgentId ? null : current,
+													)
+												}
+												thinkingDisplayMode={thinkingDisplayMode}
+												smoothStreaming={smoothStreaming}
 											/>
 										);
 									})}

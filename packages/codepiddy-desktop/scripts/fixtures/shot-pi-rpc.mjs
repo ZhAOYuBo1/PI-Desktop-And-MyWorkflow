@@ -57,6 +57,61 @@ const messages = [
 	},
 ];
 
+const entries = [
+	{
+		type: "message",
+		id: "shot-entry-user",
+		parentId: null,
+		timestamp: new Date(BASE).toISOString(),
+		message: messages[0],
+	},
+	{
+		type: "message",
+		id: "shot-entry-read-call",
+		parentId: "shot-entry-user",
+		timestamp: new Date(BASE + 4_000).toISOString(),
+		message: messages[1],
+	},
+	{
+		type: "message",
+		id: "shot-entry-read-result",
+		parentId: "shot-entry-read-call",
+		timestamp: new Date(BASE + 11_000).toISOString(),
+		message: messages[2],
+	},
+	{
+		type: "message",
+		id: "shot-entry-assistant",
+		parentId: "shot-entry-read-result",
+		timestamp: new Date(BASE + 38_000).toISOString(),
+		message: messages[3],
+	},
+	{
+		type: "model_change",
+		id: "shot-entry-model",
+		parentId: "shot-entry-assistant",
+		timestamp: new Date(BASE + 39_000).toISOString(),
+		provider: "openai",
+		modelId: "gpt-5.5",
+	},
+	{
+		type: "thinking_level_change",
+		id: "shot-entry-thinking",
+		parentId: "shot-entry-model",
+		timestamp: new Date(BASE + 40_000).toISOString(),
+		thinkingLevel: "medium",
+	},
+	{
+		type: "compaction",
+		id: "shot-entry-compaction",
+		parentId: "shot-entry-thinking",
+		timestamp: new Date(BASE + 41_000).toISOString(),
+		summary: "前一轮实现细节已汇总为登录流程和认证边界。",
+		firstKeptEntryId: "shot-entry-assistant",
+		tokensBefore: 12480,
+	},
+];
+
 function output(value) {
 	process.stdout.write(`${JSON.stringify(value)}\n`);
 }
@@ -90,6 +145,9 @@ input.on("line", (line) => {
 			break;
 		case "get_messages":
 			reply("get_messages", id, { messages });
+			break;
+		case "get_entries":
+			reply("get_entries", id, { entries, leafId: "shot-entry-compaction" });
 			break;
 		case "get_available_models":
 			reply("get_available_models", id, { models: [model] });
