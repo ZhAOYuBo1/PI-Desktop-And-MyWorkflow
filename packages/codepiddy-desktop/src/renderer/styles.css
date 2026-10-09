@@ -1745,7 +1745,7 @@ button { color: inherit; }
 .turn-elapsed { color: var(--cp-ink-faint); font-variant-numeric: tabular-nums; }
 .turn-elapsed::before { content: "·"; margin: 0 var(--cp-space-xxs); }
 .message-elapsed { font-size: 10px; color: var(--cp-ink-muted); font-variant-numeric: tabular-nums; }
-.message-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--cp-space-xs); margin-top: var(--cp-space-xs); color: var(--cp-ink-muted); font-size: 10px; }
+.message-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--cp-space-xs); margin: var(--cp-space-xs) 0 var(--cp-space-sm); color: var(--cp-ink-muted); font-size: 10px; }
 .message-meta-chip { display: inline-flex; max-width: 100%; min-height: 18px; align-items: center; overflow: hidden; border-radius: var(--cp-radius-full); background: var(--cp-surface-secondary); padding: 1px 8px; color: var(--cp-ink-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .message-collapse .chevron { font-size: 15px; }
 .stream-stats { display: flex; align-items: center; justify-content: flex-end; gap: var(--cp-space-xxs); margin-top: var(--cp-space-xs); color: var(--cp-ink-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -1812,10 +1812,14 @@ button { color: inherit; }
 }
 .message-rich-text p { margin: 0 0 var(--cp-space-md); white-space: pre-wrap; }
 .message-rich-text p:last-child { margin-bottom: 0; }
+.message-rich-text h1,
+.message-rich-text h2,
 .message-rich-text h3,
 .message-rich-text h4,
 .message-rich-text h5,
 .message-rich-text h6 { margin: var(--cp-space-md) 0 var(--cp-space-sm); color: var(--cp-ink); line-height: 1.3; }
+.message-rich-text h1 { font-size: 18px; }
+.message-rich-text h2 { font-size: 16px; }
 .message-rich-text h3 { font-size: 16px; }
 .message-rich-text h4 { font-size: 14px; }
 .message-rich-text h5,
@@ -1844,6 +1848,11 @@ button { color: inherit; }
 .message-table th[data-align="right"],
 .message-table td[data-align="right"] { text-align: right; }
 .inline-code { padding: var(--cp-space-micro) var(--cp-space-xxs); border: 1px solid var(--cp-surface-inset); border-radius: var(--cp-radius-xs); background: var(--cp-surface-secondary); color: var(--cp-ink); font-family: var(--cp-font-mono); font-size: .88em; }
+/* 消息里的工作区文件 chip：行内代码外观 + 可点击。 */
+.message-file-chip { display: inline; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.message-file-chip .inline-code { color: var(--cp-accent); }
+.message-file-chip:hover .inline-code { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.message-file-chip:focus-visible { border-radius: var(--cp-radius-xs); outline: 2px solid var(--cp-accent); outline-offset: 1px; }
 .tool-error-guidance { margin-top: var(--cp-space-sm); padding: var(--cp-space-sm) var(--cp-space-sm); border-radius: var(--cp-radius-sm); background: color-mix(in oklab, var(--cp-danger) 10%, transparent); color: var(--cp-danger); font-size: 10px; line-height: 1.45; }
 /* Agent runtime infrastructure */
 .agent-header-actions {
@@ -3499,7 +3508,9 @@ textarea:focus-visible,
 }
 
 .workspace-file-highlight .hljs-comment,
-.workspace-file-highlight .hljs-quote {
+.workspace-file-highlight .hljs-quote,
+.message-code-block .hljs-comment,
+.message-code-block .hljs-quote {
   color: var(--cp-ink-faint);
   font-style: italic;
 }
@@ -3507,25 +3518,38 @@ textarea:focus-visible,
 .workspace-file-highlight .hljs-keyword,
 .workspace-file-highlight .hljs-selector-tag,
 .workspace-file-highlight .hljs-literal,
-.workspace-file-highlight .hljs-name {
+.workspace-file-highlight .hljs-name,
+.message-code-block .hljs-keyword,
+.message-code-block .hljs-selector-tag,
+.message-code-block .hljs-literal,
+.message-code-block .hljs-name {
   color: var(--cp-violet);
 }
 
 .workspace-file-highlight .hljs-string,
 .workspace-file-highlight .hljs-regexp,
-.workspace-file-highlight .hljs-addition {
+.workspace-file-highlight .hljs-addition,
+.message-code-block .hljs-string,
+.message-code-block .hljs-regexp,
+.message-code-block .hljs-addition {
   color: var(--cp-success);
 }
 
 .workspace-file-highlight .hljs-number,
 .workspace-file-highlight .hljs-symbol,
-.workspace-file-highlight .hljs-bullet {
+.workspace-file-highlight .hljs-bullet,
+.message-code-block .hljs-number,
+.message-code-block .hljs-symbol,
+.message-code-block .hljs-bullet {
   color: var(--cp-warning);
 }
 
 .workspace-file-highlight .hljs-title,
 .workspace-file-highlight .hljs-section,
-.workspace-file-highlight .hljs-built_in {
+.workspace-file-highlight .hljs-built_in,
+.message-code-block .hljs-title,
+.message-code-block .hljs-section,
+.message-code-block .hljs-built_in {
   color: var(--cp-accent);
 }
 
@@ -3533,12 +3557,19 @@ textarea:focus-visible,
 .workspace-file-highlight .hljs-attribute,
 .workspace-file-highlight .hljs-variable,
 .workspace-file-highlight .hljs-template-variable,
-.workspace-file-highlight .hljs-params {
+.workspace-file-highlight .hljs-params,
+.message-code-block .hljs-attr,
+.message-code-block .hljs-attribute,
+.message-code-block .hljs-variable,
+.message-code-block .hljs-template-variable,
+.message-code-block .hljs-params {
   color: var(--cp-ink-secondary);
 }
 
 .workspace-file-highlight .hljs-type,
-.workspace-file-highlight .hljs-class .hljs-title {
+.workspace-file-highlight .hljs-class .hljs-title,
+.message-code-block .hljs-type,
+.message-code-block .hljs-class .hljs-title {
   color: var(--cp-danger);
 }
 

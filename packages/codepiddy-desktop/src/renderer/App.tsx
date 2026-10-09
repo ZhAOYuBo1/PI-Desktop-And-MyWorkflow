@@ -519,6 +519,21 @@ function collectToolCallArguments(messages: unknown[]): Map<string, { name: stri
 	return result;
 }
 
+/**
+ * 消息里只写了 basename 时（例如 `index.ts`），在项目里按文件名找精确同名项。
+ * 唯一匹配才算数；找不到或有歧义都返回空数组，交给调用方提示。
+ */
+async function findProjectFileMatches(projectRoot: string, path: string): Promise<string[]> {
+	const name = path.replace(/\\/g, "/").split("/").pop()?.toLowerCase() ?? "";
+	if (!name) return [];
+	try {
+		const results = await window.codepiddy.searchProjectFiles(projectRoot, path);
+		return results.filter((relative) => relative.replace(/\\/g, "/").split("/").pop()?.toLowerCase() === name);
+	} catch {
+		return [];
+	}
+}
+
 function normalizeHistory(messages: unknown[]): TranscriptItem[] {
 	const items: TranscriptItem[] = [];
 	const toolCallArguments = collectToolCallArguments(messages);
@@ -687,8 +702,8 @@ function buildTurnForkEntryMap(
 }
 
 /**
- * 回复结束后的低对比元信息行：模型、思考级别、Pi 原生 usage 明细和成本。
- * 模型从原来的标题行下沉到这里，避免每条回复顶部都挂一个大标题。
+ * 每条回复正文上方的低对比元信息行：模型、思考级别、Pi 原生 usage 明细和成本。
+ * 历史消息按各自实际使用的模型取值，缺失字段的 chip 不显示。
  */
 function AssistantMeta({
 	item,
@@ -730,6 +745,7 @@ const TranscriptMessage = memo(function TranscriptMessage({
 	forkEntryId,
 	forkPending,
 	onFork,
+	onOpenFile,
 }: {
 	item: Extract<TranscriptItem, { type: "user" | "assistant" | "system" }>;
 	assistantModel?: string;
@@ -737,6 +753,7 @@ const TranscriptMessage = memo(function TranscriptMessage({
 	forkEntryId?: string;
 	forkPending?: boolean;
 	onFork?(entryId: string): void;
+	onOpenFile?(path: string): void;
 }) {
 	const [copied, setCopied] = useState(false);
 	const messageTime = formatMessageTime(item.createdAt);
@@ -776,6 +793,8 @@ const TranscriptMessage = memo(function TranscriptMessage({
 						{messageTime ? <time>{messageTime}</time> : null}
 						{elapsedText ? <span className="message-elapsed">用时 {elapsedText}</span> : null}
 					</div>
+					{/* 元信息（模型 / 思考级别 / usage / 成本）放在正文上方，每条回复都有。 */}
+					{item.type === "assistant" ? <AssistantMeta item={item} assistantModel={assistantModel} /> : null}
 					{item.type === "assistant" && item.thinking ? (
 						<details className="thinking-block">
 							<summary>思考过程</summary>
@@ -808,11 +827,11 @@ const TranscriptMessage = memo(function TranscriptMessage({
 								<small>{item.text.length.toLocaleString()} 字符</small>
 							</summary>
 							<div className="system-output-content">
-								<MessageContent text={item.text} />
+								<MessageContent text={item.text} onOpenFile={onOpenFile} />
 							</div>
 						</details>
 					) : item.text ? (
-						<MessageContent text={item.text} />
+						<MessageContent text={item.text} onOpenFile={onOpenFile} />
 					) : null}
 					{item.type === "user" && item.delivery ? (
 						<small className="message-delivery">
@@ -826,9 +845,6 @@ const TranscriptMessage = memo(function TranscriptMessage({
 							streamStartedAt={item.streamStartedAt}
 							streamStats={item.streamStats}
 						/>
-					) : null}
-					{item.type === "assistant" && showStats && item.status !== "streaming" ? (
-						<AssistantMeta item={item} assistantModel={assistantModel} />
 					) : null}
 				</div>
 				{item.text || (item.type === "user" && forkEntryId) ? (
@@ -876,6 +892,7 @@ const TranscriptTurns = memo(function TranscriptTurns({
 	forkEntryIds,
 	forkingEntryId,
 	onFork,
+	onOpenFile,
 }: {
 	items: TranscriptItem[];
 	assistantModel?: string;
@@ -889,6 +906,7 @@ const TranscriptTurns = memo(function TranscriptTurns({
 	forkEntryIds: Map<string, string>;
 	forkingEntryId: string | null;
 	onFork(entryId: string): void;
+	onOpenFile?(path: string): void;
 }) {
 	const turns = groupTranscriptIntoTurns(items);
 	const latestTurnId = turns[turns.length - 1]?.id;
@@ -936,6 +954,7 @@ const TranscriptTurns = memo(function TranscriptTurns({
 										forkEntryIds.get(entry.id) === forkingEntryId
 									}
 									onFork={onFork}
+									onOpenFile={onOpenFile}
 								/>
 							)}
 						</div>
@@ -1604,6 +1623,7 @@ const TranscriptPane = memo(function TranscriptPane({
 	forkEntryIds,
 	forkingEntryId,
 	onFork,
+	onOpenFile,
 	initialOffset,
 	onScrollPosition,
 	onElement,
@@ -1627,6 +1647,7 @@ const TranscriptPane = memo(function TranscriptPane({
 	forkEntryIds: Map<string, string>;
 	forkingEntryId: string | null;
 	onFork(entryId: string): void;
+	onOpenFile?(path: string): void;
 	initialOffset: number | null;
 	onScrollPosition(offset: number): void;
 	onElement(agentId: string, element: HTMLDivElement | null): void;
@@ -1688,6 +1709,7 @@ const TranscriptPane = memo(function TranscriptPane({
 							forkEntryIds={forkEntryIds}
 							forkingEntryId={forkingEntryId}
 							onFork={onFork}
+							onOpenFile={onOpenFile}
 						/>
 					)}
 					{activity ? (
@@ -1852,7 +1874,7 @@ export function App() {
 						{
 							id: "demo-assistant-final",
 							type: "assistant",
-							text: "工作区面板已补齐文件、更改和运行视图。\n\n```ts\nconst entries = toolItems.map(projectToolToPanel).filter(Boolean);\n```\n\n基础检查已经通过，工作区导航和 diff 展示已更新。",
+							text: "工作区面板已补齐文件、更改和运行视图。\n\n### 关键修改\n\n- 文件视图：目录树 + 全宽预览\n- 更改视图：按文件分组的 diff\n\n| 视图 | 状态 |\n| --- | --- |\n| 文件 | 完成 |\n| 更改 | 完成 |\n\n```ts\nconst entries = toolItems.map(projectToolToPanel).filter(Boolean);\n```\n\n行内代码 `WorkPanel.tsx` 与链接 [Pi 文档](https://example.com/pi)。\n\n行内公式 $E = mc^2$ 也应正常渲染。\n\n另外像 `chunk-50EJBNHG.js` 这种来自其它目录的文件不在当前项目里；`小明.txt` 这种项目内唯一同名文件仍能定位。\n\n基础检查已经通过，工作区导航和 diff 展示已更新。",
 							status: "complete",
 							streamStats: { tokens: 150, estimated: false, elapsedMs: 6000 },
 							usage: {
@@ -1874,6 +1896,43 @@ export function App() {
 	const [collapsedRounds, setCollapsedRounds] = useState<Record<string, boolean>>({});
 	// 右侧工作区面板启动时始终收起；宽度记忆仍然保留，只有可见性不跨会话恢复。
 	const [workPanelVisible, setWorkPanelVisible] = useState(false);
+	// 消息里的文件 chip 把「打开这个文件」的请求交给工作区面板；nonce 保证同一路径
+	// 连点两次也能重新定位。
+	const [workPanelFileRequest, setWorkPanelFileRequest] = useState<{ path: string; nonce: number } | null>(null);
+	const openProjectRoot = project?.rootPath ?? null;
+	const openFileInWorkPanel = useCallback(
+		(path: string) => {
+			void (async () => {
+				// 消息里的文件名可能来自其它目录（例如构建产物的 basename）。开之前先在
+				// 当前项目里 stat 一次：直接命中就用原路径；否则按文件名找唯一同名项；
+				// 都没有（或有歧义）就提示，别打开一个读不到的标签页。
+				let target = path;
+				if (openProjectRoot && "codepiddy" in window) {
+					try {
+						await window.codepiddy.statWorkspaceFile(openProjectRoot, path);
+					} catch {
+						const matches = await findProjectFileMatches(openProjectRoot, path);
+						if (matches.length === 1) {
+							target = matches[0]!;
+						} else {
+							showSettingsToast(
+								matches.length > 1 ? "匹配到多个同名文件" : "文件不在当前项目中",
+								"error",
+								matches.length > 1
+									? { detail: `项目里有 ${matches.length} 个同名文件，无法确定打开哪一个。`, path }
+									: { detail: "消息里引用的这个文件不在当前项目目录下，无法打开。", path },
+							);
+							return;
+						}
+					}
+				}
+				setWorkPanelVisible(true);
+				setWorkPanelFileRequest({ path: target, nonce: Date.now() });
+			})();
+		},
+		[openProjectRoot],
+	);
+	const clearWorkPanelFileRequest = useCallback(() => setWorkPanelFileRequest(null), []);
 	const [sidebarWidth, setSidebarWidth] = useState(loadStoredSidebarWidth);
 	const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 	const [agentActivities, setAgentActivities] = useState<Record<string, AgentActivity>>(
@@ -5723,6 +5782,7 @@ export function App() {
 														role: paneSlot.role,
 													});
 												}}
+												onOpenFile={openFileInWorkPanel}
 												initialOffset={scrollPositions.current[paneAgentId] ?? null}
 												onScrollPosition={(offset) => rememberScrollPosition(paneAgentId, offset)}
 												onElement={handlePaneElement}
@@ -6069,6 +6129,8 @@ export function App() {
 									turnId={latestTurn?.id ?? "turn-0"}
 									turnStartedAt={latestTurn?.startedAt}
 									toolItems={latestTurnToolItems}
+									requestedPath={workPanelFileRequest}
+									onRequestedPathHandled={clearWorkPanelFileRequest}
 									onInsertMention={(path) => {
 										if (!agentId) return;
 										setDrafts((current) => {

@@ -1,197 +1,57 @@
-import { memo, useMemo, useState } from "react";
-import { splitTableRow, type TableAlignment, tableAlignment, tableColumnCount } from "./markdown-table.ts";
+import {
+	type ComponentProps,
+	createContext,
+	isValidElement,
+	memo,
+	type ReactNode,
+	useContext,
+	useMemo,
+	useState,
+} from "react";
+import ReactMarkdown, { type Components, type Options } from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
+import { highlightCode } from "../file-syntax.ts";
+import { looksLikeFilePath } from "./file-path.ts";
 
-// 轻量 markdown 渲染（标题/列表/引用/行内码/围栏代码块/表格），从 App.tsx 移出供对话与文件预览共用。
-function InlineText({ text }: { text: string }) {
-	const tokens = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
-	return (
-		<>
-			{tokens.map((token, index) => {
-				if (token.startsWith("**") && token.endsWith("**")) {
-					return <strong key={`${index}-${token}`}>{token.slice(2, -2)}</strong>;
-				}
-				if (token.startsWith("`") && token.endsWith("`")) {
-					return (
-						<code className="inline-code" key={`${index}-${token}`}>
-							{token.slice(1, -1)}
-						</code>
-					);
-				}
-				return <span key={`${index}-${token}`}>{token}</span>;
-			})}
-		</>
-	);
-}
-
-// GFM 表格：必须同时有表头行和分隔行（`|---|---|`）才算表格，解析见 markdown-table.ts。
-
-// biome 的 noArrayIndexKey 连模板字符串里的下标也不放过，所以 key 一律由内容生成，
-// 重复时加后缀（表格里两行完全相同是合法的，不能撞 key）。
-function uniqueKeys(values: string[]): string[] {
-	const seen = new Map<string, number>();
-	return values.map((value) => {
-		const count = seen.get(value) ?? 0;
-		seen.set(value, count + 1);
-		return count === 0 ? value : `${value} #${count}`;
-	});
-}
-
-function RichTable({
-	head,
-	align,
-	rows,
-	columns,
-}: {
-	head: string[];
-	align: TableAlignment[];
-	rows: string[][];
-	columns: number;
-}) {
-	const columnKeys = uniqueKeys(
-		Array.from({ length: columns }, (_, columnIndex) => head[columnIndex] || `col${columnIndex + 1}`),
-	);
-	const rowKeys = uniqueKeys(rows.map((row) => row.join(" ")));
-	return (
-		<div className="message-table-scroll">
-			<table className="message-table">
-				<thead>
-					<tr>
-						{columnKeys.map((columnKey, columnIndex) => (
-							<th key={columnKey} data-align={align[columnIndex] ?? undefined}>
-								<InlineText text={head[columnIndex] ?? ""} />
-							</th>
-						))}
-					</tr>
-				</thead>
-				<tbody>
-					{rows.map((row, rowIndex) => (
-						<tr key={rowKeys[rowIndex]}>
-							{columnKeys.map((columnKey, columnIndex) => (
-								<td key={columnKey} data-align={align[columnIndex] ?? undefined}>
-									<InlineText text={row[columnIndex] ?? ""} />
-								</td>
-							))}
-						</tr>
-					))}
-				</tbody>
-			</table>
-		</div>
-	);
-}
-
-function RichText({ text }: { text: string }) {
-	const lines = text.split("\n");
-	const blocks: React.ReactNode[] = [];
-	let paragraph: string[] = [];
-	let list: { ordered: boolean; items: string[] } | null = null;
-	const flushParagraph = (): void => {
-		if (paragraph.length === 0) return;
-		const value = paragraph.join("\n").trim();
-		if (value)
-			blocks.push(
-				<p key={`p-${blocks.length}`}>
-					<InlineText text={value} />
-				</p>,
-			);
-		paragraph = [];
-	};
-	const flushList = (): void => {
-		if (!list) return;
-		const Tag = list.ordered ? "ol" : "ul";
-		blocks.push(
-			<Tag key={`list-${blocks.length}`}>
-				{list.items.map((item, index) => (
-					<li key={`${index}-${item}`}>
-						<InlineText text={item} />
-					</li>
-				))}
-			</Tag>,
-		);
-		list = null;
-	};
-	for (let index = 0; index < lines.length; index++) {
-		const line = lines[index]!;
-		const head = splitTableRow(line);
-		const nextLine = lines[index + 1];
-		const align = nextLine === undefined ? null : tableAlignment(splitTableRow(nextLine));
-		if (head && align) {
-			flushParagraph();
-			flushList();
-			const rows: string[][] = [];
-			let cursor = index + 2;
-			for (; cursor < lines.length; cursor++) {
-				const row = splitTableRow(lines[cursor]!);
-				if (!row) break;
-				rows.push(row);
-			}
-			blocks.push(
-				<RichTable
-					key={`table-${blocks.length}`}
-					head={head}
-					align={align}
-					rows={rows}
-					columns={tableColumnCount(head, rows)}
-				/>,
-			);
-			index = cursor - 1;
-			continue;
-		}
-		const heading = /^(#{1,4})\s+(.+)$/.exec(line);
-		const unordered = /^[-*]\s+(.+)$/.exec(line);
-		const ordered = /^\d+[.)]\s+(.+)$/.exec(line);
-		const quote = /^>\s?(.*)$/.exec(line);
-		if (heading) {
-			flushParagraph();
-			flushList();
-			const level = Math.min(heading[1]!.length + 2, 6);
-			const Tag = `h${level}` as "h3" | "h4" | "h5" | "h6";
-			blocks.push(
-				<Tag key={`h-${blocks.length}`}>
-					<InlineText text={heading[2] ?? ""} />
-				</Tag>,
-			);
-		} else if (unordered || ordered) {
-			flushParagraph();
-			const isOrdered = Boolean(ordered);
-			if (list && list.ordered !== isOrdered) flushList();
-			list ??= { ordered: isOrdered, items: [] };
-			list.items.push((ordered?.[1] ?? unordered?.[1] ?? "").trim());
-		} else if (quote) {
-			flushParagraph();
-			flushList();
-			blocks.push(
-				<blockquote key={`q-${blocks.length}`}>
-					<InlineText text={quote[1] ?? ""} />
-				</blockquote>,
-			);
-		} else if (!line.trim()) {
-			flushParagraph();
-			flushList();
-		} else {
-			flushList();
-			paragraph.push(line);
-		}
-	}
-	flushParagraph();
-	flushList();
-	return <>{blocks}</>;
-}
+// 消息正文的 markdown 渲染。参考项目用 react-markdown 这一套（GFM + 数学 +
+// 原始 HTML 经 sanitize 后渲染），这里沿用它的插件组合，但代码块外观保留我们
+// 自己的「换行 / 复制 / 折叠 / 展开全部」工具条，高亮继续用仓库已有的 highlight.js。
 
 const COLLAPSE_LINE_THRESHOLD = 24;
 const COLLAPSE_LENGTH_THRESHOLD = 3000;
 
+// 消息正文里的文件 chip 需要打开右侧工作区文件视图。回调由 App 注入，缺省时
+// 行内代码保持普通样式（文件预览里的 markdown 就不带这个行为）。
+const MessageFileOpenContext = createContext<((path: string) => void) | null>(null);
+
+function openExternalLink(url: string): void {
+	// 浏览器（?demo=1 的验证环境）里没有 preload 桥，退回 window.open。
+	if (!window.codepiddy) {
+		window.open(url, "_blank", "noopener,noreferrer");
+		return;
+	}
+	void window.codepiddy.openExternalUrl(url).catch(() => {});
+}
+
 function MessageCodeBlock({ value, language }: { value: string; language?: string }) {
 	const [copied, setCopied] = useState(false);
-	// 长代码默认折叠。折叠必须是真的截断（overflow:hidden + 渐隐），
-	// 之前只是把滚动框从 420px 缩到 150px，内容一行没少，读起来像坏了。
+	// 长代码默认折叠。折叠是真的截断（overflow:hidden + 渐隐），不是把滚动框缩小。
 	const [collapsed, setCollapsed] = useState(
 		value.length > COLLAPSE_LENGTH_THRESHOLD || value.split("\n").length > COLLAPSE_LINE_THRESHOLD,
 	);
 	// 默认换行：桌面端代码列窄，不换行的话横向滚动条几乎每块都在。
 	const [wrapped, setWrapped] = useState(true);
+	const code = value.replace(/\n$/, "");
+	const highlighted = useMemo(() => highlightCode(code, language), [code, language]);
+	const codeClassName = language ? `language-${language}` : undefined;
 	async function copyCode(): Promise<void> {
 		try {
-			await navigator.clipboard.writeText(value.replace(/\n$/, ""));
+			await navigator.clipboard.writeText(code);
 			setCopied(true);
 			setTimeout(() => setCopied(false), 1400);
 		} catch {}
@@ -218,7 +78,8 @@ function MessageCodeBlock({ value, language }: { value: string; language?: strin
 				</div>
 			</div>
 			<pre>
-				<code>{value.replace(/\n$/, "")}</code>
+				{/* biome-ignore lint/security/noDangerouslySetInnerHtml: highlight.js escapes source text before emitting token markup */}
+				<code className={codeClassName} dangerouslySetInnerHTML={{ __html: highlighted }} />
 			</pre>
 			{collapsed ? (
 				<button type="button" className="message-code-expand" onClick={() => setCollapsed(false)}>
@@ -229,35 +90,115 @@ function MessageCodeBlock({ value, language }: { value: string; language?: strin
 	);
 }
 
-export const MessageContent = memo(function MessageContent({ text }: { text: string }) {
-	const parts = useMemo(() => {
-		const result: Array<{ type: "text" | "code"; value: string; language?: string }> = [];
-		const pattern = /```([^\n`]*)\n?([\s\S]*?)```/g;
-		let cursor = 0;
-		for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
-			if (match.index > cursor) result.push({ type: "text", value: text.slice(cursor, match.index) });
-			result.push({ type: "code", value: match[2] ?? "", language: match[1]?.trim() || undefined });
-			cursor = match.index + match[0].length;
-		}
-		if (cursor < text.length) result.push({ type: "text", value: text.slice(cursor) });
-		if (result.length === 0) result.push({ type: "text", value: text });
-		return result;
-	}, [text]);
+// react-markdown 把围栏代码渲染成 <pre><code class="language-x">…</code></pre>，
+// 这里从 <pre> 的子元素把源码和语言取回来交给自定义代码块。
+function extractFencedCode(children: ReactNode): { code: string; lang: string } | null {
+	const element = Array.isArray(children) ? children.find((child) => isValidElement(child)) : children;
+	if (!isValidElement(element)) return null;
+	const props = element.props as { className?: unknown; children?: unknown };
+	const className = typeof props.className === "string" ? props.className : "";
+	const lang = /language-(\S+)/.exec(className)?.[1] ?? "";
+	const raw = props.children;
+	const code =
+		typeof raw === "string"
+			? raw
+			: Array.isArray(raw) && raw.every((part) => typeof part === "string")
+				? raw.join("")
+				: null;
+	if (code === null) return null;
+	return { code: code.replace(/\n$/, ""), lang };
+}
+
+function PreBlock({ node: _node, children, ...rest }: ComponentProps<"pre"> & { node?: unknown }) {
+	const info = extractFencedCode(children);
+	if (!info) return <pre {...rest}>{children}</pre>;
+	return <MessageCodeBlock value={info.code} language={info.lang || undefined} />;
+}
+
+// 行内代码（围栏代码被 PreBlock 截走）。类名在 sanitize 之后由组件补上，不会被清洗。
+function InlineCode({ node: _node, className, children, ...rest }: ComponentProps<"code"> & { node?: unknown }) {
+	const onOpenFile = useContext(MessageFileOpenContext);
+	const text = typeof children === "string" ? children : null;
+	if (!className && onOpenFile && text && looksLikeFilePath(text)) {
+		return (
+			<button type="button" className="message-file-chip" title={`打开 ${text}`} onClick={() => onOpenFile(text)}>
+				<code className="inline-code">{text}</code>
+			</button>
+		);
+	}
 	return (
-		<>
-			{parts.map((part, index) =>
-				part.type === "code" ? (
-					<MessageCodeBlock
-						key={`${index}-${part.value.slice(0, 20)}`}
-						value={part.value}
-						language={part.language}
-					/>
-				) : (
-					<div className="message-rich-text" key={`${index}-${part.value.slice(0, 20)}`}>
-						<RichText text={part.value} />
-					</div>
-				),
-			)}
-		</>
+		<code className={className ? `inline-code ${className}` : "inline-code"} {...rest}>
+			{children}
+		</code>
+	);
+}
+
+// 消息里的链接一律拦截默认跳转，交给系统浏览器打开，避免整个渲染进程被导航走。
+function Anchor({ node: _node, href, children, ...rest }: ComponentProps<"a"> & { node?: unknown }) {
+	const url = typeof href === "string" ? href : "";
+	return (
+		<a
+			{...rest}
+			href={url}
+			target="_blank"
+			rel="noopener noreferrer"
+			onClick={(event) => {
+				event.preventDefault();
+				if (/^(https?:|mailto:)/i.test(url)) openExternalLink(url);
+			}}
+		>
+			{children}
+		</a>
+	);
+}
+
+// GFM 表格：保留 .message-table-scroll / .message-table 外观，对齐交给 react-markdown
+// 写入的行内 text-align。
+function Table({ node: _node, children, ...rest }: ComponentProps<"table"> & { node?: unknown }) {
+	return (
+		<div className="message-table-scroll">
+			<table className="message-table" {...rest}>
+				{children}
+			</table>
+		</div>
+	);
+}
+
+const markdownComponents: Components = {
+	pre: PreBlock,
+	code: InlineCode,
+	a: Anchor,
+	table: Table,
+};
+
+const remarkPlugins = [remarkGfm, remarkMath] as Options["remarkPlugins"];
+
+// 默认 schema 会丢掉 remark-math 的 math-inline / math-display 类名，导致
+// rehype-katex 无法把公式升级成展示级排版；这里补上这两个类。
+const sanitizeSchema = {
+	...defaultSchema,
+	attributes: {
+		...defaultSchema.attributes,
+		code: [["className", /^language-./, "math-inline", "math-display"]],
+	},
+};
+
+const rehypePlugins = [rehypeRaw, [rehypeSanitize, sanitizeSchema], rehypeKatex] as Options["rehypePlugins"];
+
+export const MessageContent = memo(function MessageContent({
+	text,
+	onOpenFile,
+}: {
+	text: string;
+	onOpenFile?: (path: string) => void;
+}) {
+	return (
+		<MessageFileOpenContext.Provider value={onOpenFile ?? null}>
+			<div className="message-rich-text">
+				<ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
+					{text}
+				</ReactMarkdown>
+			</div>
+		</MessageFileOpenContext.Provider>
 	);
 });

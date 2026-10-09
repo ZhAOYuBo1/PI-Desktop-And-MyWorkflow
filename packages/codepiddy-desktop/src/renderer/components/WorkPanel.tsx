@@ -345,6 +345,8 @@ export const WorkPanel = memo(function WorkPanel({
 	turnStartedAt,
 	toolItems,
 	onInsertMention,
+	requestedPath,
+	onRequestedPathHandled,
 }: {
 	projectRoot: string;
 	projectId: string;
@@ -354,11 +356,26 @@ export const WorkPanel = memo(function WorkPanel({
 	turnStartedAt?: string;
 	toolItems: ProjectableToolItem[];
 	onInsertMention(path: string): void;
+	/** 外部（消息里的文件 chip）发来的打开请求。 */
+	requestedPath?: { path: string; nonce: number } | null;
+	/** 外部请求已交给文件视图后回调，宿主据此清掉请求，避免面板再次打开时重放。 */
+	onRequestedPathHandled?(): void;
 }) {
 	const [width, setWidth] = useState(loadPanelWidth);
 	const [activeView, setActiveView] = useState<WorkPanelTab>("files");
 	const [fileOpenRequest, setFileOpenRequest] = useState<{ path: string; nonce: number } | null>(null);
 	const [terminalMounted, setTerminalMounted] = useState(false);
+	// 内部（更改视图）和外部（消息文件 chip）的请求取 nonce 更新的那个。
+	const effectiveFileRequest = useMemo(() => {
+		if (requestedPath && (!fileOpenRequest || requestedPath.nonce >= fileOpenRequest.nonce)) return requestedPath;
+		return fileOpenRequest;
+	}, [fileOpenRequest, requestedPath]);
+
+	useEffect(() => {
+		if (!requestedPath) return;
+		setActiveView("files");
+		onRequestedPathHandled?.();
+	}, [requestedPath, onRequestedPathHandled]);
 	const historyKey = changeHistoryStorageKey(projectRoot, workItemId, agentRole, turnId);
 	const [changeHistory, setChangeHistory] = useState<{ key: string; entries: WorkPanelEntry[] }>(() => ({
 		key: historyKey,
@@ -448,7 +465,7 @@ export const WorkPanel = memo(function WorkPanel({
 				projectRoot={projectRoot}
 				projectId={projectId}
 				followPath={followPath}
-				requestedPath={fileOpenRequest}
+				requestedPath={effectiveFileRequest}
 				onInsertMention={onInsertMention}
 			/>
 		</div>

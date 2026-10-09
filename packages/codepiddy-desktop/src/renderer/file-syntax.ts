@@ -90,6 +90,48 @@ export function highlightFileCode(code: string, path: string): string {
 	}
 }
 
+// 围栏代码块里的语言标记是模型随手写的（ts / shell / yml / c++ 都有），
+// 先归一到 highlight.js 注册过的名字再高亮；认不出来就按纯文本转义。
+const FENCE_LANGUAGE_ALIASES: Record<string, string> = {
+	ts: "typescript",
+	tsx: "typescript",
+	mts: "typescript",
+	cts: "typescript",
+	js: "javascript",
+	jsx: "javascript",
+	mjs: "javascript",
+	cjs: "javascript",
+	sh: "bash",
+	shell: "bash",
+	zsh: "bash",
+	console: "bash",
+	py: "python",
+	yml: "yaml",
+	md: "markdown",
+	"c++": "cpp",
+	"c#": "csharp",
+	htm: "xml",
+	html: "xml",
+	svg: "xml",
+	vue: "xml",
+	jsonc: "json",
+	scss: "css",
+	less: "css",
+	rs: "rust",
+	golang: "go",
+};
+
+export function highlightCode(code: string, language?: string): string {
+	const key = language?.trim().toLowerCase();
+	const normalized = key ? (FENCE_LANGUAGE_ALIASES[key] ?? key) : "";
+	if (!normalized || !hljs.getLanguage(normalized)) return escapeHtml(code);
+	try {
+		return hljs.highlight(code, { language: normalized, ignoreIllegals: true }).value;
+	} catch {
+		return escapeHtml(code);
+	}
+}
+
 function escapeHtml(value: string): string {
 	return value
 		.replace(/&/g, "&amp;")
