@@ -722,42 +722,6 @@ async function writeSelectedSessionId(sessionDirectory: string, sessionId: strin
 	await writeFile(filePath, `${JSON.stringify({ sessionId })}\n`, "utf8");
 }
 
-interface PendingSessionSnapshot {
-	sessionId: string;
-	entries: unknown[];
-}
-
-function pendingSessionFilePath(sessionDirectory: string, sessionId: string): string {
-	return path.join(sessionDirectory, "pending-sessions", `${encodeURIComponent(sessionId)}.json`);
-}
-
-async function readPendingSessionSnapshot(
-	sessionDirectory: string,
-	sessionId: string,
-): Promise<PendingSessionSnapshot | null> {
-	try {
-		const parsed: unknown = JSON.parse(await readFile(pendingSessionFilePath(sessionDirectory, sessionId), "utf8"));
-		if (!isRecord(parsed) || parsed.sessionId !== sessionId || !Array.isArray(parsed.entries)) return null;
-		return { sessionId, entries: parsed.entries };
-	} catch {
-		return null;
-	}
-}
-
-async function writePendingSessionSnapshot(
-	sessionDirectory: string,
-	sessionId: string,
-	entries: unknown[],
-): Promise<void> {
-	const filePath = pendingSessionFilePath(sessionDirectory, sessionId);
-	await mkdir(path.dirname(filePath), { recursive: true });
-	await writeFile(filePath, `${JSON.stringify({ sessionId, entries }, null, 2)}\n`, "utf8");
-}
-
-async function clearPendingSessionSnapshot(sessionDirectory: string, sessionId: string): Promise<void> {
-	await rm(pendingSessionFilePath(sessionDirectory, sessionId), { force: true });
-}
-
 async function readWorkItemPromptContext(agent: StoredAgentInstance): Promise<{ title: string; description: string }> {
 	try {
 		const value = JSON.parse(await readFile(path.join(agent.workItemDirectory, "work-item.json"), "utf8")) as unknown;
@@ -1147,7 +1111,6 @@ class AgentManager {
 		const agent = await this.resolve(input);
 		const process = await this.ensureProcess(agent);
 		await process.setModel(input.provider, input.modelId);
-		await this.persistCurrentSession(agent, process);
 		await this.broadcastHistory(agent, process);
 		return this.getModelSelection(input);
 	}
@@ -1211,7 +1174,6 @@ class AgentManager {
 		const agent = await this.resolve(input);
 		const process = await this.ensureProcess(agent);
 		await process.setThinkingLevel(input.level);
-		await this.persistCurrentSession(agent, process);
 		await this.broadcastHistory(agent, process);
 		return this.getModelSelection(input);
 	}
@@ -1400,7 +1362,6 @@ class AgentManager {
 		if (state.sessionId === input.sessionId) throw new Error("不能删除当前正在使用的会话");
 		const sessionFile = await this.resolveSessionFile(agent, input.sessionId);
 		await rm(sessionFile, { force: true });
-		await clearPendingSessionSnapshot(agent.sessionDirectory, input.sessionId);
 		const selectedSessionId = await readSelectedSessionId(agent.sessionDirectory);
 		if (selectedSessionId === input.sessionId) await writeSelectedSessionId(agent.sessionDirectory, null);
 		return this.listSessions(process, agent);
@@ -1865,53 +1826,7 @@ class AgentManager {
 		const sessionId = typeof state.sessionId === "string" ? state.sessionId : "";
 		const sessionFile = typeof state.sessionFile === "string" ? state.sessionFile : "";
 		const header = sessionId && sessionFile ? await readSessionHeader(sessionFile).catch(() => null) : null;
-		if (!sessionId) {
-			await writeSelectedSessionId(agent.sessionDirectory, null);
-			return;
-		}
-		// New Pi sessions stay in memory until the first assistant message is
-		// persisted. Keep the selected id and a client-side snapshot so a
-		// reconnect can restore model / thinking changes made before that point.
-		await writeSelectedSessionId(agent.sessionDirectory, sessionId);
-		if (header?.sessionId === sessionId) {
-			await clearPendingSessionSnapshot(agent.sessionDirectory, sessionId);
-			return;
-		}
-		await writePendingSessionSnapshot(agent.sessionDirectory, sessionId, await this.historyEntries(process));
-	}
-
-	private async restorePendingSession(agent: StoredAgentInstance, process: PiRpcProcess): Promise<void> {
-		const stateResponse = await process.getState();
-		const state = isRecord(stateResponse.data) ? stateResponse.data : {};
-		const sessionId = typeof state.sessionId === "string" ? state.sessionId : "";
-		const sessionFile = typeof state.sessionFile === "string" ? state.sessionFile : "";
-		if (!sessionId) return;
-		const header = sessionFile ? await readSessionHeader(sessionFile).catch(() => null) : null;
-		if (header?.sessionId === sessionId) {
-			await clearPendingSessionSnapshot(agent.sessionDirectory, sessionId);
-			return;
-		}
-		const pending = await readPendingSessionSnapshot(agent.sessionDirectory, sessionId);
-		if (!pending) return;
-		for (const rawEntry of pending.entries) {
-			if (!isRecord(rawEntry)) continue;
-			if (
-				rawEntry.type === "model_change" &&
-				typeof rawEntry.provider === "string" &&
-				typeof rawEntry.modelId === "string"
-			) {
-				await process.setModel(rawEntry.provider, rawEntry.modelId);
-				continue;
-			}
-			if (rawEntry.type === "thinking_level_change" && typeof rawEntry.thinkingLevel === "string") {
-				await process.setThinkingLevel(rawEntry.thinkingLevel);
-				continue;
-			}
-			if (rawEntry.type === "session_info" && typeof rawEntry.name === "string" && rawEntry.name.trim().length > 0) {
-				await process.setSessionName(rawEntry.name);
-			}
-		}
-		await this.persistCurrentSession(agent, process);
+		await writeSelectedSessionId(agent.sessionDirectory, header?.sessionId === sessionId ? sessionId : null);
 	}
 
 	private async ensureDefaultSessionName(agent: StoredAgentInstance, process: PiRpcProcess): Promise<void> {
@@ -1952,6 +1867,12 @@ class AgentManager {
 			? await this.resolvePackageExtensions(agent.projectRoot)
 			: [];
 		const selectedSessionId = await readSelectedSessionId(agent.sessionDirectory);
+		const selectedSessionFile = selectedSessionId
+			? await findSessionFileById(agent.sessionDirectory, selectedSessionId)
+			: null;
+		if (selectedSessionId && !selectedSessionFile) {
+			await writeSelectedSessionId(agent.sessionDirectory, null);
+		}
 		const rpc = new PiRpcProcess({
 			command: nodeExecutable,
 			cwd: agent.projectRoot,
@@ -1991,7 +1912,7 @@ class AgentManager {
 				...(excludedBuiltinTools.length > 0 ? ["--exclude-tools", excludedBuiltinTools.join(",")] : []),
 				"--session-dir",
 				agent.sessionDirectory,
-				...(selectedSessionId ? ["--session-id", selectedSessionId] : ["--continue"]),
+				...(selectedSessionFile && selectedSessionId ? ["--session", selectedSessionId] : ["--continue"]),
 				"--extension",
 				"builtin:codemode",
 				"--extension",
@@ -2056,7 +1977,6 @@ class AgentManager {
 				this.pendingExtensionUiRequests.delete(agent.id);
 				void this.registry.setStatus(agent, "idle");
 				if (agent.role !== "requirement-analysis") void this.writeLeases.release(agent.projectId, agent.id);
-				void this.persistCurrentSession(agent, rpc).catch(() => undefined);
 			} else if (
 				event.type === "extension_ui_request" &&
 				(event.method === "select" ||
@@ -2083,7 +2003,6 @@ class AgentManager {
 			handshakeComplete = true;
 			this.processes.set(agent.id, rpc);
 			this.processAgents.set(agent.id, agent);
-			await this.restorePendingSession(agent, rpc);
 			await this.ensureDefaultSessionName(agent, rpc);
 			const entries = await this.historyEntries(rpc);
 			this.broadcast({
