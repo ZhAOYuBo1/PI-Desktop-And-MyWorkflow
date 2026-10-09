@@ -4,7 +4,7 @@
 
 <h1 align="center">CodePIddy</h1>
 
-<p align="center"><strong>基于 Pi 的 Windows 桌面编码工作台：把「做需求」和「修 Bug」变成可管理、可交接的长期工作流。</strong></p>
+<p align="center"><strong>基于 Pi 的 Windows 桌面编码工作台：把需求和缺陷修复变成可管理、可回看、可交接的长期工作流。</strong></p>
 
 <p align="center">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-2563eb?style=flat-square" />
@@ -14,51 +14,89 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZhAOYuBo1/My-PI-development-workflow/releases/latest"><strong>下载 Windows 版本</strong></a>
+  <a href="https://github.com/ZhAOYuBo1/PI-Desktop-NativeVersion01/releases/latest"><strong>下载 Windows 版本</strong></a>
 </p>
 
 <p align="center">
-  <img src="docs/images/codepiddy-overview.png" alt="CodePIddy 会话与更改视图" width="100%" />
+  <img src="docs/images/codepiddy-overview.png" alt="CodePIddy 会话、工具过程与文件变更视图" width="100%" />
 </p>
 
 ## 这是什么
 
-CodePIddy 是一个基于 [Pi](https://github.com/earendil-works/pi) 的 Windows 桌面客户端。它不试图把开发变成一条全自动流水线，而是把程序员日常的两类工作——**做一个新需求**和**修一个已存在的问题**——变成结构清晰、可以随时接手的工作项。
+CodePIddy 是 [Pi](https://github.com/earendil-works/pi) 的原生桌面客户端。它把程序员日常的两类工作放进同一个工作台：
 
-每个工作项下挂固定职责的长期 Agent（需求分析 / Coding / Bug Fix / Review），它们不共享短期记忆，交接靠 OpenSpec、Git diff、测试和项目文档这些真实产物。创建哪个 Agent、什么时候写代码、什么时候审核、要不要返工和归档，都由你决定。
+- 做一个新需求；
+- 修一个已经存在的问题。
 
-Pi 仍然是底层事实源：模型、Provider、Session、Tool、Skill、Slash Command 全部来自 Pi。CodePIddy 负责工作流、桌面客户端和界面。
+每个工作项下可以挂固定职责的长期 Agent：需求分析、Coding、Bug Fix、Review。它们不靠隐藏的进程内记忆互相调用，交接依靠项目里的真实产物：OpenSpec 文档、Git diff、测试结果和会话记录。
+
+Pi 仍然是底层事实源。模型、Provider、Session、Tool、Skill、Slash Command、MCP、Codemode、compaction 和 session 存储都来自 Pi。CodePIddy 负责项目与 Agent 编排、桌面 UI、工作区、终端、设置和本地展示层。
+
+## 核心能力
+
+### 会话页
+
+消息页直接读取 Pi 的 `get_entries` 完整 session entries，不使用压缩后的 `get_messages` 作为历史来源。因此 compact 之后仍然能看到压缩前的会话前缀。
+
+- 按用户轮次分组，历史过程默认折叠，最新运行轮次自动展开。
+- 工具调用完成后收成一行语义摘要，失败时保留诊断和「显示全部」。
+- 每条 AI 回复显示实际使用的模型、thinking level、usage 和成本；历史回复不会被当前模型覆盖。
+- 支持 Markdown、GFM 表格、KaTeX、代码高亮、代码折叠、整段复制和消息内文件路径跳转。
+- 原生渲染 compaction、context edit、model change、thinking level change 时间线。
+- 会话内搜索支持匹配计数、前后跳转、高亮，并自动展开命中的折叠过程组。
+- 助手内容按 `thinking / text / toolCall` 有序 part 展示，支持简洁 / 详细 thinking 模式和平滑流式输出。
+- 左侧快速定位条只索引用户消息，最多显示 20 条，超出后用滚轮翻页。
+
+### 工作区
+
+右侧工作区面板提供三个视图：
+
+| 视图 | 能力 |
+| --- | --- |
+| 文件 | 项目文件树、文件名搜索、全宽预览、Markdown 和代码高亮、系统打开、编辑器标签页 |
+| 更改 | 汇总最新一轮 `edit / write` 产生的 diff，按文件分组，展开后原地查看行级变更 |
+| 终端 | 内嵌真实 PTY，使用 `xterm.js` + `node-pty`，支持补全、方向键历史、颜色、选择和全屏程序 |
+
+工作区文件写入受项目边界、realpath 和 Agent write lease 约束。
+
+### 设置与 Pi 配置
+
+设置页覆盖：
+
+- Pi 运行时检查、更新和回退；
+- Provider、模型、认证和常用模型范围；
+- MCP 服务与工具 exposure；
+- Shell 路径和 Pi 原生 `shellCommandPrefix`；
+- 上下文压缩、分支摘要和 per-model override；
+- Cache Warming、Telemetry、Codemode 和 Tool Search；
+- Agent Skills、Prompt 模板和 Pi Packages；
+- 消息页的 thinking 显示模式与平滑流式偏好。
+
+客户端只读写 Pi 原生 `settings.json`、`models.json`、`mcp.json` 或自己明确的本地设置文件，不复制 Pi core 的内部实现。
 
 ## 界面
 
-### 会话与工作区
+### 会话与更改
 
-左侧是项目 / 工作项 / Agent 树，中间是按轮组织的会话流，右侧是随会话打开的工作区面板。
+中间是会话流，右侧是工作区。截图里的会话同时展示了回复元信息、代码块、文件 chip、原生 session entry 行和按文件分组的 diff。
+
+<img src="docs/images/codepiddy-overview.png" alt="会话与更改视图" width="100%" />
+
+### 文件
+
+文件视图可以在树和全宽预览之间切换，支持项目内文件搜索、语法高亮、Markdown 预览和多标签编辑。
 
 <img src="docs/images/codepiddy-files.png" alt="文件树与文件预览" width="100%" />
 
-- 一条用户消息到该轮最后一条 AI 回复算一轮；运行中的最新一轮默认展开，历史轮默认收起，点一行 `N 条过程 · 用时 X` 可以回看。
-- 工具调用完成后折叠为单行摘要，运行中展开显示实时输出。
-- 工作区面板固定三个视图：`文件`、`更改`、`终端`。
-- 用户消息的灰色气泡只包裹正文，`复制` 放在气泡外；每轮最终 AI 回复的 `复制` 旁边提供 `Fork`，点击后从这一轮对应的用户消息创建新分支，并把原消息填回输入框。
-
-### 更改
-
-只保留**最新一轮对话**产生的文件变更，按文件堆叠成可展开卡片：默认折叠，点开某个文件后在原地查看完整 diff，新增绿色、删除红色，带行号和 `+ / −` 统计。历史按「项目 + 工作项 + Agent 角色 + 轮次」持久化在客户端本地，重启客户端或更新 Pi 内核后仍然能看。
-
-<img src="docs/images/codepiddy-overview.png" alt="按文件分组的 diff" width="100%" />
-
 ### 终端
 
-面板内嵌真正的 PTY（`xterm.js` + `node-pty`），不是行式封装：Tab 补全、Ctrl+C、方向键历史、颜色、选择复制、`vim` 这类全屏程序都由 shell 自己处理。
-
-启动的 shell、参数、字体和光标形状会读取本机 **Windows Terminal 的默认 profile**（稳定版 / 预览版 / 非打包版的 `settings.json`），因此每台机器都跟着用户自己的 Windows Terminal 配置走；找不到配置时回退到系统默认 PowerShell。
+终端是真正的 PTY，不是把 shell 输出包装成文本。默认 profile 会读取本机 Windows Terminal 配置，找不到时回退到系统 PowerShell。
 
 <img src="docs/images/codepiddy-terminal.png" alt="内嵌终端" width="100%" />
 
 ### 设置
 
-Pi 运行时的独立版本检查 / 更新 / 回退、工具启停、MCP 服务、Shell 路径和按 Agent 角色分配的 Skill，都在设置页。
+设置页左侧按常规、集成和 Agent 分类，运行时、Provider、MCP、Skill、消息页等配置都在这里完成。
 
 <img src="docs/images/codepiddy-settings.png" alt="设置页" width="100%" />
 
@@ -92,7 +130,7 @@ Bug 描述
   -> 用户决定继续修正或归档
 ```
 
-Agent 之间不做进程内编排。Grill 和 OpenSpec 产生的真实产物就是交接文档，不要求固定的 `requirement.md` / `implementation.md` / `fix.md` / `review.md`。
+Agent 之间不做隐藏的进程内编排。Grill 和 OpenSpec 产生的真实文件就是交接文档，不要求固定的 `requirement.md`、`implementation.md`、`fix.md` 或 `review.md`。
 
 ## 内置 Skill
 
@@ -105,13 +143,13 @@ Agent 之间不做进程内编排。Grill 和 OpenSpec 产生的真实产物就�
 | Bug Fix | `openspec-explore`、`openspec-propose`、`openspec-apply-change`、`openspec-sync-specs` |
 | Review | `open-code-review` |
 
-另外内置 `openspec-archive-change`，默认不主动分配。所有 Skill 都可以在设置中按 Agent 角色启用或停用；项目自己的 Skill 放在 `<project>/.codepiddy/.pi/skills`。
+另外内置 `openspec-archive-change`，默认不主动分配。所有 Skill 都可以在设置中按 Agent 角色启用或停用。项目自己的 Skill 放在 `<project>/.codepiddy/.pi/skills`。
 
 > OpenSpec Skill 调用 `openspec` CLI，Open Code Review Skill 调用 `ocr` CLI。Skill 指令随应用分发，使用对应能力时仍需要相应 CLI 和模型 Provider 可用。
 
 ## 下载与运行
 
-前往 [GitHub Releases](https://github.com/ZhAOYuBo1/My-PI-development-workflow/releases/latest) 下载 Windows `.exe`。
+前往 [GitHub Releases](https://github.com/ZhAOYuBo1/PI-Desktop-NativeVersion01/releases/latest) 下载 Windows `.exe`。
 
 ```text
 Windows 10 / Windows 11 · x64
@@ -131,8 +169,8 @@ Windows 10 / Windows 11 · x64
 环境：Windows 10 / 11、Node.js 22.19+、npm。
 
 ```powershell
-git clone https://github.com/ZhAOYuBo1/My-PI-development-workflow.git
-cd My-PI-development-workflow
+git clone https://github.com/ZhAOYuBo1/PI-Desktop-NativeVersion01.git
+cd PI-Desktop-NativeVersion01
 npm ci --ignore-scripts
 npm run install:electron
 npm run build:codepiddy
@@ -155,18 +193,21 @@ npm start --workspace=@codepiddy/desktop
 ```powershell
 npm run check
 npm run typecheck --workspace=@codepiddy/desktop
+npm run verify:transcript --workspace=@codepiddy/desktop
 ```
+
+`verify:transcript` 会启动真实 Vite + Chromium，加载 `?demo=1` 的完整演示数据并断言消息页实际渲染结果。
 
 ### 重新生成 README 截图
 
-截图由脚本自己造项目目录、工作项和会话历史，不依赖本机真实项目：
+截图由脚本自己创建项目目录、工作项、会话历史和假 RPC fixture，不依赖本机真实项目：
 
 ```powershell
 npm run build:codepiddy
 node --import tsx packages/codepiddy-desktop/scripts/capture-screenshots.mts
 ```
 
-产物写入 `docs/images/`。脚本会临时起一个 Vite 和一个 Electron 实例，结束时都会关掉。
+产物写入 `docs/images/`。脚本会临时启动 Vite 和 Electron，结束时都会关闭。
 
 ### 构建 Windows Release
 
@@ -196,18 +237,16 @@ docs/images/                             README 截图
 
 ## 安全
 
-- Renderer 开启 Sandbox 与 Context Isolation，禁用 Node Integration；
-- IPC 输入做运行时校验；
-- Provider / MCP OAuth 凭据使用 Electron `safeStorage`；
-- 文件面板只能列出和读取项目根目录内的路径，越界请求被拒绝；
-- 工具启用范围和 MCP exposure 分别由 Pi 原生 `settings.json` 与 `mcp.json` 控制；
-- 多 Agent 之间不做进程内编排，交接靠共享工作树和工作项文档；
+- Renderer 开启 Sandbox 与 Context Isolation，禁用 Node Integration。
+- IPC 输入做运行时校验。
+- Provider / MCP OAuth 凭据使用 Electron `safeStorage`。
+- 文件面板只能列出和读取项目根目录内的路径，越界请求被拒绝。
+- 工具启用范围和 MCP exposure 分别由 Pi 原生 `settings.json` 与 `mcp.json` 控制。
+- 多 Agent 之间不做进程内编排，交接靠共享工作树和工作项文档。
 - 当前 Windows MVP 未提供强执行沙箱，Agent 进程使用当前操作系统用户权限。
-
-更多信息见 [SECURITY.md](SECURITY.md)。
 
 ## 上游 Pi 与 License
 
-CodePIddy 基于开源 Pi Agent Harness 开发。Pi 继续负责模型、Provider、Session、Tool、Skill 与 Slash Command，CodePIddy 提供桌面客户端、项目管理和工作流层。上游说明见 [docs/upstream/PI_README.md](docs/upstream/PI_README.md)。
+CodePIddy 基于开源 Pi Agent Harness 开发。Pi 继续负责模型、Provider、Session、Tool、Skill 与 Slash Command，CodePIddy 提供桌面客户端、项目管理和工作流层。
 
 本仓库保留上游 MIT License，详见 [LICENSE](LICENSE)。Bundled Skills 保留各自文件中声明的许可证和作者信息。

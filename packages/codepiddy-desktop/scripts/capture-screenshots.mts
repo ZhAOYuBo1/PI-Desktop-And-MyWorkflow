@@ -67,12 +67,21 @@ async function ensureWorkPanelOpen(page: Page): Promise<void> {
 	}
 }
 
+async function dismissProjectTrustPrompt(page: Page): Promise<void> {
+	const later = page.locator(".project-trust-modal").getByRole("button", { name: "稍后" });
+	if ((await later.count()) > 0) {
+		await later.first().click();
+		await page.waitForTimeout(300);
+	}
+}
+
 async function captureDemoViews(): Promise<void> {
 	const browser = await chromium.launch();
 	try {
 		const page = await browser.newPage({ viewport: VIEWPORT });
 		await page.goto(`${DEV_SERVER_URL}/?demo=1`, { waitUntil: "networkidle" });
 		await page.waitForTimeout(900);
+		await dismissProjectTrustPrompt(page);
 		await page.locator(".agent-row").filter({ hasText: "Coding Agent" }).first().click();
 		await page.waitForTimeout(800);
 		await ensureWorkPanelOpen(page);
@@ -127,6 +136,7 @@ async function captureElectronViews(): Promise<void> {
 		}, VIEWPORT);
 
 		await page.getByRole("button", { name: "打开项目", exact: true }).click();
+		await dismissProjectTrustPrompt(page);
 		await page.getByRole("button", { name: "创建新需求" }).click();
 		await page.getByLabel("标题", { exact: true }).fill("增加登录功能");
 		await page.getByLabel("初始描述").fill("支持账号密码登录，并为后续第三方登录预留扩展点。");
