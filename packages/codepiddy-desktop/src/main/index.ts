@@ -1108,8 +1108,10 @@ class AgentManager {
 	}
 
 	async setModel(input: SetAgentModelInput): Promise<AgentModelSelection> {
-		const process = await this.ensureProcess(await this.resolve(input));
+		const agent = await this.resolve(input);
+		const process = await this.ensureProcess(agent);
 		await process.setModel(input.provider, input.modelId);
+		await this.broadcastHistory(agent, process);
 		return this.getModelSelection(input);
 	}
 
@@ -1169,8 +1171,10 @@ class AgentManager {
 	}
 
 	async setThinking(input: SetAgentThinkingInput): Promise<AgentModelSelection> {
-		const process = await this.ensureProcess(await this.resolve(input));
+		const agent = await this.resolve(input);
+		const process = await this.ensureProcess(agent);
 		await process.setThinkingLevel(input.level);
+		await this.broadcastHistory(agent, process);
 		return this.getModelSelection(input);
 	}
 
@@ -1182,6 +1186,16 @@ class AgentManager {
 	 */
 	private async historyEntries(process: PiRpcProcess): Promise<unknown[]> {
 		return process.getEntries();
+	}
+
+	private async broadcastHistory(agent: StoredAgentInstance, process: PiRpcProcess): Promise<void> {
+		this.broadcast({
+			agentInstanceId: agent.id,
+			projectId: agent.projectId,
+			workItemId: agent.workItemId,
+			role: agent.role,
+			event: { type: "agent_history", entries: await this.historyEntries(process) },
+		});
 	}
 
 	async activate(input: AgentInstanceLocator): Promise<void> {
