@@ -38,6 +38,7 @@ import {
 	lazy,
 	type MutableRefObject,
 	memo,
+	type ReactNode,
 	Suspense,
 	useCallback,
 	useEffect,
@@ -97,9 +98,12 @@ import { transcriptSearchRanges } from "./components/transcript-search-dom.ts";
 import {
 	formatTurnElapsed,
 	groupTranscriptIntoTurns,
-	resolveTurnCollapsed,
-	splitTurnEntries,
-	turnElapsedMs,
+	projectTranscriptTurn,
+	resolveProcessCollapsed,
+	type TranscriptEntryTiming,
+	type TranscriptTurnBlock,
+	type TranscriptTurnProjectionOptions,
+	type TurnEntry,
 } from "./components/turn-group.ts";
 import { useSmoothText } from "./components/use-smooth-text.ts";
 import { useTranscriptScroll } from "./components/use-transcript-scroll.ts";
@@ -1284,6 +1288,111 @@ const TranscriptEventRow = memo(function TranscriptEventRow({
 	);
 });
 
+function isTranscriptTimelineEvent(item: TranscriptItem): boolean {
+	return (
+		item.type === "compaction" ||
+		item.type === "context_edit" ||
+		item.type === "model_change" ||
+		item.type === "thinking_level_change"
+	);
+}
+
+function isTranscriptFinalEntry(item: TranscriptItem): boolean {
+	return (
+		item.type === "assistant" && (item.text.trim().length > 0 || item.status === "error" || item.status === "aborted")
+	);
+}
+
+function isTranscriptProcessEntry(item: TranscriptItem): boolean {
+	return item.type === "tool" || item.type === "assistant";
+}
+
+function isTranscriptProcessError(item: TranscriptItem): boolean {
+	return item.type === "tool" && item.isError;
+}
+
+function transcriptEntryTiming(item: TranscriptItem): TranscriptEntryTiming {
+	if (item.type === "tool") {
+		return {
+			...(item.startedAt !== undefined
+				? { startedAt: item.startedAt }
+				: item.completedAt !== undefined
+					? { startedAt: item.completedAt }
+					: {}),
+			...(item.completedAt !== undefined ? { endedAt: item.completedAt } : {}),
+		};
+	}
+	if (item.type === "assistant" && item.createdAt) {
+		const startedAt = Date.parse(item.createdAt);
+		if (!Number.isFinite(startedAt)) return {};
+		const duration = item.streamStats?.elapsedMs;
+		return {
+			startedAt,
+			...(typeof duration === "number" && Number.isFinite(duration) && duration > 0
+				? { endedAt: startedAt + duration }
+				: {}),
+		};
+	}
+	return {};
+}
+
+const TRANSCRIPT_PROJECTION_OPTIONS: TranscriptTurnProjectionOptions<TranscriptItem> = {
+	isFinalEntry: isTranscriptFinalEntry,
+	isProcessEntry: isTranscriptProcessEntry,
+	isTimelineEvent: isTranscriptTimelineEvent,
+	isProcessError: isTranscriptProcessError,
+	timing: transcriptEntryTiming,
+};
+
+function TranscriptProcessBlock({
+	block,
+	active,
+	collapsed,
+	onToggle,
+	renderEntry,
+}: {
+	block: Extract<TranscriptTurnBlock<TranscriptItem>, { kind: "process" }>;
+	active: boolean;
+	collapsed: boolean;
+	onToggle(collapsed: boolean): void;
+	renderEntry(entry: TurnEntry<TranscriptItem>): ReactNode;
+}) {
+	const [now, setNow] = useState(() => Date.now());
+	useEffect(() => {
+		if (!active) return;
+		setNow(Date.now());
+		const timer = window.setInterval(() => setNow(Date.now()), 1000);
+		return () => window.clearInterval(timer);
+	}, [active]);
+	const startedAt = block.startedAt;
+	const endedAt = block.endedAt ?? (active ? now : startedAt);
+	const elapsedMs = startedAt !== undefined && endedAt !== undefined ? Math.max(0, endedAt - startedAt) : null;
+	const lastItem = block.entries.at(-1)?.item;
+	const thinkingNow =
+		active && lastItem?.type === "assistant" && lastItem.status === "streaming" && !lastItem.text.trim();
+	const label = active ? (thinkingNow ? "正在思考" : "正在处理") : "已处理";
+	const toolCount = block.entries.filter((entry) => entry.item.type === "tool").length;
+	return (
+		<>
+			<button
+				type="button"
+				className="turn-process-toggle"
+				aria-expanded={!collapsed}
+				onClick={() => onToggle(!collapsed)}
+			>
+				<AppIcon name="caret" size={13} className={`turn-caret${collapsed ? "" : " open"}`} />
+				<span>{label}</span>
+				{elapsedMs !== null ? <span className="turn-elapsed">{formatTurnElapsed(elapsedMs)}</span> : null}
+				{toolCount > 0 ? <span className="turn-step-count">{toolCount} 个工具</span> : null}
+				{block.errorCount > 0 ? <span className="turn-process-error">{block.errorCount} 个错误</span> : null}
+			</button>
+			{collapsed ? null : (
+				<div className="turn-process-body">{block.entries.map((entry) => renderEntry(entry))}</div>
+			)}
+		</>
+	);
+}
+
 const TranscriptTurns = memo(function TranscriptTurns({
 	items,
 	assistantModel,
@@ -1321,28 +1430,31 @@ const TranscriptTurns = memo(function TranscriptTurns({
 	thinkingDisplayMode: ThinkingDisplayMode;
 	smoothStreaming: boolean;
 }) {
-	const turns = groupTranscriptIntoTurns(items);
-	const latestTurnId = turns[turns.length - 1]?.id;
+	const turns = groupTranscriptIntoTurns(items).map((turn) => ({
+		turn,
+		blocks: projectTranscriptTurn(turn, TRANSCRIPT_PROJECTION_OPTIONS),
+	}));
+	let latestProcessBlockKey: string | null = null;
+	const latestTurn = turns.at(-1);
+	if (latestTurn) {
+		for (const block of latestTurn.blocks) {
+			if (block.kind === "process") latestProcessBlockKey = `${idPrefix}:${latestTurn.turn.id}:${block.id}`;
+		}
+	}
 	return (
 		<>
-			{turns.map((turn) => {
-				const key = `${idPrefix}:${turn.id}`;
-				// 一轮一折：只折中间过程，用户消息与最终结果常显。最新轮运行中展开，结束后默认收起。
-				const { head, middle, tail } = splitTurnEntries(turn);
+			{turns.map(({ turn, blocks }) => {
+				const turnKey = `${idPrefix}:${turn.id}`;
 				const finalAssistantIds = new Set(
-					tail.filter((entry) => entry.item.type === "assistant").map((entry) => entry.item.id),
+					blocks.flatMap((block) =>
+						block.kind === "entry" &&
+						block.entry.item.type === "assistant" &&
+						isTranscriptFinalEntry(block.entry.item)
+							? [block.entry.item.id]
+							: [],
+					),
 				);
-				const turnUserText = head.find((entry) => entry.item.type === "user")?.item.text;
-				const searchMatchInMiddle =
-					Boolean(searchQuery?.trim()) &&
-					middle.some((entry) => transcriptItemMatches(entry.item, searchQuery ?? ""));
-				const collapsed = searchMatchInMiddle
-					? false
-					: resolveTurnCollapsed(collapsedRounds[key], {
-							isLatest: turn.id === latestTurnId,
-							running,
-						});
-				const elapsed = turnElapsedMs(turn);
+				const turnUserText = turn.entries.find((entry) => entry.item.type === "user")?.item.text;
 				const renderEntry = (entry: TranscriptItem, index: number) => {
 					const entryModel =
 						entry.type === "assistant" && entry.modelId
@@ -1392,25 +1504,31 @@ const TranscriptTurns = memo(function TranscriptTurns({
 				};
 				return (
 					<section className="turn-group" key={turn.id}>
-						{head.map((entry) => renderEntry(entry.item, entry.index))}
-						{middle.length > 0 ? (
-							<>
-								<button
-									type="button"
-									className="turn-process-toggle"
-									aria-expanded={!collapsed}
-									onClick={() => onToggleRound(key, !collapsed)}
-								>
-									<AppIcon name="caret" size={13} className={`turn-caret${collapsed ? "" : " open"}`} />
-									<span>{middle.length} 条过程</span>
-									{elapsed !== null ? (
-										<span className="turn-elapsed">用时 {formatTurnElapsed(elapsed)}</span>
-									) : null}
-								</button>
-								{collapsed ? null : middle.map((entry) => renderEntry(entry.item, entry.index))}
-							</>
-						) : null}
-						{tail.map((entry) => renderEntry(entry.item, entry.index))}
+						{blocks.map((block) => {
+							if (block.kind === "entry") return renderEntry(block.entry.item, block.entry.index);
+							const blockKey = `${turnKey}:${block.id}`;
+							const active = running && blockKey === latestProcessBlockKey;
+							const searchMatch =
+								Boolean(searchQuery?.trim()) &&
+								block.entries.some((entry) => transcriptItemMatches(entry.item, searchQuery ?? ""));
+							const collapsed = searchMatch
+								? false
+								: resolveProcessCollapsed(collapsedRounds[blockKey], {
+										active,
+										thinkingDisplayMode,
+										errorCount: block.errorCount,
+									});
+							return (
+								<TranscriptProcessBlock
+									key={block.id}
+									block={block}
+									active={active}
+									collapsed={collapsed}
+									onToggle={(nextCollapsed) => onToggleRound(blockKey, nextCollapsed)}
+									renderEntry={(entry) => renderEntry(entry.item, entry.index)}
+								/>
+							);
+						})}
 					</section>
 				);
 			})}
@@ -5836,7 +5954,9 @@ export function App() {
 									<h2>Pi 运行时</h2>
 									<p>单独更新 Agent 内核，不替换 CodePIddy 客户端或项目文件。</p>
 								</div>
-								<div className="settings-status">{piRuntimeStatus?.restartRequired ? "待重启" : "运行中"}</div>
+								<div className="settings-status">
+									{piRuntimeStatus?.restartRequired ? `待重启 v${piRuntimeStatus.currentVersion}` : "运行中"}
+								</div>
 							</div>
 							{piRuntimeStatus ? (
 								<div className="pi-runtime-versions">
@@ -5844,7 +5964,7 @@ export function App() {
 										正在使用 <strong>v{piRuntimeStatus.runningVersion}</strong>
 									</span>
 									{piRuntimeStatus.restartRequired ? (
-										<span>重启后 v{piRuntimeStatus.currentVersion}</span>
+										<span>重启后切换到 v{piRuntimeStatus.currentVersion}</span>
 									) : null}
 									<span>内置 v{piRuntimeStatus.bundledVersion}</span>
 									{piRuntimeStatus.rollbackVersion ? (
@@ -5858,7 +5978,7 @@ export function App() {
 								<div className="pi-runtime-confirm">
 									<p>
 										将从 npm 安装 Pi v{piRuntimeStatus?.latestVersion} 到独立目录。校验 RPC
-										与内置扩展通过后才启用；现有会话不会自动中断。
+										与内置扩展通过后写入待运行版本；重启客户端后生效，现有会话不会自动中断。
 									</p>
 									<button className="secondary-button" type="button" onClick={() => setPiUpdateConfirm(false)}>
 										取消
@@ -5876,12 +5996,12 @@ export function App() {
 								<button
 									className="secondary-button"
 									type="button"
-									disabled={piRuntimeBusy !== null}
+									disabled={piRuntimeBusy !== null || piRuntimeStatus?.restartRequired === true}
 									onClick={() => void runPiRuntimeAction("check")}
 								>
 									{piRuntimeBusy === "check" ? "检查中…" : "检查更新"}
 								</button>
-								{piRuntimeStatus?.updateAvailable ? (
+								{piRuntimeStatus?.updateAvailable && !piRuntimeStatus.restartRequired ? (
 									<button
 										className="primary-button"
 										type="button"
@@ -5903,7 +6023,9 @@ export function App() {
 										{piRuntimeBusy === "rollback"
 											? "回退中…"
 											: piRuntimeStatus.rollbackVersion
-												? `回退到 v${piRuntimeStatus.rollbackVersion}`
+												? piRuntimeStatus.restartRequired
+													? `改为回退到 v${piRuntimeStatus.rollbackVersion}`
+													: `回退到 v${piRuntimeStatus.rollbackVersion}`
 												: "清除无效更新记录"}
 									</button>
 								) : null}
@@ -5914,13 +6036,13 @@ export function App() {
 										disabled={piRuntimeBusy !== null}
 										onClick={() => void window.codepiddy.restartCodePIddy()}
 									>
-										重启客户端以生效
+										重启并运行 v{piRuntimeStatus.currentVersion}
 									</button>
 								) : null}
 							</div>
 							<small>
 								{piRuntimeStatus?.npmAvailable
-									? "更新失败时保持当前版本；新版运行异常时自动回退到上一个可用版本。"
+									? "更新和回退先写入独立版本，重启客户端后才会切换实际运行版本；新版运行异常时自动回退。"
 									: "安装更新需要本机 Node.js/npm；当前内置版本仍可正常使用。"}
 							</small>
 						</section>

@@ -1744,6 +1744,11 @@ button { color: inherit; }
 .turn-caret.open { transform: rotate(90deg); }
 .turn-elapsed { color: var(--cp-ink-faint); font-variant-numeric: tabular-nums; }
 .turn-elapsed::before { content: "·"; margin: 0 var(--cp-space-xxs); }
+.turn-step-count,
+.turn-process-error { color: var(--cp-ink-faint); font-variant-numeric: tabular-nums; }
+.turn-step-count::before,
+.turn-process-error::before { content: "·"; margin: 0 var(--cp-space-xxs); }
+.turn-process-error { color: var(--cp-danger); font-weight: 600; }
 .message-elapsed { font-size: 10px; color: var(--cp-ink-muted); font-variant-numeric: tabular-nums; }
 .message-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--cp-space-xs); margin: var(--cp-space-xs) 0 var(--cp-space-sm); color: var(--cp-ink-muted); font-size: 10px; }
 .message-meta-chip { display: inline-flex; max-width: 100%; min-height: 18px; align-items: center; overflow: hidden; border-radius: var(--cp-radius-full); background: var(--cp-surface-secondary); padding: 1px 8px; color: var(--cp-ink-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }

@@ -60,6 +60,14 @@ async function verifyTranscriptUi(page: Page): Promise<void> {
 	await page.locator(".agent-row").filter({ hasText: "Coding Agent" }).first().click();
 	await page.waitForTimeout(700);
 
+	// 历史过程按参考项目默认收起；先展开首个过程块，后续才能检查其中的工具行。
+	const firstProcessToggle = page.locator(".turn-process-toggle").first();
+	if ((await firstProcessToggle.count()) > 0) {
+		if ((await firstProcessToggle.getAttribute("aria-expanded")) === "false") {
+			await firstProcessToggle.click();
+		}
+	}
+
 	// T1：原生工具语义行
 	await visibleText(page, ".tool-action", "读取", "T1 read 动作");
 	await visibleText(page, ".tool-summary-text", "WorkPanel.tsx", "T1 read 摘要");
@@ -166,6 +174,14 @@ async function verifyTranscriptUi(page: Page): Promise<void> {
 	await visibleText(page, ".transcript-event-context_edit", "上下文条目已编辑", "T7 context_edit 行");
 	await visibleText(page, ".transcript-event-model_change", "openai/gpt-5.5", "T8 model_change 行");
 	await visibleText(page, ".transcript-event-thinking_level_change", "high", "T8 thinking_level_change 行");
+	assert(
+		(await page.locator(".turn-process-body .transcript-event-model_change").count()) === 0,
+		"T8 model_change 不应被折叠进过程块",
+	);
+	assert(
+		(await page.locator(".turn-process-body .transcript-event-thinking_level_change").count()) === 0,
+		"T8 thinking_level_change 不应被折叠进过程块",
+	);
 
 	// T10：会话内搜索、高亮、命中折叠过程组时自动展开。
 	await page.getByRole("button", { name: "搜索当前会话" }).first().click();

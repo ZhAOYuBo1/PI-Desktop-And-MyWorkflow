@@ -13,6 +13,37 @@ export interface TranscriptTurn<T> {
 	endedAt?: string;
 }
 
+export interface TranscriptEntryTiming {
+	startedAt?: number;
+	endedAt?: number;
+}
+
+export type TranscriptTurnBlock<T> =
+	| {
+			kind: "entry";
+			id: string;
+			entry: TurnEntry<T>;
+	  }
+	| {
+			kind: "process";
+			id: string;
+			entries: TurnEntry<T>[];
+			startedAt?: number;
+			endedAt?: number;
+			errorCount: number;
+	  };
+
+export interface TranscriptTurnProjectionOptions<T> {
+	/** The visible final response. Earlier assistant fragments are process. */
+	isFinalEntry(item: T): boolean;
+	/** Tool/assistant fragments that belong in the foldable process block. */
+	isProcessEntry(item: T): boolean;
+	/** Session events and messages that always remain visible timeline rows. */
+	isTimelineEvent?(item: T): boolean;
+	isProcessError?(item: T): boolean;
+	timing?(item: T): TranscriptEntryTiming;
+}
+
 /**
  * 一轮 = 一条 user 消息及其之后、下一条 user 消息之前的所有记录；
  * 开头尚未出现 user 消息的记录自成一轮。
@@ -41,13 +72,6 @@ export function groupTranscriptIntoTurns<T extends { id: string; type: string; c
 	return turns;
 }
 
-/** 轮内首条 createdAt 到末条的毫秒差，缺失或非法返回 null（轮头省略用时）。 */
-export function turnElapsedMs<T>(turn: TranscriptTurn<T>): number | null {
-	if (!turn.startedAt || !turn.endedAt) return null;
-	const ms = Date.parse(turn.endedAt) - Date.parse(turn.startedAt);
-	return Number.isFinite(ms) && ms >= 0 ? ms : null;
-}
-
 /** 中文口径：45秒 / 13分钟15秒 / 2小时3分钟。 */
 export function formatTurnElapsed(ms: number): string {
 	const totalSeconds = Math.max(0, Math.round(ms / 1000));
@@ -63,46 +87,76 @@ export function formatTurnElapsed(ms: number): string {
 }
 
 /**
- * 把一轮切成三段：用户消息（永展）、中间过程（可折）、最终结果（永展）。
- * 一轮内最后一条 AI 回复即最终结果；它之后的记录（若有）同属永展段。
+ * 按原始顺序把一轮投影成可见条目和过程块。
+ *
+ * 参考项目先构建助手回合，再从 ordered parts 中分出 process / response。
+ * 这里保留 CodePIddy 的 user-turn 容器，但采用同一原则：
+ * - 只有工具和非最终 assistant 片段进入过程；
+ * - 用户消息、系统消息和 session event 始终是普通时间线行；
+ * - event 会切断过程块，因此 model / thinking 切换不会被折进过程；
+ * - 过程和事件保持原始先后顺序，多个过程块也可以共存。
  */
-export function splitTurnEntries<T extends { type: string }>(
+export function projectTranscriptTurn<T>(
 	turn: TranscriptTurn<T>,
-): {
-	head: TurnEntry<T>[];
-	middle: TurnEntry<T>[];
-	tail: TurnEntry<T>[];
-} {
-	let lastUser = -1;
-	let lastAssistant = -1;
+	options: TranscriptTurnProjectionOptions<T>,
+): TranscriptTurnBlock<T>[] {
+	const blocks: TranscriptTurnBlock<T>[] = [];
+	let processEntries: TurnEntry<T>[] = [];
+	let finalEntryIndex = -1;
 	turn.entries.forEach((entry, index) => {
-		if (entry.item.type === "user") lastUser = index;
-		if (entry.item.type === "assistant") lastAssistant = index;
+		if (options.isFinalEntry(entry.item)) finalEntryIndex = index;
 	});
-	const hasUser = lastUser >= 0;
-	const hasAssistant = lastAssistant >= 0;
-	// 纯原生 session entry（例如新会话刚切换模型 / 思考强度）没有 user 和
-	// assistant，不应被包装成一轮「过程」；全部作为普通时间线行显示。
-	const headEnd = hasUser ? lastUser : hasAssistant ? 0 : turn.entries.length - 1;
-	const tailStart = hasAssistant && lastAssistant > headEnd ? lastAssistant : turn.entries.length;
-	const head: TurnEntry<T>[] = [];
-	const middle: TurnEntry<T>[] = [];
-	const tail: TurnEntry<T>[] = [];
+
+	const flushProcess = (): void => {
+		if (processEntries.length === 0) return;
+		const timed = processEntries
+			.map((entry) => options.timing?.(entry.item))
+			.filter((timing): timing is TranscriptEntryTiming => timing !== undefined);
+		const starts = timed
+			.map((timing) => timing.startedAt)
+			.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+		const ends = timed
+			.map((timing) => timing.endedAt)
+			.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+		const startedAt = starts.length > 0 ? Math.min(...starts) : ends.length > 0 ? Math.min(...ends) : undefined;
+		const errorCount = processEntries.filter((entry) => options.isProcessError?.(entry.item) === true).length;
+		blocks.push({
+			kind: "process",
+			id: `process-${processEntries[0]?.index ?? 0}`,
+			entries: processEntries,
+			...(startedAt !== undefined ? { startedAt } : {}),
+			...(ends.length > 0 ? { endedAt: Math.max(...ends) } : {}),
+			errorCount,
+		});
+		processEntries = [];
+	};
+
 	turn.entries.forEach((entry, index) => {
-		if (index <= headEnd) head.push(entry);
-		else if (index >= tailStart) tail.push(entry);
-		else middle.push(entry);
+		if (
+			index === finalEntryIndex ||
+			options.isTimelineEvent?.(entry.item) === true ||
+			!options.isProcessEntry(entry.item)
+		) {
+			flushProcess();
+			blocks.push({ kind: "entry", id: `entry-${entry.index}`, entry });
+			return;
+		}
+		processEntries.push(entry);
 	});
-	return { head, middle, tail };
+	flushProcess();
+	return blocks;
 }
 
 /**
- * 轮内中间过程默认折叠态：只有「最新一轮且 Agent 仍在运行」默认展开，其余默认折叠。
- * 用户手动切换过的轮次始终以手动状态为准。
+ * 过程块默认折叠态，与参考项目一致：
+ * - detailed 模式且正在运行：展开；
+ * - compact 模式正在运行：默认收起，除非过程里有错误；
+ * - 已完成过程：默认收起。
+ * 用户手动切换过的过程块始终以手动状态为准。
  */
-export function resolveTurnCollapsed(
+export function resolveProcessCollapsed(
 	manual: boolean | undefined,
-	options: { isLatest: boolean; running: boolean },
+	options: { active: boolean; thinkingDisplayMode: "compact" | "detailed"; errorCount: number },
 ): boolean {
-	return manual ?? !(options.isLatest && options.running);
+	return manual ?? !(options.active && (options.thinkingDisplayMode === "detailed" || options.errorCount > 0));
 }
