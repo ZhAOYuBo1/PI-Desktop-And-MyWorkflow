@@ -68,6 +68,78 @@ UI 改完 build 通过后自动重启客户端，不用询问用户。
 
 ```text
 继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」
+「进度日志」最后三条和「待办清单」），再读 PRODUCT.md、DESIGN.md、
+docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、
+docs/design/reference-dsh-workbench.md；要做消息页优化时再读
+docs/design/desktop-transcript-optimization.md。
+
+批次 1-71 已实现并验收；批次 68 提交 `65607e721`，批次 69 Shell aliases 提交 `cab6fa4ff`，
+批次 70 Telemetry 提交 `cc55936ec`，批次 71 Provider 无损保存提交 `e46d0010e`。
+支线 74「工作区文档预览」提交 `48247a85a` 并已推送。
+当前 HEAD 以 `git log -1` 为准（写这份提示词时是 `48247a85a`）；`origin/main` 已同步，
+`git rev-list --count origin/main..HEAD` 应为 0，工作树应干净。
+不要恢复已删除的 permission / Tavily 专用实现。
+
+支线 74 已完成工作区文件内联文档预览：
+1. 右侧文件面板可直接预览 docx / xlsx / xls / pptx / pdf，统一用 vue-office 的框架无关内核：
+   `@js-preview/docx`、`@js-preview/excel`、`@js-preview/pdf`、`pptx-preview`（全部 pin 精确版本）。
+2. `readWorkspaceFile`（`packages/codepiddy-core/src/workspace-fs.ts`）对 pdf / OOXML 返回 base64
+   原始字节（上限 32MB），渲染层解码成 ArrayBuffer 交给渲染器；新增 `pdf` / `document` 两种 kind
+   和 `WorkspaceDocumentFormat`。
+3. PDF 必须走本地 pdfjs：`@js-preview/pdf` 默认把 pdf.js 和 worker 用 data: URL 注入页面，会被
+   应用 CSP 的 `script-src` / `worker-src` 拦掉；现在提前挂载 `pdfjs-dist@3.1.81` + 同源 worker
+   （`workspace-document-preview.tsx` 里的 `ensureLocalPdfjs`），并在 index.html 的 `connect-src`
+   加了 `blob:`（pdf.js 通过 blob URL 读取文档）。这是唯一一处 CSP 放宽。
+4. 老的二进制 Office 格式（`.doc` / `.ppt`）和真正的二进制仍不能内联预览，空态和预览头都提供
+   「用系统默认程序打开」（新 IPC `openWorkspaceEntry` → `shell.openPath`）。
+5. docx 页面按**容器宽度**（container query，不是视口宽度）适配，并去掉 docx-preview 默认的
+   页面投影；pptx 画布宽度跟随面板。文件面板收起会卸载 `WorkspaceFilesView`，所以激活标签
+   必须落盘（localStorage `active` key），否则重开总回到第一个标签。
+
+批次 72「特殊模型只读目录」仍未实现：由 Agent 进程 extension 读取
+`modelRegistry.getAllModels()`，只读展示 chat / virtual / classifier / image、来源和可用性；
+RPC `get_available_models` 不返回 classifier / image，不能作为唯一数据源。
+不恢复 `@codepiddy/provider-extension`，不给 `models.json` 添加无效 image / classifier 类型，
+不做无代码虚拟模型路由编排器。
+
+批次 73「消息页只依赖 Pi core 原生的优化」见 docs/design/desktop-transcript-optimization.md：
+只做 Pi core 原生可实现的优化，不碰 packages/coding-agent / coding-agent-runtime / packages/ai，
+不做扩展 / MCP / subagent 专用卡。
+
+统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；
+复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`；下拉只走 `SelectMenu`。
+不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
+字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、
+会话树、工作区面板、变更历史、内部终端、设置分区、MCP / Provider 配置、
+Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode、
+Prompt 模板、工作区文件工作台、文档预览和统一组件规则都已实现，不要重做。
+文件搜索和终端多标签已取消，不再推进。
+
+关键约束：
+- Pi core 可更新，禁止改 `packages/coding-agent`；外壳增强走 Pi 扩展点或
+  `packages/codepiddy-desktop` 的 main / renderer / preload。
+- 内置 Pi 固定在 `packages/coding-agent-runtime`；更新用 `npm run update:pi-runtime -- <version>`。
+- Agent 启动使用 `--no-extensions`，显式加载 `builtin:mcp` / `builtin:codemode` /
+  `builtin:tool-search` 和 CodePIddy 自己的 `review` / `retry` / `cache-warming`。
+- 会话 UI 历史必须读 Pi `get_entries`，不能用 compact 后的 `get_messages`。
+- 提交使用显式路径，禁止 `git add -A`；改 `package-lock.json` 需要
+  `PI_ALLOW_LOCKFILE_CHANGE=1`；用户未要求时不要推送。
+- UI 改完 build 通过后自动重启 Electron，不用询问用户。
+
+仓库在 E:\mypi，依赖已装好。改完必须跑：
+  npm run check
+  npm run typecheck --workspace=@codepiddy/desktop
+  npm run build:codepiddy
+
+要看效果：cd packages/codepiddy-desktop && npx vite --host 127.0.0.1 --port 5173，
+浏览器开 http://127.0.0.1:5173/?demo=1（必须带 ?demo=1），用 Playwright 截图自查。
+真实客户端：先 build，再自动重启 Electron。
+```
+
+### 上一版恢复提示词（批次 71，已被上方替代）
+
+```text
+继续 CodePIddy 客户端开发。先读 docs/design/redesign-plan.md（尤其「如何续接」「当前状态」
 里的「客户端边界清理」「Provider 配置正确性与无损保存」「进度日志」最后三条和「待办清单」），
 再读 PRODUCT.md、DESIGN.md、
 docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、docs/design/reference-dsh-workbench.md。
@@ -152,6 +224,12 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - demo 模式没有 IPC，文件树只会显示「目录读取失败」；要看文件面板必须开真实项目。
 - `.artifacts/` 是 gitignored，截图和中间产物只在本机存在；字体和 app icon 的生成流程已经写入本文件。
 - 会话 UI 历史必须读 Pi `get_entries`；`get_messages` 是 compact 后的 LLM 上下文，不能用来展示历史。
+- 文档预览：docx-preview 的页面是固定 A4 宽（约 794px），窄面板必须用 **container query**
+  按容器宽度适配，用 `@media` 看视口宽度不生效；`@js-preview/pdf` 默认注入 `data:` 脚本和
+  `data:` worker，会被 CSP 拦掉，必须提前挂载 `pdfjs-dist` 同源 worker，并保留
+  `connect-src` 里的 `blob:`（库用 blob URL 读取文档）。
+- 右侧工作面板收起会**卸载** `WorkspaceFilesView`（App.tsx 里是 `workPanelVisible && ...`），
+  任何"应该记住"的状态都要落盘，否则重开会被重置；激活标签已用 localStorage `active` key 持久化。
 
 ## 目标
 
@@ -164,7 +242,38 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-08 批次 71 已验收，下一项特殊模型只读目录）
+## 当前状态（2026-10-09 支线 74 工作区文档预览已推送，下一项批次 72 特殊模型只读目录）
+
+### 支线 74：工作区文件内联文档预览（已推送 `48247a85a`）
+
+- 右侧「文件」面板现在能直接预览 docx / xlsx / xls / pptx / pdf，统一使用 vue-office 的
+  框架无关内核：`@js-preview/docx`、`@js-preview/excel`、`@js-preview/pdf`、`pptx-preview`，
+  依赖 pin 精确版本；渲染封装见
+  `packages/codepiddy-desktop/src/renderer/components/workspace-document-preview.tsx`。
+- `readWorkspaceFile` 新增 `pdf` / `document` 两种 kind 和 `WorkspaceDocumentFormat`，
+  对 pdf / OOXML 返回 base64 原始字节（`DOCUMENT_LIMIT_BYTES = 32MB`），渲染层解码成
+  ArrayBuffer 后交给对应渲染器；文本 / 图片 / 二进制路径不变。
+- PDF 不能直接用 `@js-preview/pdf` 的默认行为：它把 pdf.js 主库和 worker 都做成 `data:` URL
+  注入页面，会被 index.html 的 `script-src 'self'` 和 `worker-src`（回退到 `default-src`）拦掉。
+  现在提前挂载本地 `pdfjs-dist@3.1.81` 和同源 worker（`ensureLocalPdfjs`），库检测到
+  `window.pdfjsLib` 存在就不再注入；同时 `connect-src` 加了 `blob:`，因为库用 blob URL 读取文档。
+  这是本批唯一一处 CSP 放宽，`script-src` 保持不变。
+- 老的二进制 Office 格式（`.doc` / `.ppt`）和真正的二进制仍不能内联预览；空态和预览头都提供
+  「用系统默认程序打开」，走新 IPC `openWorkspaceEntry` → `shell.openPath`。
+- 窄面板适配：docx-preview 的页面是固定 A4 宽（约 794px），比右栏宽时会被 flex 居中，
+  溢出部分落到容器左侧且滚动条到不了，表现为左半边被裁掉。现在用 container query
+  按容器宽度（不是视口宽度）把页面收进面板，并去掉 docx-preview 默认的页面投影；
+  pptx 画布宽度跟随面板宽度。
+- 修掉一个真实交互 bug：工作面板收起时 `WorkspaceFilesView` 会被卸载，而 `activePath` 之前
+  只存在内存里，重建后回退到 `tabs[0]`，表现为「重开总是回到第一个文档」。现在激活标签
+  按项目落盘到 localStorage（`codepiddy.workspace.active.<root>`），和 tabs / expanded / 树宽同一套规则。
+- 新增 `workspace-fs.test.ts` 用例覆盖 pdf / docx / xls / pptx 分类、base64 往返和
+  `.doc` 仍按二进制处理（该文件共 6 项用例）。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、自定义 harness 在
+  560px / 300px 两种面板宽度下对 docx / xlsx / pptx / pdf 做端到端渲染，左右裁切量均为 0、
+  无横向死滚动；`?demo=1` 冒烟通过；真实 Electron 已重启。
+- 顺带修复 `App.tsx` 一个既有的 renderer 类型错误（`visibleParts` 缺类型谓词），它卡住
+  `typecheck`，与本批功能无关。
 
 ### 客户端边界清理（批次 68 已验收并提交 `65607e721`）
 
@@ -358,8 +467,12 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - 已提交：批次 63 Prompt 模板管理 `8a9231079`
 - 已提交：另一个 session 的会话名称重启覆盖与删除交互 bugfix `c7174fadc`
 - 已提交：另一个 session 的定位条 / 常用模型 / 消息模型显示 bugfix：`fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`
+- 已提交：支线 64-66 工作区文件工作台 `293c6a5e2`、`66f6bbe18`、`a1a2c0870`
+- 已提交：批次 67 Pi Packages `3db8f6a37`、批次 68 客户端边界清理 `65607e721`
+- 已提交：批次 69 Shell command prefix `cab6fa4ff`、批次 70 Telemetry `cc55936ec`、批次 71 Provider 无损保存 `e46d0010e`
+- 已提交并推送：支线 74 工作区文件内联文档预览 `48247a85a`
 
-批次 1-71 已提交到本地 `main`，`origin/main` 尚未同步。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
+批次 1-71 和支线 74 工作区文档预览都已提交并推送到 `origin/main`。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
 
 ### 下一步
 
@@ -1559,6 +1672,24 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
   和非法输入；`npm run check`、desktop typecheck、`npm run build:codepiddy`、demo
   桌面 / 窄窗截图检查通过；真实 Electron 已重启。
 
+### 2026-10-09 支线 74：工作区文件内联文档预览（已推送 `48247a85a`）
+
+- 起因：右侧文件面板对 docx / pdf / ppt 只显示「二进制文件无法预览」。参考项目
+  dsh-workbench 只有图片和 Markdown 预览，没有可抄的 office 方案，所以新增了一批依赖。
+- 选型：不做自研渲染，直接用 vue-office 作者那套框架无关内核（`@js-preview/docx`、
+  `@js-preview/excel`、`@js-preview/pdf`、`pptx-preview`），四种格式接口统一为
+  `init(container)` + `preview(ArrayBuffer)` + `destroy()`，全部 pin 精确版本。
+- `readWorkspaceFile` 增加 `pdf` / `document` kind、`WorkspaceDocumentFormat` 和 base64 `data` 字段；
+  32MB 上限，超过仍走「文件过大」。`.xls` 复用 xlsx 渲染器，`.doc` / `.ppt` 不进白名单。
+- PDF 走本地 pdfjs：库默认注入 `data:` 脚本和 `data:` worker，会被 CSP 拦掉；改为提前挂
+  `pdfjs-dist@3.1.81` 和同源 worker，并在 `connect-src` 放行 `blob:`。`script-src` 仍是 `'self'`。
+- 新增 `openWorkspaceEntry` IPC（`shell.openPath`）作为不支持格式的兜底；预览头和二进制空态都有入口。
+- 布局：docx 用 container query 按容器宽度收页面，并去掉默认页面投影；pptx 画布跟随面板宽度。
+- 修复收起工作面板后激活标签回退到第一个文档的问题：`activePath` 按项目落盘到 localStorage。
+- 顺带修 `App.tsx` 里的既有类型错误（`visibleParts` 缺类型谓词），此前 desktop typecheck 一直是红的。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、`workspace-fs.test.ts` 6 项、
+  560px / 300px 面板宽度的端到端渲染（左右裁切量均为 0）、`?demo=1` 冒烟；真实 Electron 已重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1612,10 +1743,11 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 49. [x] **批次 71：自定义 Provider 配置正确性与无损保存**：已完成并提交 `e46d0010e`。未知字段保留、字段补丁写回、Provider / 模型高级 JSON、统一 API `SelectMenu`、自定义 API 路径和 5 项单测均已验收。
 50. [ ] **批次 72：特殊模型目录**：由 Agent 进程 extension 读取 `modelRegistry.getAllModels()`，只读展示 chat / virtual / classifier / image、来源和可用性。RPC `get_available_models` 不能作为唯一数据源。不给 `models.json` 添加无效的 image / classifier 类型；不恢复已删除的 provider extension；不做无代码虚拟模型路由编排器。
 51. [ ] **批次 73：消息页只依赖 Pi core 原生的优化**：完整范围、审计证据、任务清单 T1-T15 和回归红线见 [desktop-transcript-optimization.md](./desktop-transcript-optimization.md)。原则是只做 Pi core 原生可实现的优化，不碰 `packages/coding-agent` / `coding-agent-runtime` / `packages/ai`，不做扩展 / MCP / subagent 专用卡。T15 长会话窗口化先搁置。进行中：T1-T5 已提交 `46f63909f`；T6-T14 已在当前工作树实现并通过 `check`、renderer build、`verify:transcript`，等待最终验收和提交。
+52. [x] **支线 74：工作区文件内联文档预览（已推送 `48247a85a`）**：docx / xlsx / xls / pptx / pdf 内联渲染，PDF 走本地 `pdfjs-dist` + 同源 worker（CSP 只放行 `connect-src blob:`），老的 `.doc` / `.ppt` 和其他二进制走「用系统默认程序打开」。含窄面板适配、去掉 docx 页面投影、激活标签落盘和 `App.tsx` 既有类型错误修复。下一批仍从批次 72 特殊模型只读目录开始。
 
 ## 提交状态
 
-批次 55-62 已推送到 `origin/main`；批次 63 Prompt 模板、支线 64-66 工作区文件工作台、批次 67 Pi Packages、批次 68 边界清理、批次 69 Shell command prefix、批次 70 Telemetry 和批次 71 Provider 无损保存仍只在本地 `main`，尚未推送。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`，批次 69 提交 `cab6fa4ff`，批次 70 提交 `cc55936ec`，批次 71 提交 `e46d0010e`。批次 73 消息页优化进行中：T1-T5 提交 `46f63909f`，T6-T14 当前工作树待验收提交。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
+批次 55-71 连同支线 64-66 工作区文件工作台、批次 67 Pi Packages、批次 68 边界清理、批次 69 Shell command prefix、批次 70 Telemetry、批次 71 Provider 无损保存、批次 73 消息页优化 T1-T5 和支线 74 工作区文档预览都已推送到 `origin/main`；当前 HEAD 和 `origin/main` 都是 `48247a85a`，`git rev-list --count origin/main..HEAD` 为 0。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`，批次 69 提交 `cab6fa4ff`，批次 70 提交 `cc55936ec`，批次 71 提交 `e46d0010e`，支线 74 文档预览提交 `48247a85a`。批次 73 消息页优化在 T1-T5 `46f63909f` 之后，另有 session 提交了 `03eb42ab3`、`f0c5561bc`、`ab013f758`、`898a46d16`、`d8caf0951`，并用 `59f0ea3a8` 回滚了其中的 pending session 快照实现。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1693,5 +1825,7 @@ subagent / codemode 的宿主解析。
 
 ## 待用户确认
 
-- Pi Packages、package 资源和 runtime 更新待用户验收；批次 63-71 尚在本地 `main`，未推送。
-- 批次 71 Provider 无损保存已验收，下一轮先做批次 72 特殊模型只读目录；不要恢复 provider extension 或给 `models.json` 添加假 image / classifier 类型。
+- Pi Packages、package 资源和 runtime 更新待用户验收；批次 63-71 和支线 74 已推送到 `origin/main`。
+- 支线 74 工作区文档预览已推送 `48247a85a`；用户已确认 docx/xlsx/pptx/pdf 预览、去阴影、窄面板适配和激活标签持久化可用。
+- 下一轮先做批次 72 特殊模型只读目录；不要恢复 provider extension 或给 `models.json` 添加假 image / classifier 类型。
+- 批次 73 消息页优化（[desktop-transcript-optimization.md](./desktop-transcript-optimization.md)）仍在进行，T6-T14 的最终验收状态以该文件和 `git log` 为准。
