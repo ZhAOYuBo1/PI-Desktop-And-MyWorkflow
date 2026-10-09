@@ -79,8 +79,12 @@ export function splitTurnEntries<T extends { type: string }>(
 		if (entry.item.type === "user") lastUser = index;
 		if (entry.item.type === "assistant") lastAssistant = index;
 	});
-	const headEnd = lastUser >= 0 ? lastUser : 0;
-	const tailStart = lastAssistant > headEnd ? lastAssistant : turn.entries.length;
+	const hasUser = lastUser >= 0;
+	const hasAssistant = lastAssistant >= 0;
+	// 纯原生 session entry（例如新会话刚切换模型 / 思考强度）没有 user 和
+	// assistant，不应被包装成一轮「过程」；全部作为普通时间线行显示。
+	const headEnd = hasUser ? lastUser : hasAssistant ? 0 : turn.entries.length - 1;
+	const tailStart = hasAssistant && lastAssistant > headEnd ? lastAssistant : turn.entries.length;
 	const head: TurnEntry<T>[] = [];
 	const middle: TurnEntry<T>[] = [];
 	const tail: TurnEntry<T>[] = [];
