@@ -508,6 +508,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	deleteWorkspaceEntry(input: WorkspaceDeleteEntryInput): Promise<WorkspaceMutationResult>;
 	copyWorkspaceEntry(input: WorkspaceCopyEntryInput): Promise<WorkspaceMutationResult>;
 	revealWorkspaceEntry(input: WorkspaceRevealEntryInput): Promise<void>;
+	openWorkspaceEntry(input: WorkspaceRevealEntryInput): Promise<void>;
 	startTerminal(input: TerminalStartInput): Promise<TerminalSessionInfo>;
 	writeTerminal(input: TerminalWriteInput): Promise<void>;
 	resizeTerminal(input: TerminalResizeInput): Promise<void>;
@@ -539,7 +540,10 @@ export interface WorkspaceDirEntry {
 	size: number;
 }
 
-export type WorkspaceFileKind = "text" | "image" | "binary" | "tooLarge";
+export type WorkspaceFileKind = "text" | "image" | "pdf" | "document" | "binary" | "tooLarge";
+
+/** OOXML / 表格文档的渲染器类型。xls 与 xlsx 共用同一个渲染器。 */
+export type WorkspaceDocumentFormat = "docx" | "xlsx" | "pptx";
 
 export interface WorkspaceFileContent {
 	kind: WorkspaceFileKind;
@@ -548,6 +552,12 @@ export interface WorkspaceFileContent {
 	content?: string;
 	/** kind 为 image 时的 dataUrl。 */
 	dataUrl?: string;
+	/** kind 为 pdf / document 时的 base64 原始字节，渲染层解码成 ArrayBuffer。 */
+	data?: string;
+	/** kind 为 pdf / document 时的原始 MIME。 */
+	mime?: string;
+	/** kind 为 document 时决定使用哪个渲染器。 */
+	format?: WorkspaceDocumentFormat;
 }
 
 export interface WorkspaceFileMetadata {

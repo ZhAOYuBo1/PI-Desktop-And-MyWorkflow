@@ -21,6 +21,9 @@
   "dependencies": {
     "@codepiddy/core": "0.1.0",
     "@codepiddy/shared": "0.1.0",
+    "@js-preview/docx": "1.6.4",
+    "@js-preview/excel": "1.7.14",
+    "@js-preview/pdf": "2.0.10",
     "@lobehub/icons-static-svg": "1.95.1",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
@@ -29,6 +32,8 @@
     "katex": "0.16.47",
     "lucide-react": "1.48.0",
     "node-pty": "1.1.0",
+    "pdfjs-dist": "3.1.81",
+    "pptx-preview": "1.0.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-markdown": "10.1.0",

@@ -2,6 +2,7 @@ import { cp, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } f
 import path from "node:path";
 import type {
 	WorkspaceDirEntry,
+	WorkspaceDocumentFormat,
 	WorkspaceFileContent,
 	WorkspaceFileMetadata,
 	WorkspaceMutationResult,
@@ -10,6 +11,9 @@ import { WORKSPACE_TRASH_DIR_NAME } from "@codepiddy/shared";
 
 const TEXT_LIMIT_BYTES = 512 * 1024;
 const IMAGE_LIMIT_BYTES = 8 * 1024 * 1024;
+/** 文档预览要把整份文件读进渲染进程，超过这个体积只提示过大。 */
+const DOCUMENT_LIMIT_BYTES = 32 * 1024 * 1024;
+const PDF_MIME = "application/pdf";
 
 const imageMimeByExtension = new Map([
 	[".png", "image/png"],
@@ -20,6 +24,35 @@ const imageMimeByExtension = new Map([
 	[".svg", "image/svg+xml"],
 	[".bmp", "image/bmp"],
 	[".ico", "image/x-icon"],
+]);
+
+/**
+ * 只登记 Pi 客户端能离线渲染的文档格式。
+ * 老的二进制 Office 格式（.doc / .ppt）没有可用的纯前端渲染器，走系统默认程序。
+ */
+const documentByExtension = new Map<string, { format: WorkspaceDocumentFormat; mime: string }>([
+	[
+		".docx",
+		{
+			format: "docx",
+			mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		},
+	],
+	[
+		".xlsx",
+		{
+			format: "xlsx",
+			mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		},
+	],
+	[".xls", { format: "xlsx", mime: "application/vnd.ms-excel" }],
+	[
+		".pptx",
+		{
+			format: "pptx",
+			mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		},
+	],
 ]);
 
 /** 相对路径钳制在项目根内，越界抛错（主进程透传给渲染进程展示）。 */
@@ -105,19 +138,31 @@ export async function listWorkspaceDir(projectRoot: string, relativeDir: string)
 }
 
 /**
- * 读单个文件：图片转 dataUrl，大文件与二进制只报 kind 不给内容
- * （调用方展示空态，避免渲染进程载入乱码与巨内容）。
+ * 读单个文件：图片转 dataUrl；pdf / OOXML 文档返回 base64 原始字节给渲染层解码；
+ * 其余大文件与二进制只报 kind 不给内容（调用方展示空态，避免渲染进程载入乱码与巨内容）。
  */
 export async function readWorkspaceFile(projectRoot: string, relativePath: string): Promise<WorkspaceFileContent> {
 	const absolute = resolveInside(projectRoot, relativePath);
 	const fileStat = await stat(absolute);
 	if (!fileStat.isFile()) throw new Error(`不是文件：${relativePath}`);
 	const size = fileStat.size;
-	const mime = imageMimeByExtension.get(path.extname(absolute).toLowerCase());
+	const extension = path.extname(absolute).toLowerCase();
+	const mime = imageMimeByExtension.get(extension);
 	if (mime) {
 		if (size > IMAGE_LIMIT_BYTES) return { kind: "tooLarge", size };
 		const buffer = await readFile(absolute);
 		return { kind: "image", size, dataUrl: `data:${mime};base64,${buffer.toString("base64")}` };
+	}
+	if (extension === ".pdf") {
+		if (size > DOCUMENT_LIMIT_BYTES) return { kind: "tooLarge", size };
+		const buffer = await readFile(absolute);
+		return { kind: "pdf", size, mime: PDF_MIME, data: buffer.toString("base64") };
+	}
+	const document = documentByExtension.get(extension);
+	if (document) {
+		if (size > DOCUMENT_LIMIT_BYTES) return { kind: "tooLarge", size };
+		const buffer = await readFile(absolute);
+		return { kind: "document", size, mime: document.mime, format: document.format, data: buffer.toString("base64") };
 	}
 	if (size > TEXT_LIMIT_BYTES) return { kind: "tooLarge", size };
 	const buffer = await readFile(absolute);

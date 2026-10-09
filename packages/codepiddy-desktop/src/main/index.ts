@@ -260,6 +260,7 @@ const channels = {
 	deleteWorkspaceEntry: "codepiddy:workspace:entry:delete",
 	copyWorkspaceEntry: "codepiddy:workspace:entry:copy",
 	revealWorkspaceEntry: "codepiddy:workspace:entry:reveal",
+	openWorkspaceEntry: "codepiddy:workspace:entry:open",
 	startTerminal: "codepiddy:terminal:start",
 	writeTerminal: "codepiddy:terminal:write",
 	resizeTerminal: "codepiddy:terminal:resize",
@@ -2545,6 +2546,14 @@ function registerIpcHandlers(
 			return;
 		}
 		shell.showItemInFolder(absolute);
+	});
+	// 用系统默认程序打开文件：给无法内联预览的格式（老 .doc/.ppt、任意二进制）留出口。
+	ipcMain.handle(channels.openWorkspaceEntry, async (_event, raw: unknown) => {
+		const input = parseWorkspaceRevealEntryInput(raw);
+		input.projectRoot = requireOpenProjectRoot(input.projectRoot);
+		const absolute = await resolveWorkspaceEntryPath(input.projectRoot, input.relativePath);
+		const error = await shell.openPath(absolute);
+		if (error) throw new Error(error);
 	});
 	ipcMain.handle(channels.startTerminal, (event, raw: unknown): TerminalSessionInfo => {
 		const input = parseTerminalStartInput(raw);

@@ -1049,7 +1049,10 @@ function AssistantParts({
 	smoothStreaming: boolean;
 	onOpenFile?: (path: string) => void;
 }) {
-	const visibleParts = parts.filter((part) => part.type !== "toolCall" && part.text.trim());
+	const visibleParts = parts.filter(
+		(part): part is Extract<AssistantTranscriptPart, { type: "thinking" | "text" }> =>
+			part.type !== "toolCall" && part.text.trim().length > 0,
+	);
 	if (visibleParts.length === 0) return null;
 	return (
 		<div className="assistant-parts">

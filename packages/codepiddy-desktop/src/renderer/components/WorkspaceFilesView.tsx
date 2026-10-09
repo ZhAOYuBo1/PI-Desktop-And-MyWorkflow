@@ -1,17 +1,25 @@
-import { WORKSPACE_TRASH_DIR_NAME, type WorkspaceDirEntry, type WorkspaceFileContent } from "@codepiddy/shared";
+import {
+	WORKSPACE_TRASH_DIR_NAME,
+	type WorkspaceDirEntry,
+	type WorkspaceDocumentFormat,
+	type WorkspaceFileContent,
+} from "@codepiddy/shared";
 import {
 	ChevronRight,
 	Copy,
+	ExternalLink,
 	Eye,
 	File,
 	FileArchive,
 	FileCode2,
+	FileSpreadsheet,
 	FileText,
 	Folder,
 	FolderOpen,
 	Image,
 	LocateFixed,
 	Pencil,
+	Presentation,
 	RefreshCw,
 	Save,
 	Search,
@@ -29,6 +37,7 @@ import { PanelIconButton } from "./panel-icon-button.tsx";
 import { PanelResizeHandle } from "./panel-resize-handle.tsx";
 import { showSettingsToast } from "./settings-toast-store.ts";
 import { StateBlock } from "./state-block.tsx";
+import { type DocumentPreviewKind, WorkspaceDocumentPreview } from "./workspace-document-preview.tsx";
 
 const FILE_REFRESH_MS = 2500;
 const FILE_SEARCH_DEBOUNCE_MS = 180;
@@ -52,6 +61,10 @@ interface FileTabState {
 	content: string;
 	draft: string;
 	dataUrl?: string;
+	/** kind 为 pdf / document 时解码后的原始字节。 */
+	buffer?: ArrayBuffer;
+	/** kind 为 document 时的渲染器类型。 */
+	format?: WorkspaceDocumentFormat;
 	size: number;
 	mtimeMs: number;
 	dirty: boolean;
@@ -134,6 +147,20 @@ function formatSize(size: number): string {
 	return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function base64ToArrayBuffer(value: string): ArrayBuffer {
+	const binary = window.atob(value);
+	const bytes = new Uint8Array(binary.length);
+	for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+	return bytes.buffer;
+}
+
+/** pdf / document 的渲染器类型；文本、图片等返回 null。 */
+function documentPreviewKind(state: FileTabState): DocumentPreviewKind | null {
+	if (state.kind === "pdf") return "pdf";
+	if (state.kind === "document" && state.format) return state.format;
+	return null;
+}
+
 function storageKey(projectRoot: string, suffix: string): string {
 	return `codepiddy.workspace.${suffix}.${projectRoot.replace(/\\/g, "/").toLowerCase()}`;
 }
@@ -158,6 +185,15 @@ function loadStoredExpanded(projectRoot: string): Set<string> {
 	}
 }
 
+function loadStoredActivePath(projectRoot: string): string | null {
+	try {
+		const raw = window.localStorage.getItem(storageKey(projectRoot, "active"));
+		return raw ? raw : null;
+	} catch {
+		return null;
+	}
+}
+
 function loadStoredTreeWidth(projectRoot: string): number | null {
 	try {
 		const raw = window.localStorage.getItem(storageKey(projectRoot, "tree-width"));
@@ -177,6 +213,13 @@ function persistTabs(projectRoot: string, tabs: string[]): void {
 function persistExpanded(projectRoot: string, expanded: Set<string>): void {
 	try {
 		window.localStorage.setItem(storageKey(projectRoot, "expanded"), JSON.stringify([...expanded]));
+	} catch {}
+}
+
+function persistActivePath(projectRoot: string, activePath: string | null): void {
+	try {
+		if (activePath) window.localStorage.setItem(storageKey(projectRoot, "active"), activePath);
+		else window.localStorage.removeItem(storageKey(projectRoot, "active"));
 	} catch {}
 }
 
@@ -225,11 +268,30 @@ function fileCategory(path: string): string {
 	return "file";
 }
 
+/** 可内联预览的文档格式；决定文件树图标和预览分支。 */
+function documentFormatOf(path: string): "docx" | "xlsx" | "pptx" | "pdf" | null {
+	const extension = path.split(".").pop()?.toLowerCase() ?? "";
+	if (extension === "docx") return "docx";
+	if (extension === "xlsx" || extension === "xls") return "xlsx";
+	if (extension === "pptx") return "pptx";
+	if (extension === "pdf") return "pdf";
+	return null;
+}
+
 function WorkspaceFileIcon({ kind, path, open = false }: { kind: EntryKind; path: string; open?: boolean }) {
 	if (kind === "dir") {
 		const Icon = open ? FolderOpen : Folder;
 		return <Icon className="workspace-file-icon is-dir" size={14} strokeWidth={2} aria-hidden="true" />;
 	}
+	const documentFormat = documentFormatOf(path);
+	if (documentFormat === "xlsx")
+		return (
+			<FileSpreadsheet className="workspace-file-icon is-document" size={14} strokeWidth={2} aria-hidden="true" />
+		);
+	if (documentFormat === "pptx")
+		return <Presentation className="workspace-file-icon is-document" size={14} strokeWidth={2} aria-hidden="true" />;
+	if (documentFormat)
+		return <FileText className="workspace-file-icon is-document" size={14} strokeWidth={2} aria-hidden="true" />;
 	const category = fileCategory(path);
 	if (category === "code")
 		return <FileCode2 className="workspace-file-icon is-code" size={14} strokeWidth={2} aria-hidden="true" />;
@@ -334,12 +396,15 @@ function WorkspaceTextEditor({
 
 function fileTabFromContent(content: WorkspaceFileContent, mtimeMs: number, path: string): FileTabState {
 	const text = content.kind === "text" ? (content.content ?? "") : "";
+	const buffer = content.data ? base64ToArrayBuffer(content.data) : undefined;
 	return {
 		status: "ready",
 		kind: content.kind,
 		content: text,
 		draft: text,
 		...(content.kind === "image" && content.dataUrl ? { dataUrl: content.dataUrl } : {}),
+		...(buffer ? { buffer } : {}),
+		...(content.kind === "document" && content.format ? { format: content.format } : {}),
 		size: content.size,
 		mtimeMs,
 		dirty: false,
@@ -358,7 +423,8 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 	const [dirs, setDirs] = useState<Record<string, DirState>>({});
 	const [expanded, setExpanded] = useState<Set<string>>(() => loadStoredExpanded(projectRoot));
 	const [tabs, setTabs] = useState<string[]>(() => loadStoredTabs(projectRoot));
-	const [activePath, setActivePath] = useState<string | null>(null);
+	// 工作面板收起会卸载本组件，激活文件必须落盘，否则重开总回到第一个标签。
+	const [activePath, setActivePath] = useState<string | null>(() => loadStoredActivePath(projectRoot));
 	const [files, setFiles] = useState<Record<string, FileTabState>>({});
 	const [query, setQuery] = useState("");
 	const [searchResults, setSearchResults] = useState<string[] | null>(null);
@@ -400,7 +466,7 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 		setDirs({});
 		setExpanded(loadStoredExpanded(projectRoot));
 		setTabs(loadStoredTabs(projectRoot));
-		setActivePath(null);
+		setActivePath(loadStoredActivePath(projectRoot));
 		setFiles({});
 		setSelected({});
 		setClipboard(null);
@@ -415,8 +481,10 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 
 	useEffect(() => {
 		persistTabs(projectRoot, tabs);
-		if (tabs.length > 0 && (!activePath || !tabs.includes(activePath))) setActivePath(tabs[0] ?? null);
-		if (tabs.length === 0) setActivePath(null);
+		// 激活文件仍在标签里就沿用；否则（标签被关掉、换了项目）回退到第一个并重新落盘。
+		const nextActive = activePath && tabs.includes(activePath) ? activePath : (tabs[0] ?? null);
+		if (nextActive !== activePath) setActivePath(nextActive);
+		persistActivePath(projectRoot, nextActive);
 	}, [activePath, projectRoot, tabs]);
 
 	useEffect(() => {
@@ -1083,6 +1151,21 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 		[projectRoot],
 	);
 
+	const openEntry = useCallback(
+		async (relativePath: string, kind: EntryKind) => {
+			if (!("codepiddy" in window)) {
+				showSettingsToast("演示模式不能打开文件", "error");
+				return;
+			}
+			try {
+				await window.codepiddy.openWorkspaceEntry({ projectRoot, relativePath, kind });
+			} catch (error) {
+				showSettingsToast(error instanceof Error ? error.message : "用系统默认程序打开失败", "error");
+			}
+		},
+		[projectRoot],
+	);
+
 	const createEntry = useCallback(
 		async (parent: string, name: string, kind: EntryKind) => {
 			const trimmed = name.trim();
@@ -1403,13 +1486,22 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 				</div>
 			);
 		}
+		const previewKind = documentPreviewKind(state);
+		if (previewKind && state.buffer) {
+			return <WorkspaceDocumentPreview key={activePath} kind={previewKind} buffer={state.buffer} />;
+		}
 		if (state.kind !== "text") {
 			return (
 				<StateBlock
 					tone={state.kind === "tooLarge" ? "warning" : "neutral"}
 					title={state.kind === "tooLarge" ? "文件过大无法预览" : "二进制文件无法预览"}
+					actions={
+						<button className="secondary-button" type="button" onClick={() => void openEntry(activePath, "file")}>
+							用系统默认程序打开
+						</button>
+					}
 				>
-					{formatSize(state.size)}
+					{formatSize(state.size)}。这类格式不能在客户端内预览，可用系统默认程序打开。
 				</StateBlock>
 			);
 		}
@@ -1479,10 +1571,18 @@ export const WorkspaceFilesView = memo(function WorkspaceFilesView({
 							</PanelIconButton>
 						) : null}
 						<PanelIconButton
-							label="复制文件内容"
-							onClick={() => void copyValue(state?.kind === "text" ? state.draft : activePath, "文件内容已复制")}
+							label={state?.kind === "text" ? "复制文件内容" : "复制相对路径"}
+							onClick={() =>
+								void copyValue(
+									state?.kind === "text" ? state.draft : activePath,
+									state?.kind === "text" ? "文件内容已复制" : "相对路径已复制",
+								)
+							}
 						>
 							<Copy size={14} strokeWidth={2} />
+						</PanelIconButton>
+						<PanelIconButton label="用系统默认程序打开" onClick={() => void openEntry(activePath, "file")}>
+							<ExternalLink size={14} strokeWidth={2} />
 						</PanelIconButton>
 						<PanelIconButton label="在资源管理器中显示" onClick={() => void revealEntry(activePath, "file")}>
 							<LocateFixed size={14} strokeWidth={2} />

@@ -3315,6 +3315,10 @@ textarea:focus-visible,
   color: var(--cp-ink-muted);
 }
 
+.workspace-file-icon.is-document {
+  color: var(--cp-ink-secondary);
+}
+
 .workspace-file-row.active .workspace-file-icon {
   color: var(--cp-accent);
 }
@@ -3591,6 +3595,57 @@ textarea:focus-visible,
   max-height: 100%;
   border-radius: var(--cp-radius-md);
   box-shadow: inset 0 0 0 0.5px var(--cp-line-subtle);
+}
+
+.workspace-file-document {
+  min-width: 0;
+  min-height: 100%;
+  background: var(--cp-surface-secondary);
+}
+
+/* PDF / 表格 / 幻灯片自带内部滚动容器，需要显式高度；Word 按内容自然增长。 */
+.workspace-file-document.is-pdf,
+.workspace-file-document.is-xlsx,
+.workspace-file-document.is-pptx {
+  height: 100%;
+}
+
+/* 第三方渲染器默认给灰色底，改成应用的中性浅色层次。 */
+.workspace-file-document .docx-wrapper,
+.workspace-file-document .vue-office-pdf-wrapper {
+  background: var(--cp-surface-secondary) !important;
+}
+
+.workspace-file-document .docx-wrapper {
+  padding: var(--cp-space-lg) var(--cp-space-sm) !important;
+}
+
+/* docx-preview 默认给页面加一圈黑色投影，和应用的扁平层次不搭，去掉。 */
+.workspace-file-document .docx-wrapper > section.docx {
+  box-shadow: none !important;
+}
+
+/*
+ * docx-preview 的页面是固定 A4 宽（约 794px），比右栏宽时会被居中：溢出部分落到
+ * 容器左侧，滚动条也到不了，表现为左半边被裁掉。这里按容器宽度（不是视口宽度）把
+ * 页面收缩进面板，并同步收掉页边距，窄面板下跟着面板走。
+ */
+.workspace-file-document.is-docx {
+  container-type: inline-size;
+}
+
+@container (max-width: 860px) {
+  .workspace-file-document.is-docx .docx-wrapper {
+    align-content: flex-start !important;
+    justify-content: flex-start !important;
+    padding: var(--cp-space-sm) !important;
+  }
+
+  .workspace-file-document.is-docx .docx-wrapper > section.docx {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    padding: var(--cp-space-md) !important;
+  }
 }
 
 .workspace-file-state {

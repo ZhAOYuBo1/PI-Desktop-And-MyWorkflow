@@ -63,6 +63,25 @@ describe("workspace file operations", () => {
 		expect(metadata.mtimeMs).toBe(fileStat.mtimeMs);
 	});
 
+	it("classifies pdf and OOXML documents for inline preview", async () => {
+		await writeFile(path.join(projectRoot, "spec.pdf"), Buffer.from("%PDF-1.4 minimal", "utf8"));
+		await writeFile(path.join(projectRoot, "report.docx"), Buffer.from("docx-placeholder", "utf8"));
+		await writeFile(path.join(projectRoot, "sheet.xls"), Buffer.from("xls-placeholder", "utf8"));
+		await writeFile(path.join(projectRoot, "deck.pptx"), Buffer.from("pptx-placeholder", "utf8"));
+		await writeFile(path.join(projectRoot, "legacy.doc"), Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0x00, 0x00]));
+
+		const pdf = await readWorkspaceFile(projectRoot, "spec.pdf");
+		expect(pdf.kind).toBe("pdf");
+		expect(pdf.mime).toBe("application/pdf");
+		expect(Buffer.from(pdf.data ?? "", "base64").toString("utf8")).toBe("%PDF-1.4 minimal");
+
+		expect(await readWorkspaceFile(projectRoot, "report.docx")).toMatchObject({ kind: "document", format: "docx" });
+		expect(await readWorkspaceFile(projectRoot, "sheet.xls")).toMatchObject({ kind: "document", format: "xlsx" });
+		expect(await readWorkspaceFile(projectRoot, "deck.pptx")).toMatchObject({ kind: "document", format: "pptx" });
+		// 老的二进制 Office 格式没有可用的前端渲染器，仍按二进制处理。
+		expect(await readWorkspaceFile(projectRoot, "legacy.doc")).toMatchObject({ kind: "binary" });
+	});
+
 	it("hides the workspace trash directory from listings and search", async () => {
 		await createWorkspaceEntry(projectRoot, WORKSPACE_TRASH_DIR_NAME, "dir");
 		await writeFile(path.join(projectRoot, WORKSPACE_TRASH_DIR_NAME, "deleted.txt"), "hidden", "utf8");
