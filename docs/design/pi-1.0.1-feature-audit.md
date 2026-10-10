@@ -524,9 +524,11 @@ cost, promptCache, contextWindow, maxTokens, samplingParams, headers, compat
 12. [x] 支持 Provider OAuth、API Key、device code、manual code 和浏览器回调；OpenRouter 真实 OAuth 登录 / 退出已验证。
 13. [x] 登录成功后刷新 Provider、模型列表和当前 Agent 配置；空闲 Agent 自动重连，运行中 Agent 延后生效。
 14. [x] 增加 Provider 状态、退出登录和凭据来源显示；退出登录只对 `auth.json` 来源开放。
-15. 增加 `!command` Key 和 `auth.provider` 配置。
+15. [ ] 增加 Provider `!command` Key 配置入口。Pi core 已支持 `apiKey: "!command"`，
+    通过命令 stdout 解析 Key；客户端缺受控输入、校验、凭据来源和 Agent 重连。`auth.provider`
+    已在 MCP 设置页覆盖，不再作为本项阻塞。此项在 2026-10-10 用户确认后重新纳入主线。
 
-批次 43（提交 `5d489c02a`）已完成第 14 项；批次 44（提交 `796171533`）已完成第 13 项；批次 46（提交 `e0e81b4c9`）已完成第 12 项真实 OpenRouter OAuth 验收。阶段 2 已收口，下一步进入阶段 3。
+批次 43（提交 `5d489c02a`）已完成第 14 项；批次 44（提交 `796171533`）已完成第 13 项；批次 46（提交 `e0e81b4c9`）已完成第 12 项真实 OpenRouter OAuth 验收。阶段 2 其余项已收口；第 15 项只剩 Provider `!command` Key，现重新进入主线，排在批次 72 之后、Pi 1.1.0 runtime 更新之前。
 
 ### 阶段 3：会话和命令补齐
 
@@ -574,14 +576,26 @@ cost, promptCache, contextWindow, maxTokens, samplingParams, headers, compat
     Provider 级 `headers / authHeader / compat / modelOverrides` 和模型级 `api / baseUrl /
     thinkingLevelMap / inputLimits / cost / promptCache / samplingParams / headers /
     compat` 通过受控高级 JSON 编辑；API 统一走 `SelectMenu` 并支持自定义 API。
-34. [ ] 特殊模型只读目录：由 Agent 进程 extension 读取 `modelRegistry.getAllModels()`，生成
-    chat / virtual / classifier / image 只读目录快照。RPC `get_available_models` 不返回
-    classifier / image，不能作为唯一数据源。禁止给 `models.json` 添加假 image / classifier
-    类型，不恢复已删除的 provider extension，不实现无代码虚拟模型路由编排器。
+34. [x] 特殊模型只读目录：批次 72 已完成并提交 `317087bec`。Agent 进程 extension 读取
+    runtime 的 chat / virtual / classifier / image 目录，写入每个 Agent 的 JSON 快照；
+    desktop 在「集成 > Provider 与模型」只读展示类型、Provider、API、来源、可用性和限制，
+    支持搜索、分组和分段展开。RPC `get_available_models` 不返回 classifier / image，
+    不作为唯一数据源。未给 `models.json` 添加假 image / classifier 类型，未恢复 provider
+    extension，未实现无代码虚拟模型路由编排器。真实 runtime 快照已验证为 chat 1540 /
+    classifier 20 / image 59，且无扩展错误。
+
+注意：本批次只是诊断目录。OpenRouter 内置 image 模型仍通过 Provider 登录 / Key 获得
+可用性，并且只能在 Codemode 里用 `models.generateImages()` 调用；客户端尚未提供单独的
+默认生图模型选择和图片生成 UI。
+
+下一项补第 15 项 Provider `!command` Key；完成后才更新内置 Pi runtime 到 1.1.0，
+然后恢复阶段 5 回归。
 
 ### 阶段 5：回归和收尾
 
-35. 用 Pi 1.0.1 回归会话、Fork、模型、Thinking、压缩、diff、终端、MCP、登录。
+35. 等批次 72 和第 15 项 `!command` Key 完成、内置 runtime 更新到 1.1.0 后，
+    用 Pi 1.1.0 回归会话、Fork、模型、Thinking、压缩、diff、终端、MCP、登录、Pi Packages
+    和 runtime rollback。阶段 5 当前搁置。
 36. 跑：
    - `npm run check`
    - `npm run typecheck --workspace=@codepiddy/desktop`

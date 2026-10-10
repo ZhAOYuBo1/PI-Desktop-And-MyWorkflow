@@ -73,67 +73,66 @@ docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、
 docs/design/reference-dsh-workbench.md；要做消息页优化时再读
 docs/design/desktop-transcript-optimization.md。
 
-批次 1-71 已实现并验收；批次 68 提交 `65607e721`，批次 69 Shell aliases 提交 `cab6fa4ff`，
-批次 70 Telemetry 提交 `cc55936ec`，批次 71 Provider 无损保存提交 `e46d0010e`。
-支线 74「工作区文档预览」代码提交 `48247a85a`，交接文档提交 `d9af491c7`，都已推送。
-当前 HEAD 以 `git log -1` 为准（写这份提示词时是 `d9af491c7`）；`origin/main` 已同步，
-`git rev-list --count origin/main..HEAD` 应为 0，工作树应干净。
-不要恢复已删除的 permission / Tavily 专用实现。
+批次 1-73、支线 74 和批次 72 已实现；批次 72 特殊模型只读目录代码提交 `317087bec`。
+批次 73 消息页 T6-T14/T16 过程投影重构提交 `5097f0666`，Pi runtime 回退修复提交
+`0c7b350c1`，交接文档提交 `c1fa1d8e0`。
+`origin/main` 仍是 `48247a85a`，本地 `main` 领先数量以 `git rev-list --count origin/main..HEAD`
+为准；本轮文档提交紧随代码提交，当前 HEAD 以 `git log -1` 为准。先看 `git status`。
+当前 HEAD 以 `git log -1` 为准。不要恢复已删除的 permission / Tavily 专用实现。
 
-支线 74 已完成工作区文件内联文档预览：
-1. 右侧文件面板可直接预览 docx / xlsx / xls / pptx / pdf，统一用 vue-office 的框架无关内核：
-   `@js-preview/docx`、`@js-preview/excel`、`@js-preview/pdf`、`pptx-preview`（全部 pin 精确版本）。
-2. `readWorkspaceFile`（`packages/codepiddy-core/src/workspace-fs.ts`）对 pdf / OOXML 返回 base64
-   原始字节（上限 32MB），渲染层解码成 ArrayBuffer 交给渲染器；新增 `pdf` / `document` 两种 kind
-   和 `WorkspaceDocumentFormat`。
-3. PDF 必须走本地 pdfjs：`@js-preview/pdf` 默认把 pdf.js 和 worker 用 data: URL 注入页面，会被
-   应用 CSP 的 `script-src` / `worker-src` 拦掉；现在提前挂载 `pdfjs-dist@3.1.81` + 同源 worker
-   （`workspace-document-preview.tsx` 里的 `ensureLocalPdfjs`），并在 index.html 的 `connect-src`
-   加了 `blob:`（pdf.js 通过 blob URL 读取文档）。这是唯一一处 CSP 放宽。
-4. 老的二进制 Office 格式（`.doc` / `.ppt`）和真正的二进制仍不能内联预览，空态和预览头都提供
-   「用系统默认程序打开」（新 IPC `openWorkspaceEntry` → `shell.openPath`）。
-5. docx 页面按**容器宽度**（container query，不是视口宽度）适配，并去掉 docx-preview 默认的
-   页面投影；pptx 画布宽度跟随面板。文件面板收起会卸载 `WorkspaceFilesView`，所以激活标签
-   必须落盘（localStorage `active` key），否则重开总回到第一个标签。
+消息页过程投影已经完成，不要再重做：
+- `model_change` / `thinking_level_change` 继续保留为独立时间线行，不删除。
+- 过程块只包含工具调用和非最终 assistant 片段；session event 会切断过程块。
+- 过程耗时、工具数、错误数和默认展开状态只取当前过程块。
+- detailed 运行中默认展开；compact 运行中默认收起，过程有错误时展开。
+- T15 长会话窗口化 + minimap 继续搁置，不算主线。
 
-批次 72「特殊模型只读目录」仍未实现：由 Agent 进程 extension 读取
-`modelRegistry.getAllModels()`，只读展示 chat / virtual / classifier / image、来源和可用性；
-RPC `get_available_models` 不返回 classifier / image，不能作为唯一数据源。
-不恢复 `@codepiddy/provider-extension`，不给 `models.json` 添加无效 image / classifier 类型，
-不做无代码虚拟模型路由编排器。
+阶段 5 的完整回归、最终文档和推送暂时搁置，等内置 runtime 更新到 Pi 1.1.0 之后再统一做。
+用户已确认主线顺序：
+1. 批次 72「特殊模型只读目录」已完成并提交 `317087bec`。它只做运行目录、类型、来源和
+   可用性诊断，不是生图配置 / 生成 UI；OpenRouter 内置 image 模型仍需先完成 Provider 登录，
+   再通过 Codemode `models.generateImages()` 调用。
+2. 当前第一优先级是第 15 项剩余功能：Provider `!command` Key。Pi core 已支持
+   `apiKey: "!command"`，
+   通过命令输出解析 Key；客户端缺配置入口。先审计现有 Provider 高级 JSON / schema，再决定
+   受控输入、校验、凭据来源显示和 Agent 重连行为。不要自己实现命令执行层，复用 Pi 原生解析。
+   `auth.provider` 已在 MCP 设置页覆盖，不算本项阻塞。
+3. 第 15 项完成后，再更新内置 Pi runtime 到 1.1.0：使用
+   `npm run update:pi-runtime -- <version>`，然后做 runtime smoke test。不要提前用 1.1.0
+   重写 `!command` 的实现。
+4. 最后再恢复阶段 5 的完整回归、`PRODUCT.md` / `DESIGN.md` / 审计文档更新和推送。
 
-批次 73「消息页只依赖 Pi core 原生的优化」见 docs/design/desktop-transcript-optimization.md：
-只做 Pi core 原生可实现的优化，不碰 packages/coding-agent / coding-agent-runtime / packages/ai，
-不做扩展 / MCP / subagent 专用卡。
+不要重做已验收功能：工作区文件工作台 / 文档预览、特殊模型只读目录、Provider 无损保存、MCP、Prompt 模板、
+Pi Packages、Shell command prefix、Telemetry、Agent 会话管理、Fork、快速定位条、诊断包、
+上下文压缩、Codemode、统一组件规则。
 
 统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；
 复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`；下拉只走 `SelectMenu`。
 不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
-字体、圆角、输入区叠层、app icon、空态/错误态/加载态、运行反馈、用户选定流星、思考强度波场、
-会话树、工作区面板、变更历史、内部终端、设置分区、MCP / Provider 配置、
-Agent 会话新建 / 切换 / 删除、会话 Fork、快速定位条、诊断包、上下文压缩、Codemode、
-Prompt 模板、工作区文件工作台、文档预览和统一组件规则都已实现，不要重做。
-文件搜索和终端多标签已取消，不再推进。
 
 关键约束：
 - Pi core 可更新，禁止改 `packages/coding-agent`；外壳增强走 Pi 扩展点或
   `packages/codepiddy-desktop` 的 main / renderer / preload。
-- 内置 Pi 固定在 `packages/coding-agent-runtime`；更新用 `npm run update:pi-runtime -- <version>`。
+- 内置 Pi 固定在 `packages/coding-agent-runtime`；只有第 3 步才更新到 1.1.0。
 - Agent 启动使用 `--no-extensions`，显式加载 `builtin:mcp` / `builtin:codemode` /
-  `builtin:tool-search` 和 CodePIddy 自己的 `review` / `retry` / `cache-warming`。
+  `builtin:tool-search` 和 CodePIddy 自己的 `review` / `retry` / `cache-warming` /
+  `model-catalog`。
 - 会话 UI 历史必须读 Pi `get_entries`，不能用 compact 后的 `get_messages`。
-- 提交使用显式路径，禁止 `git add -A`；改 `package-lock.json` 需要
-  `PI_ALLOW_LOCKFILE_CHANGE=1`；用户未要求时不要推送。
-- UI 改完 build 通过后自动重启 Electron，不用询问用户。
+- 临时消息只走 `SettingsToast`；持久状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；
+  弹层只走 `ModalShell`；下拉只走 `SelectMenu`。
+- 提交使用显式路径，禁止 `git add -A`；用户未要求时不要推送。
 
 仓库在 E:\mypi，依赖已装好。改完必须跑：
   npm run check
   npm run typecheck --workspace=@codepiddy/desktop
   npm run build:codepiddy
 
-要看效果：cd packages/codepiddy-desktop && npx vite --host 127.0.0.1 --port 5173，
-浏览器开 http://127.0.0.1:5173/?demo=1（必须带 ?demo=1），用 Playwright 截图自查。
-真实客户端：先 build，再自动重启 Electron。
+要看效果：
+  cd packages/codepiddy-desktop
+  npx vite --host 127.0.0.1 --port 5173
+  浏览器开 http://127.0.0.1:5173/?demo=1（必须带 ?demo=1）
+
+真实客户端：先 build，再自动重启 Electron。UI 改完不要询问，直接重启。
 ```
 
 ### 上一版恢复提示词（批次 71，已被上方替代）
@@ -242,7 +241,34 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-09 支线 74 工作区文档预览已推送，下一项批次 72 特殊模型只读目录）
+## 当前状态（2026-10-10 批次 72 已提交，主线轮到 Provider `!command` Key）
+
+### 主线顺序（2026-10-10 用户确认）
+
+1. 批次 72：特殊模型只读目录，已完成并提交 `317087bec`。
+2. 第 15 项剩余功能：Provider `!command` Key。Pi core 已支持命令型 Key，
+   客户端补受控配置入口、校验、凭据来源和 Agent 重连；MCP 的 `auth.provider` 已完成，不再混在本项。
+3. 以上两项完成后，再更新内置 Pi runtime 到 `1.1.0`，并跑 runtime smoke test。
+4. 最后恢复阶段 5 的完整回归、最终文档和推送。
+
+T15 长会话窗口化 + minimap 继续搁置，不算主线。阶段 5 不得提前回填到前两项之前。
+
+### 批次 72：特殊模型只读目录（已提交 `317087bec`）
+
+- 新增 `packages/codepiddy-model-catalog-extension`，Agent 启动后读取
+  `modelRegistry.getModelsOfType()` / `getAvailableOfType()`，写入每个 Agent 独立的
+  `runtimeRoot/model-catalog/<agent>.json` 快照。
+- 目录区分 `chat`、`virtual`、`classifier`、`image`，并记录 Provider、API、来源和凭据可用性。
+  `virtual` 按 Pi 的 `pi-virtual` API 识别；`source` 区分 Pi 目录、扩展 Provider 和虚拟模型。
+- desktop 在「集成 > Provider 与模型」新增只读「特殊模型目录」，支持搜索、类型分组和分段展开。
+  真实 runtime 已生成 `chat 1540`、`classifier 20`、`image 59` 的快照，扩展无错误；
+  当前没有注册 `virtual` 模型。
+- 本批次只解决运行目录和可用性诊断，不解决生图配置 / 生成入口。Pi 1.0.1 的 OpenRouter
+  image 模型不会出现在普通模型选择器；必须使用 OpenRouter 登录 / Key，并通过 Codemode
+  `models.generateImages()` 调用。`models.json` 添加 `type: "image"` 会被 Pi 忽略。
+- 验证已通过：`npm run check`、desktop typecheck、`npm run build:codepiddy`、
+  `npm run build:codepiddy-runtime`、扩展单测 2 项、`?demo=1` 宽 / 窄窗截图和真实 Electron
+  启动后的快照读取。
 
 ### 支线 74：工作区文件内联文档预览（已推送 `48247a85a`）
 
@@ -314,13 +340,14 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
     输入路径，不再限制为四种 API。
   - 单测覆盖未知字段保留、嵌套合并、字段删除、非法输入和模型重命名；`npm run check`、
     desktop typecheck、`npm run build:codepiddy`、demo 截图和真实 Electron 重启均通过。
-- 特殊模型目录尚未实现，作为批次 72：
+- 批次 72 已完成特殊模型只读目录，代码提交 `317087bec`：
   - 自定义认证、协议、动态发现和流式实现仍必须使用 Provider extension。
   - 虚拟模型只能通过 extension / SDK `registerVirtualModel()` 注册，不能写进 `models.json`。
   - 内置 classifier / image 通过 Codemode 使用；自定义 classifier / image 必须由 Provider
     extension 注册。`models.json` 中的 `type: "image"` 实测会被忽略。
   - RPC `get_available_models` 只返回 chat catalog；虚拟模型会出现，classifier / image 不出现。
-  - 批次 72 由 Agent 进程 extension 读取 `modelRegistry.getAllModels()`，生成只读目录快照。
+  - Agent 进程 extension 读取 runtime 的完整模型目录，生成只读快照；desktop 只读展示，
+    不提供生图配置或生成 UI。
 
 - 阶段 4 第 29 项 Pi Packages 已实现：设置页新增「Agent > Pi Packages」，读取用户级和项目级
   `packages`，显示来源、作用域、版本、安装路径、资源摘要和扩展开关；支持安装、移除、
@@ -476,11 +503,15 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 
 ### 下一步
 
-阶段 3 的 16-23 项已实现；阶段 4 第 24-33 项 Cache Warming、上下文压缩、Codemode、Tool Search / Tool Exposure、Prompt Templates、Pi Packages、Shell command prefix、Telemetry 和静态自定义 Provider 无损配置均已完成。支线 64-66 已完成工作区文件工作台。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 4 第 34 项：
+阶段 3 的 16-23 项已实现；阶段 4 第 24-34 项 Cache Warming、上下文压缩、Codemode、
+Tool Search / Tool Exposure、Prompt Templates、Pi Packages、Shell command prefix、Telemetry、
+静态自定义 Provider 无损配置和特殊模型只读目录均已完成。批次 73 消息页过程投影和支线 74
+也已收口。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 2 第 15 项：
 
-1. 由 Agent 进程 extension 读取 `modelRegistry.getAllModels()`。
-2. 只读展示 chat / virtual / classifier / image、来源和可用性。
-3. 不给 `models.json` 添加假 image / classifier 类型，不做无代码虚拟模型路由编排器。
+1. 审计现有 Provider 高级 JSON / schema、凭据来源显示和 Agent 重连行为。
+2. 增加 Provider `!command` Key 的受控配置入口、校验和错误反馈；复用 Pi 原生解析。
+3. 完成后再更新内置 Pi runtime 到 1.1.0。
+4. 阶段 5 完整回归和收尾在 Pi 1.1.0 更新后执行，当前搁置。
 
 继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
 
@@ -1741,13 +1772,14 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 47. [x] **批次 69：Shell aliases / Shell command prefix**：设置页「常规 > Shell」已支持 Pi 原生 `shellCommandPrefix` 多行编辑、清除、合并写入和 Agent 重连；单测覆盖合并写入、清除、保留其他 settings 与 NUL 校验。已验收并提交 `cab6fa4ff`。
 48. [x] **批次 70：Telemetry 设置**：已实现 Pi 原生 `enableInstallTelemetry`；设置页「常规 > Telemetry」提供开关、行为说明、`PI_TELEMETRY` 环境变量覆盖状态和 Agent 重连。未实现 `enableAnalytics` / `trackingId`。提交 `cc55936ec`。
 49. [x] **批次 71：自定义 Provider 配置正确性与无损保存**：已完成并提交 `e46d0010e`。未知字段保留、字段补丁写回、Provider / 模型高级 JSON、统一 API `SelectMenu`、自定义 API 路径和 5 项单测均已验收。
-50. [ ] **批次 72：特殊模型目录**：由 Agent 进程 extension 读取 `modelRegistry.getAllModels()`，只读展示 chat / virtual / classifier / image、来源和可用性。RPC `get_available_models` 不能作为唯一数据源。不给 `models.json` 添加无效的 image / classifier 类型；不恢复已删除的 provider extension；不做无代码虚拟模型路由编排器。
+50. [x] **批次 72：特殊模型目录**：已由 Agent 进程 extension 读取完整 runtime 模型目录，只读展示 chat / virtual / classifier / image、来源和可用性；desktop 支持搜索、类型分组和分段展开。代码提交 `317087bec`。本批次只做诊断，不解决生图配置 / 生成入口。RPC `get_available_models` 不能作为唯一数据源；未给 `models.json` 添加无效 image / classifier 类型，未恢复 provider extension。
 51. [x] **批次 73：消息页只依赖 Pi core 原生的优化**：完整范围、审计证据、任务清单 T1-T15 和回归红线见 [desktop-transcript-optimization.md](./desktop-transcript-optimization.md)。原则是只做 Pi core 原生可实现的优化，不碰 `packages/coding-agent` / `coding-agent-runtime` / `packages/ai`，不做扩展 / MCP / subagent 专用卡。T1-T5 已提交 `46f63909f`；T6-T14 和 T16 过程投影重构已提交 `5097f0666`，并通过 `check`、desktop typecheck、build、单测和 `verify:transcript`。T15 长会话窗口化先搁置。
-52. [x] **支线 74：工作区文件内联文档预览（已推送 `48247a85a`）**：docx / xlsx / xls / pptx / pdf 内联渲染，PDF 走本地 `pdfjs-dist` + 同源 worker（CSP 只放行 `connect-src blob:`），老的 `.doc` / `.ppt` 和其他二进制走「用系统默认程序打开」。含窄面板适配、去掉 docx 页面投影、激活标签落盘和 `App.tsx` 既有类型错误修复。下一批仍从批次 72 特殊模型只读目录开始。
+52. [x] **支线 74：工作区文件内联文档预览（已推送 `48247a85a`）**：docx / xlsx / xls / pptx / pdf 内联渲染，PDF 走本地 `pdfjs-dist` + 同源 worker（CSP 只放行 `connect-src blob:`），老的 `.doc` / `.ppt` 和其他二进制走「用系统默认程序打开」。含窄面板适配、去掉 docx 页面投影、激活标签落盘和 `App.tsx` 既有类型错误修复。
+53. [ ] **第 15 项剩余：Provider `!command` Key**：批次 71 已保留 Provider 高级 JSON 字段，但客户端仍缺命令型 Key 的受控配置入口和行为说明。Pi core 已支持 `apiKey: "!command"`，由命令 stdout 解析 Key；客户端必须复用 Pi 原生解析，不自己实现命令执行层。实现前先审计现有 Provider 高级 JSON、凭据来源显示、非法命令反馈和空闲 Agent 重连。完成后才进入 Pi 1.1.0 runtime 更新。
 
 ## 提交状态
 
-批次 55-71 连同支线 64-66 工作区文件工作台、批次 67 Pi Packages、批次 68 边界清理、批次 69 Shell command prefix、批次 70 Telemetry、批次 71 Provider 无损保存、批次 73 消息页优化 T1-T5 和支线 74 工作区文档预览都已推送到 `origin/main`。`origin/main` 为 `48247a85a`；本地 `main` 已在其上追加批次 73 过程投影重构 `5097f0666` 和 Pi runtime 回退修复 `0c7b350c1`，具体 HEAD 以 `git log -1` 为准。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`，批次 69 提交 `cab6fa4ff`，批次 70 提交 `cc55936ec`，批次 71 提交 `e46d0010e`，支线 74 文档预览提交 `48247a85a`。批次 73 消息页优化在 T1-T5 `46f63909f` 之后，另有 session 提交了 `03eb42ab3`、`f0c5561bc`、`ab013f758`、`898a46d16`、`d8caf0951`，并用 `59f0ea3a8` 回滚了其中的 pending session 快照实现。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
+批次 55-71 连同支线 64-66 工作区文件工作台、批次 67 Pi Packages、批次 68 边界清理、批次 69 Shell command prefix、批次 70 Telemetry、批次 71 Provider 无损保存、批次 73 消息页优化 T1-T5 和支线 74 工作区文档预览都已推送到 `origin/main`。`origin/main` 为 `48247a85a`；本地 `main` 已在其上追加批次 73 过程投影重构 `5097f0666`、Pi runtime 回退修复 `0c7b350c1`、文档状态提交 `c1fa1d8e0` 和批次 72 特殊模型目录 `317087bec`，具体 HEAD 以 `git log -1` 为准。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`，批次 69 提交 `cab6fa4ff`，批次 70 提交 `cc55936ec`，批次 71 提交 `e46d0010e`，批次 72 提交 `317087bec`，支线 74 文档预览提交 `48247a85a`。批次 73 消息页优化在 T1-T5 `46f63909f` 之后，另有 session 提交了 `03eb42ab3`、`f0c5561bc`、`ab013f758`、`898a46d16`、`d8caf0951`，并用 `59f0ea3a8` 回滚了其中的 pending session 快照实现。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1822,10 +1854,15 @@ subagent / codemode 的宿主解析。
 | 2026-10-08 | 删除 `permission-extension`、Tavily `web_search` 自建 MCP、未加载的 `provider-extension` 和 `role-guard-extension` | 权限与专用 web search 是自研非原生功能；未加载包没有保留价值 |
 | 2026-10-08 | `llama.cpp` 和 `/share` 的客户端实现只保留 GUI / 配置适配，优先复用 Pi core 的 SDK / CLI / RPC | 客户端不应继续复制 Pi core 的内部实现 |
 | 2026-10-08 | Provider / Model 配置按字段补丁写回，未知字段保留；高级字段使用受控 JSON，API 统一走 `SelectMenu` | 避免 `models.json` 高级配置丢失，同时保持现有统一组件风格并支持 Pi 的其他静态 API |
+| 2026-10-09 | 消息页 `model_change` / `thinking_level_change` 继续保留为独立时间线行，过程块只包含工具和非最终 assistant 片段 | 参考项目不渲染这类 session entry，但用户明确需要客户端展示；通过独立事件切断过程块同时满足两者 |
+| 2026-10-10 | 主线先做批次 72、再做 Provider `!command` Key，两项完成后再更新内置 Pi runtime 到 1.1.0 | 用户要求先在 1.0.1 基线上补齐功能，避免把实现细节和 runtime 升级耦合；阶段 5 回归在 1.1.0 后执行 |
+| 2026-10-10 | MCP `auth.provider` 已完成；第 15 项只剩 Provider `!command` Key | 原第 15 项混列两个字段，实际剩余缺口只有命令型 Provider Key |
 
 ## 待用户确认
 
 - Pi Packages、package 资源和 runtime 更新待用户验收；批次 63-71 和支线 74 已推送到 `origin/main`。
 - 支线 74 工作区文档预览已推送 `48247a85a`；用户已确认 docx/xlsx/pptx/pdf 预览、去阴影、窄面板适配和激活标签持久化可用。
-- 下一轮先做批次 72 特殊模型只读目录；不要恢复 provider extension 或给 `models.json` 添加假 image / classifier 类型。
-- 批次 73 消息页优化（[desktop-transcript-optimization.md](./desktop-transcript-optimization.md)）仍在进行，T6-T14 的最终验收状态以该文件和 `git log` 为准。
+- 批次 72 特殊模型只读目录已提交 `317087bec`；不要恢复 provider extension 或给 `models.json` 添加假 image / classifier 类型。
+- 下一步补 Provider `!command` Key。Pi core 已支持命令型 Key，客户端只复用它，不自己实现命令执行层；`auth.provider` 已在 MCP 设置页覆盖。
+- `!command` 完成后再更新内置 runtime 到 Pi 1.1.0，最后恢复阶段 5 完整回归和收尾。
+- 批次 73 消息页 T1-T14/T16 已提交 `5097f0666`；T15 长会话窗口化继续搁置。
