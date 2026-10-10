@@ -299,6 +299,7 @@ type TranscriptItem =
 			isError: boolean;
 			startedAt?: number;
 			completedAt?: number;
+			durationMs?: number;
 	  }
 	| {
 			id: string;
@@ -814,6 +815,9 @@ function normalizeHistory(values: unknown[]): TranscriptItem[] {
 				details: message.details,
 				status: "completed",
 				isError: message.isError === true,
+				...(typeof message.durationMs === "number" && Number.isFinite(message.durationMs)
+					? { durationMs: Math.max(0, message.durationMs) }
+					: {}),
 				...(createdAt ? { completedAt: Date.parse(createdAt) } : {}),
 			});
 		} else if (role === "assistant") {
@@ -2498,6 +2502,7 @@ export function App() {
 							text: 'export const WorkPanel = memo(function WorkPanel({ projectRoot, toolItems }) {\n  const [fileState, setFileState] = useState<FileState | null>(null);\n  return <aside className="work-panel" aria-label="文件管理器" />;\n});',
 							status: "completed",
 							isError: false,
+							durationMs: 2450,
 						},
 						{
 							id: "demo-tool-codemode",
@@ -3647,6 +3652,9 @@ export function App() {
 									details: extractToolResultDetails(event.result) ?? item.details,
 									isError: event.isError === true,
 									completedAt: Date.now(),
+									...(typeof event.durationMs === "number" && Number.isFinite(event.durationMs)
+										? { durationMs: Math.max(0, event.durationMs) }
+										: {}),
 								}
 							: item,
 					),

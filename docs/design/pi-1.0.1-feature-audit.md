@@ -643,3 +643,37 @@ cost, promptCache, contextWindow, maxTokens, samplingParams, headers, compat
   lockfile、node_modules 和 bin 链接中移除；`pi list` 只保留 permission-system。
 - 隔离 Electron + `pi mcp list` 验证：保存 Key 后为 `connected, 1 tool (direct)`，
   清除 Key 后为 `disabled`，`mcp.json` 中无明文 Key。
+
+## Pi 1.1.0 runtime 更新审计（2026-10-10）
+
+### 更新结果
+
+- `packages/coding-agent-runtime` 已从 `1.0.1` 更新到 `1.1.0`，使用 `npm run update:pi-runtime -- 1.1.0`。
+- `npm run build:codepiddy-runtime` 已生成 packaged runtime。
+- runtime smoke test 已通过：SDK `VERSION`、SDK exports、commands metadata、host package entry、`quickjs-wasi`、RPC `get_state` / `get_commands` / `get_available_models` / `get_entries`、Codemode 显式加载和 model-catalog extension 快照。
+- 1.1.0 命令菜单和 CLI 帮助已包含新的 `+name` / `-name` 工具选择语义；现有 `--exclude-tools` 启动路径仍有效。
+
+### 客户端适配
+
+1. **工具真实耗时**：`tool_execution_end` 和 `toolResult` 现在提供 `durationMs`。客户端 live 事件、历史 `toolResult` 和 `ToolCallCard` 已统一优先显示 Pi 的原始执行耗时，旧的 `completedAt - startedAt` 仅作为缺少 `durationMs` 时的回退。
+2. **高级 `defaultTools`**：Pi 1.1.0 允许 `+codemode`、`-write`、扩展工具名等 Pi 高级条目。客户端不再把它们过滤掉；设置页显示为「Pi 高级」，原样保留，用户明确恢复默认或切换为 CodePIddy 选择后才改写。Agent 启动时的 `--exclude-tools` 根据完整 Pi 语义计算，包含 `+/-` 和显式空列表。
+3. **`agent_settled.aborted`**：现有客户端已通过 assistant `stopReason` / `aborted` 显示「已中断」，settled 事件继续负责释放 write lease 和置 idle，不需要新增协议或第二套状态机。
+4. **OSC 7501 program status**：这是终端 / dashboard 的状态编码，Electron 已有 RPC 事件、运行指示和窗口状态，不需要在 GUI 内复刻 OSC。
+5. **模型与 Codemode 能力**：Claude Haiku 5.5、GPT-6 Luna classifier、图片分类和 llama.cpp decision models由 runtime / model catalog 自动提供；现有特殊模型目录用于诊断，不新增专用生成 / 分类 UI。
+6. **模型高级配置**：1.0.2 的 `samplingParamsByThinkingLevel` 继续可通过 Provider / 模型高级 JSON 无损保存；当前没有单独的结构化编辑器。
+7. **MCP OAuth**：1.1.0 的登录超时、取消、资源关闭和原生客户端注册修复由运行时自动生效，客户端继续复用 `pi mcp` helper。
+
+### 迁移提示
+
+- Pi 1.0.3 把 Azure provider 从 `azure-openai-responses` 重命名为 `azure`。如果用户已有旧 `models.json` / `auth.json` / `settings.json` 配置，需要用户显式迁移。客户端不会静默改写可能属于其他自定义 Provider 的旧字段。
+- 1.1.0 仍要求 Node `>=22.19.0`；当前 Electron / Node smoke 环境满足要求。
+
+### 验证命令
+
+```powershell
+npm run update:pi-runtime -- 1.1.0
+npm run build:codepiddy-runtime
+npm run check
+npm run typecheck --workspace=@codepiddy/desktop
+npm run build:codepiddy
+```

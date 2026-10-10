@@ -73,52 +73,41 @@ docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、
 docs/design/reference-dsh-workbench.md；要做消息页优化时再读
 docs/design/desktop-transcript-optimization.md。
 
-批次 1-73、支线 74、批次 72 和批次 75 已实现；批次 72 特殊模型只读目录代码提交
-`317087bec`。批次 73 消息页 T6-T14/T16 过程投影重构提交 `5097f0666`，Pi runtime
-回退修复提交 `0c7b350c1`。批次 75 Provider `!command` Key 代码提交 `29b6673c7`，
-交接文档提交紧随其后；当前 HEAD 以 `git log -1` 为准。
-`origin/main` 仍是 `48247a85a`，本地 `main` 领先数量以 `git rev-list --count origin/main..HEAD`
-为准；用户未要求时不要推送。不要恢复已删除的 permission / Tavily 专用实现。
+批次 1-73、支线 74、批次 72、批次 75 和批次 76 已实现。批次 72 特殊模型只读目录代码提交
+`317087bec`；批次 75 Provider `!command` Key 代码提交 `29b6673c7`；批次 76 内置 Pi runtime
+已更新到 `1.1.0`，runtime package / lockfile / bundle 和客户端适配已落地，但当前改动尚未提交。
+当前 HEAD 以 `git log -1` 为准，先看 `git status`。
+`origin/main` 仍是 `48247a85a`，用户未要求时不要推送。不要恢复已删除的 permission / Tavily 专用实现。
+
+批次 76 已完成：
+- `packages/coding-agent-runtime` 从 1.0.1 更新到 1.1.0，canonical runtime 和 packaged runtime 已生成。
+- runtime smoke 已通过 SDK VERSION / exports、commands、host alias、`quickjs-wasi`、RPC、Codemode 和 model catalog。
+- live 工具事件与历史 `toolResult` 已接入 Pi 原生 `durationMs`，工具卡优先显示 Pi 记录的真实耗时。
+- 工具设置支持 Pi 1.1.0 高级 `defaultTools`（`+name` / `-name` / 扩展工具名）：原值保留，设置页显示「Pi 高级」，用户明确切换后才改写；`--exclude-tools` 按完整语义计算。
+- `agent_settled.aborted` 继续复用现有中断状态；OSC 7501 program status 不需要 Electron 复刻；模型目录、MCP OAuth、classifier / image 能力由 runtime 自动提供。
+- Pi 1.0.3 的 Azure Provider 重命名是用户配置迁移风险，已写入审计，不要静默改写用户旧配置。
 
 消息页过程投影已经完成，不要再重做：
-- `model_change` / `thinking_level_change` 继续保留为独立时间线行，不删除。
+- `model_change` / `thinking_level_change` 继续保留为独立时间线行。
 - 过程块只包含工具调用和非最终 assistant 片段；session event 会切断过程块。
 - 过程耗时、工具数、错误数和默认展开状态只取当前过程块。
 - detailed 运行中默认展开；compact 运行中默认收起，过程有错误时展开。
 - T15 长会话窗口化 + minimap 继续搁置，不算主线。
 
-阶段 5 的完整回归、最终文档和推送暂时搁置，等内置 runtime 更新到 Pi 1.1.0 之后再统一做。
-用户已确认主线顺序：
-1. 批次 72「特殊模型只读目录」已完成并提交 `317087bec`。它只做运行目录、类型、来源和
-   可用性诊断，不是生图配置 / 生成 UI；OpenRouter 内置 image 模型仍需先完成 Provider 登录，
-   再通过 Codemode `models.generateImages()` 调用。
-2. 批次 75「Provider `!command` Key」已完成并提交 `29b6673c7`。Pi 原生负责执行命令和读取
-   stdout；客户端只提供 `secret | command` 受控来源、命令编辑、校验、来源显示、清除和
-   Agent 重连，不执行命令。
-3. 下一步更新内置 Pi runtime 到 `1.1.0`：使用
-   `npm run update:pi-runtime -- 1.1.0`，随后运行 `npm run build:codepiddy-runtime` 和
-   runtime smoke test。不要提前用 1.1.0 重做 `!command`。
-4. 最后再恢复阶段 5 的完整回归、`PRODUCT.md` / `DESIGN.md` / 审计文档更新和推送。
+下一步恢复阶段 5 完整回归与收尾：
+1. 先跑 `npm run check`、desktop typecheck、`npm run build:codepiddy`，并用真实 1.1.0 Electron 回归会话、Fork、模型、Thinking、压缩、diff、终端、MCP、Provider、Pi Packages 和 runtime rollback。
+2. 更新 PRODUCT.md、DESIGN.md、redesign-plan.md 和 Pi 审计文档的最终状态。
+3. 按验收结果拆分提交并推送。
 
-不要重做已验收功能：工作区文件工作台 / 文档预览、特殊模型只读目录、Provider 无损保存、
-Provider `!command` Key、MCP、Prompt 模板、
-Pi Packages、Shell command prefix、Telemetry、Agent 会话管理、Fork、快速定位条、诊断包、
-上下文压缩、Codemode、统一组件规则。
+不要重做已验收功能：工作区文件工作台 / 文档预览、特殊模型只读目录、Provider 无损保存、Provider `!command` Key、MCP、Prompt 模板、Pi Packages、Shell command prefix、Telemetry、Agent 会话管理、Fork、快速定位条、诊断包、上下文压缩、Codemode、统一组件规则。
 
-统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；
-复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`；下拉只走 `SelectMenu`。
-不要再新增第二套实现，详见 docs/design/ui-component-rules.md。
+统一组件规则：临时消息只走 `SettingsToast`；持久内联状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；弹层只走 `ModalShell`；下拉只走 `SelectMenu`。
 
 关键约束：
-- Pi core 可更新，禁止改 `packages/coding-agent`；外壳增强走 Pi 扩展点或
-  `packages/codepiddy-desktop` 的 main / renderer / preload。
-- 内置 Pi 固定在 `packages/coding-agent-runtime`；只有第 3 步才更新到 1.1.0。
-- Agent 启动使用 `--no-extensions`，显式加载 `builtin:mcp` / `builtin:codemode` /
-  `builtin:tool-search` 和 CodePIddy 自己的 `review` / `retry` / `cache-warming` /
-  `model-catalog`。
+- Pi core 可更新，禁止改 `packages/coding-agent`；外壳增强走 Pi 扩展点或 `packages/codepiddy-desktop` 的 main / renderer / preload。
+- 内置 Pi 当前固定在 `packages/coding-agent-runtime` 的 `1.1.0`；更新 runtime 使用 `npm run update:pi-runtime -- <version>` 和 `npm run build:codepiddy-runtime`。
+- Agent 启动使用 `--no-extensions`，显式加载 `builtin:mcp` / `builtin:codemode` / `builtin:tool-search` 和 CodePIddy 自己的 `review` / `retry` / `cache-warming` / `model-catalog`。
 - 会话 UI 历史必须读 Pi `get_entries`，不能用 compact 后的 `get_messages`。
-- 临时消息只走 `SettingsToast`；持久状态只走 `StateBlock`；复选框只走 `SettingsCheckbox`；
-  弹层只走 `ModalShell`；下拉只走 `SelectMenu`。
 - 提交使用显式路径，禁止 `git add -A`；用户未要求时不要推送。
 
 仓库在 E:\mypi，依赖已装好。改完必须跑：
@@ -240,15 +229,15 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-10 批次 75 已提交，下一步更新内置 Pi 1.1.0）
+## 当前状态（2026-10-10 批次 76 已实现，内置 Pi runtime 已更新到 1.1.0）
 
 ### 主线顺序（2026-10-10 用户确认）
 
 1. 批次 72：特殊模型只读目录，已完成并提交 `317087bec`。
 2. 批次 75：Provider `!command` Key，已完成并提交 `29b6673c7`。命令型 Key 写入 Pi
    原生 `models.json`，由 Pi 的 configured shell 执行并读取 stdout；CodePIddy 不执行命令。
-3. 下一步更新内置 Pi runtime 到 `1.1.0`，并跑 runtime smoke test。
-4. 最后恢复阶段 5 的完整回归、最终文档和推送。
+3. 内置 Pi runtime 已更新到 `1.1.0`，packaged runtime 和 smoke test 已通过；客户端已适配真实工具耗时和 Pi 高级 `defaultTools`。
+4. 下一步恢复阶段 5 的完整回归、最终文档和推送。
 
 T15 长会话窗口化 + minimap 继续搁置，不算主线。阶段 5 不得提前回填到 runtime 更新之前。
 
@@ -515,16 +504,11 @@ T15 长会话窗口化 + minimap 继续搁置，不算主线。阶段 5 不得�
 
 ### 下一步
 
-阶段 3 的 16-23 项已实现；阶段 4 第 24-34 项 Cache Warming、上下文压缩、Codemode、
-Tool Search / Tool Exposure、Prompt Templates、Pi Packages、Shell command prefix、Telemetry、
-静态自定义 Provider 无损配置、特殊模型只读目录和 Provider `!command` Key 均已完成。
-批次 73 消息页过程投影和支线 74 也已收口。下一步更新内置 Pi runtime：
+阶段 3、阶段 4 的 24-34 项和批次 72-76 均已完成，包含 Pi 1.1.0 runtime、真实工具耗时和高级 `defaultTools` 适配。下一步进入阶段 5：
 
-1. 运行 `npm run update:pi-runtime -- 1.1.0`。
-2. 运行 `npm run build:codepiddy-runtime`。
-3. 验证 SDK 入口、commands、host peers、`quickjs-wasi`、subagent / Codemode 宿主解析、
-   Agent 启动和 model-catalog extension。
-4. 阶段 5 完整回归和收尾在 runtime smoke test 通过后执行，当前搁置。
+1. 使用 1.1.0 runtime 完整回归会话、Fork、模型、Thinking、压缩、diff、终端、MCP、Provider、Pi Packages 和 runtime rollback。
+2. 更新 PRODUCT.md、DESIGN.md、redesign-plan.md 和 Pi 审计文档的最终状态。
+3. 按验收结果拆分提交并推送。
 
 继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
 
@@ -1757,6 +1741,15 @@ Tool Search / Tool Exposure、Prompt Templates、Pi Packages、Shell command pre
 - 验证：Provider 单测 7 项、`npm run check`、desktop typecheck、`npm run build:codepiddy`、
   1600px / 900px demo 截图和真实 Electron 重启。
 
+### 2026-10-10 批次 76：内置 Pi runtime 1.1.0 与客户端适配（已实现）
+
+- 内置 `packages/coding-agent-runtime` 已从 1.0.1 更新到 1.1.0，使用 canonical runtime 更新流程；`package.json` / lockfile / bundle 已同步。
+- 新增 runtime smoke 覆盖 SDK `VERSION`、exports、commands metadata、host package entry、`quickjs-wasi`、RPC `get_state` / `get_commands` / `get_available_models` / `get_entries`、Codemode 显式加载和 model-catalog extension。
+- 工具卡 live 事件和历史 `toolResult` 现在优先使用 Pi 1.1.0 的 `durationMs`；旧 `startedAt` / `completedAt` 仅作回退。
+- 设置页工具状态支持 Pi 1.1.0 高级 `defaultTools` 语法（`+name` / `-name` / 扩展工具名）：原值展示并保留，复选框在高级模式下禁用，用户明确切换后才改写；`--exclude-tools` 按完整 Pi 语义计算。
+- 模型目录、MCP OAuth、Codemode classifier / image 能力由 runtime 自动提供；OSC 7501 不适用于 Electron GUI，`agent_settled.aborted` 继续复用现有中断状态。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、runtime smoke、Provider / tool settings 单测、transcript 功能验证和 UI 截图检查；真实 Electron 待重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1812,7 +1805,7 @@ Tool Search / Tool Exposure、Prompt Templates、Pi Packages、Shell command pre
 51. [x] **批次 73：消息页只依赖 Pi core 原生的优化**：完整范围、审计证据、任务清单 T1-T15 和回归红线见 [desktop-transcript-optimization.md](./desktop-transcript-optimization.md)。原则是只做 Pi core 原生可实现的优化，不碰 `packages/coding-agent` / `coding-agent-runtime` / `packages/ai`，不做扩展 / MCP / subagent 专用卡。T1-T5 已提交 `46f63909f`；T6-T14 和 T16 过程投影重构已提交 `5097f0666`，并通过 `check`、desktop typecheck、build、单测和 `verify:transcript`。T15 长会话窗口化先搁置。
 52. [x] **支线 74：工作区文件内联文档预览（已推送 `48247a85a`）**：docx / xlsx / xls / pptx / pdf 内联渲染，PDF 走本地 `pdfjs-dist` + 同源 worker（CSP 只放行 `connect-src blob:`），老的 `.doc` / `.ppt` 和其他二进制走「用系统默认程序打开」。含窄面板适配、去掉 docx 页面投影、激活标签落盘和 `App.tsx` 既有类型错误修复。
 53. [x] **第 15 项剩余：Provider `!command` Key（批次 75，提交 `29b6673c7`）**：Provider 编辑器支持 `secret | command` 凭据来源；命令模式写入 Pi 原生 `apiKey: "!command"`，Pi 执行 configured shell 并读取 stdout，客户端不执行命令。编辑回填、清除、来源显示、校验、Provider 重连和 7 项单测已完成。
-54. [ ] **内置 Pi runtime 更新到 1.1.0**：运行 `npm run update:pi-runtime -- 1.1.0`，随后运行 `npm run build:codepiddy-runtime`，验证 SDK 入口、commands、host peers、`quickjs-wasi`、subagent / Codemode 宿主解析、Agent 启动和 model-catalog extension。完成后才恢复阶段 5 回归。
+54. [x] **内置 Pi runtime 更新到 1.1.0（批次 76，已完成）**：`npm run update:pi-runtime -- 1.1.0` 和 `npm run build:codepiddy-runtime` 已通过；SDK、commands、host alias、`quickjs-wasi`、RPC、Codemode 和 model-catalog smoke 均通过。客户端已接入 `durationMs`，并支持无损保留 Pi 1.1.0 高级 `defaultTools`。
 
 ## 提交状态
 

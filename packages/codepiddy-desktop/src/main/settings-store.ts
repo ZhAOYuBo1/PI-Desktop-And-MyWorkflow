@@ -153,10 +153,31 @@ function normalizeCodemodeSettings(value: unknown): CodemodeSettings {
 
 function normalizeToolSettings(value: unknown): ToolSettings {
 	const record = isRecord(value) ? value : {};
-	if (!Array.isArray(record.defaultTools)) return { defaultTools: null };
+	if (!Array.isArray(record.defaultTools)) return { defaultTools: null, advancedDefaultTools: null };
+	const raw = record.defaultTools.filter((entry): entry is string => typeof entry === "string");
+	const managed =
+		raw.length === 0 ||
+		raw.every((entry) => {
+			const normalized = entry.trim();
+			return normalized === entry && isPiBuiltinToolName(normalized);
+		});
 	return {
-		defaultTools: [...new Set(record.defaultTools.filter(isPiBuiltinToolName))],
+		defaultTools: managed ? [...new Set(raw.filter(isPiBuiltinToolName))] : resolveEffectiveBuiltinTools(raw),
+		advancedDefaultTools: managed ? null : [...raw],
 	};
+}
+
+function resolveEffectiveBuiltinTools(value: readonly string[] | null): PiBuiltinToolName[] {
+	if (value === null) return [...PI_DEFAULT_TOOL_NAMES];
+	const plain = value.filter((entry) => !entry.startsWith("+") && !entry.startsWith("-"));
+	const enabled = new Set<string>(value.length === 0 ? [] : plain.length > 0 ? plain : PI_DEFAULT_TOOL_NAMES);
+	for (const entry of value) {
+		if (!entry.startsWith("+") && !entry.startsWith("-")) continue;
+		const name = entry.slice(1);
+		if (entry.startsWith("+")) enabled.add(name);
+		else enabled.delete(name);
+	}
+	return PI_BUILTIN_TOOL_NAMES.filter((tool) => enabled.has(tool));
 }
 
 function normalizeInstallTelemetryEnvironmentOverride(value: string | undefined): InstallTelemetryEnvironmentOverride {
@@ -1078,7 +1099,24 @@ export class AppSettingsStore {
 
 	async setToolSettings(input: ToolSettings): Promise<void> {
 		const settings = await this.readJsonRecord(this.piSettingsPath);
-		if (input.defaultTools === null) {
+		if (input.advancedDefaultTools !== null) {
+			if (!Array.isArray(input.advancedDefaultTools)) throw new Error("Pi 高级工具列表无效");
+			if (input.advancedDefaultTools.length > 200) throw new Error("Pi 高级工具列表最多包含 200 项");
+			const advancedDefaultTools = [
+				...new Set(
+					input.advancedDefaultTools.map((entry) => {
+						const normalized = entry.trim();
+						if (!normalized) throw new Error("Pi 高级工具项不能为空");
+						if (normalized.length > 200 || normalized.includes("\0")) {
+							throw new Error("Pi 高级工具项无效");
+						}
+						return normalized;
+					}),
+				),
+			];
+			if (advancedDefaultTools.length === 0) delete settings.defaultTools;
+			else settings.defaultTools = advancedDefaultTools;
+		} else if (input.defaultTools === null) {
 			delete settings.defaultTools;
 		} else {
 			if (!Array.isArray(input.defaultTools)) throw new Error("内置工具列表无效");
@@ -1094,8 +1132,16 @@ export class AppSettingsStore {
 	 * 启动 Agent 时还要把未勾选的内置工具传给 `--exclude-tools`，才能让 UI 的开关真正生效。
 	 */
 	async getBuiltinToolExclusions(): Promise<PiBuiltinToolName[]> {
-		const settings = await this.getToolSettings();
-		const enabled = new Set(settings.defaultTools ?? PI_DEFAULT_TOOL_NAMES);
+		let settings: Record<string, unknown> = {};
+		try {
+			settings = await this.readJsonRecord(this.piSettingsPath);
+		} catch {
+			// 配置损坏时沿用 Pi 默认工具集合。
+		}
+		const rawDefaultTools = Array.isArray(settings.defaultTools)
+			? settings.defaultTools.filter((entry): entry is string => typeof entry === "string")
+			: null;
+		const enabled = new Set(resolveEffectiveBuiltinTools(rawDefaultTools));
 		return PI_BUILTIN_TOOL_NAMES.filter((tool) => !enabled.has(tool));
 	}
 

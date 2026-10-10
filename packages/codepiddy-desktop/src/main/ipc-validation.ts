@@ -966,12 +966,18 @@ export function parseCodemodeSettings(value: unknown): CodemodeSettings {
 
 export function parseToolSettings(value: unknown): ToolSettings {
 	const input = record(value, "工具设置");
-	if (input.defaultTools === null) return { defaultTools: null };
+	let advancedDefaultTools: string[] | null = null;
+	if (input.advancedDefaultTools !== null && input.advancedDefaultTools !== undefined) {
+		if (!Array.isArray(input.advancedDefaultTools)) throw new Error("Pi 高级工具列表必须是数组或 null");
+		if (input.advancedDefaultTools.length > 200) throw new Error("Pi 高级工具列表最多包含 200 项");
+		advancedDefaultTools = input.advancedDefaultTools.map((entry) => text(entry, "Pi 高级工具项", 200));
+	}
+	if (input.defaultTools === null) return { defaultTools: null, advancedDefaultTools };
 	if (!Array.isArray(input.defaultTools)) throw new Error("内置工具列表必须是数组或 null");
 	if (input.defaultTools.length > 8) throw new Error("内置工具列表最多包含 8 项");
 	const defaultTools = [...new Set(input.defaultTools)];
 	if (!defaultTools.every(isPiBuiltinToolName)) throw new Error("内置工具列表包含无效工具名");
-	return { defaultTools };
+	return { defaultTools: defaultTools as PiBuiltinToolName[], advancedDefaultTools };
 }
 
 function piPackageScope(value: unknown): PiPackageScope {

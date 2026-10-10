@@ -23,6 +23,7 @@ export interface ToolCallCardItem {
 	isError: boolean;
 	startedAt?: number;
 	completedAt?: number;
+	durationMs?: number;
 }
 
 const OUTPUT_PREVIEW_LIMIT = 6000;
@@ -67,8 +68,12 @@ export const ToolCallCard = memo(function ToolCallCard({ item }: { item: ToolCal
 	const truncated = friendlyText.length > OUTPUT_PREVIEW_LIMIT;
 	const failureKind = item.isError ? classifyToolFailure(friendlyText) : null;
 	const duration =
-		item.status === "completed" && typeof item.startedAt === "number" && typeof item.completedAt === "number"
-			? formatElapsed(Math.max(0, item.completedAt - item.startedAt))
+		item.status === "completed"
+			? typeof item.durationMs === "number"
+				? formatElapsed(item.durationMs)
+				: typeof item.startedAt === "number" && typeof item.completedAt === "number"
+					? formatElapsed(Math.max(0, item.completedAt - item.startedAt))
+					: null
 			: null;
 	const args = parseToolArgs(item.args);
 	const action = nativeToolAction(item.name);

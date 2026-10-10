@@ -122,14 +122,16 @@ export function ToolSettingsPanel({
 	onOpenMcp: () => void;
 	onSaved?: () => Promise<string | null> | string | null;
 }) {
-	const [draft, setDraft] = useState<ToolSettings>(() => settings ?? { defaultTools: null });
+	const [draft, setDraft] = useState<ToolSettings>(
+		() => settings ?? { defaultTools: null, advancedDefaultTools: null },
+	);
 	const [dirty, setDirty] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [servers, setServers] = useState<McpServerSummary[] | null>(demoMode ? DEMO_MCP_SERVERS : null);
 	const [serversLoading, setServersLoading] = useState(false);
 
 	useEffect(() => {
-		setDraft(settings ?? { defaultTools: null });
+		setDraft(settings ?? { defaultTools: null, advancedDefaultTools: null });
 		setDirty(false);
 	}, [settings]);
 
@@ -157,18 +159,27 @@ export function ToolSettingsPanel({
 	}, [loadMcpServers]);
 
 	const effectiveTools = new Set<PiBuiltinToolName>(draft.defaultTools ?? PI_DEFAULT_TOOL_NAMES);
-	const custom = draft.defaultTools !== null;
+	const advanced = draft.advancedDefaultTools !== null;
+	const custom = draft.defaultTools !== null || advanced;
 
 	function toggleTool(name: PiBuiltinToolName, checked: boolean): void {
 		const next = new Set<PiBuiltinToolName>(draft.defaultTools ?? PI_DEFAULT_TOOL_NAMES);
 		if (checked) next.add(name);
 		else next.delete(name);
-		setDraft({ defaultTools: PI_BUILTIN_TOOL_NAMES.filter((tool) => next.has(tool)) });
+		setDraft({ defaultTools: PI_BUILTIN_TOOL_NAMES.filter((tool) => next.has(tool)), advancedDefaultTools: null });
 		setDirty(true);
 	}
 
 	function resetToPiDefault(): void {
-		setDraft({ defaultTools: null });
+		setDraft({ defaultTools: null, advancedDefaultTools: null });
+		setDirty(true);
+	}
+
+	function useCodePIddySelection(): void {
+		setDraft({
+			defaultTools: draft.defaultTools ?? PI_DEFAULT_TOOL_NAMES,
+			advancedDefaultTools: null,
+		});
 		setDirty(true);
 	}
 
@@ -206,18 +217,35 @@ export function ToolSettingsPanel({
 						</p>
 					</div>
 					<div className="skill-settings-actions">
-						<div className="settings-status">{custom ? "自定义" : "Pi 默认"}</div>
+						<div className="settings-status">{advanced ? "Pi 高级" : custom ? "自定义" : "Pi 默认"}</div>
 						<button className="secondary-button" type="button" disabled={!custom} onClick={resetToPiDefault}>
 							恢复 Pi 默认
 						</button>
+						{advanced ? (
+							<button className="secondary-button" type="button" onClick={useCodePIddySelection}>
+								改用 CodePIddy 选择
+							</button>
+						) : null}
 					</div>
 				</div>
+
+				{advanced ? (
+					<StateBlock tone="warning" compact title="settings.json 使用 Pi 高级工具选择">
+						<div className="tool-settings-advanced-list">
+							{draft.advancedDefaultTools?.map((entry) => (
+								<code key={entry}>{entry}</code>
+							))}
+						</div>
+						这里包含 +name / -name 或扩展工具名，CodePIddy 不会自动改写。
+					</StateBlock>
+				) : null}
 
 				<div className="tool-settings-grid">
 					{BUILTIN_TOOL_OPTIONS.map((tool) => (
 						<SettingsCheckbox
 							className="tool-settings-option"
 							key={tool.name}
+							disabled={advanced}
 							checked={effectiveTools.has(tool.name)}
 							onChange={(checked) => toggleTool(tool.name, checked)}
 							trailing={<span className="tool-settings-kind">内置</span>}

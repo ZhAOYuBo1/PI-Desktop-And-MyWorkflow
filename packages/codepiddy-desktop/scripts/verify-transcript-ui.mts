@@ -71,6 +71,7 @@ async function verifyTranscriptUi(page: Page): Promise<void> {
 	// T1：原生工具语义行
 	await visibleText(page, ".tool-action", "读取", "T1 read 动作");
 	await visibleText(page, ".tool-summary-text", "WorkPanel.tsx", "T1 read 摘要");
+	await visibleText(page, ".tool-elapsed", "2.5s", "Pi tool durationMs");
 	await visibleText(page, ".tool-action", "运行", "T1 bash 动作");
 	await visibleText(page, ".tool-summary-text", "npm run check", "T1 bash 摘要");
 

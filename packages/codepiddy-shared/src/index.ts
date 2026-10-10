@@ -275,6 +275,11 @@ export function isPiBuiltinToolName(value: unknown): value is PiBuiltinToolName 
 export interface ToolSettings {
 	/** null 表示使用 Pi 的标准内置工具集合。 */
 	defaultTools: PiBuiltinToolName[] | null;
+	/**
+	 * Pi 1.1.0 起 defaultTools 还支持 +name / -name 增量和扩展工具名。
+	 * 非 null 时表示 settings.json 使用高级格式，CodePIddy 原样保留。
+	 */
+	advancedDefaultTools: string[] | null;
 }
 
 export type InstallTelemetryEnvironmentOverride = "enabled" | "disabled" | null;

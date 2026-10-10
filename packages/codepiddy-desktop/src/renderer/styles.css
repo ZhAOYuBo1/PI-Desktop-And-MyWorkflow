@@ -6185,6 +6185,20 @@ body {
   font-family: var(--cp-font-mono);
 }
 
+.tool-settings-advanced-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cp-space-xs);
+  margin-bottom: var(--cp-space-xs);
+}
+
+.tool-settings-advanced-list code {
+  padding: 2px var(--cp-space-xs);
+  border-radius: var(--cp-radius-sm);
+  background: var(--cp-surface-inset);
+  color: var(--cp-ink-secondary);
+}
+
 .provider-field-hint {
   color: var(--cp-ink-muted);
   font-size: 11px;
