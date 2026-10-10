@@ -318,7 +318,7 @@ components:
 
 设置页是左侧分类导航 + 右侧内容，一次只显示一个分类：`常规`（Pi 运行时、Shell、工具、Codemode、缓存预热、上下文压缩、诊断）、`集成`（Provider 与模型、llama.cpp、MCP 服务、分享）、`Agent`（Agent Skills、Prompt 模板、Pi Packages）。导航是 208px 的次级底色列，选中项白底抬起；不再把所有设置堆在同一页。
 
-- **Provider 与模型**：读写 Pi 原生 `~/.pi/agent/models.json`。API Key 用 Electron safeStorage 加密保存在本机，models.json 里只写 `$ENV` 引用，启动 Agent 时通过环境变量注入，不落明文。下方“常用模型范围”把选中的模型写入 Pi 原生 `settings.json` 的 `enabledModels`；模型选择器优先显示“常用模型 · provider”，部分选择时再显示“其他模型”，明确清空常用列表时才显示“全部模型”。
+- **Provider 与模型**：读写 Pi 原生 `~/.pi/agent/models.json`。直接 API Key 用 Electron safeStorage 加密保存在本机，models.json 里只写 `$ENV` 引用，启动 Agent 时通过环境变量注入，不落明文；也可选择 Pi 原生 `!command`，客户端只保存命令文本，由 Pi 使用 configured shell 执行并读取 stdout。下方“常用模型范围”把选中的模型写入 Pi 原生 `settings.json` 的 `enabledModels`；模型选择器优先显示“常用模型 · provider”，部分选择时再显示“其他模型”，明确清空常用列表时才显示“全部模型”。
 - **Pi 运行时 / 项目信任**：读取 Pi 原生 `~/.pi/agent/trust.json`。只有项目存在需要信任的本地资源且没有已保存或继承决定时才弹窗；可选择信任当前项目、信任父目录、不信任或稍后。Agent 不再无条件使用 `--approve`，项目资源是否加载由 trust 决定。
 - **Session 统计**：会话树和输入区上下文圆环可打开统计面板，显示 Session ID / 文件、消息数、工具调用与结果、Token、费用和上下文占用；只读 RPC `get_session_stats`，不改 Session 文件。
 - **缓存预热**：读写 Pi 原生 `settings.json` 的 `cacheWarming`（`off / streaming / idle`）和 `showCacheMissNotices`。Provider 支持 prompt caching 时，在缓存过期前用一次很小的请求续上前缀，减少下一轮的 cache miss 费用。会话统计面板显示当前模式、cache miss penalty、refresh cost、expected savings 和最近一次决策；Pi 1.0.1 的 RPC 不暴露实时 `cacheWarmingStatus`，决策数据由 `cache_warming_decision` 扩展事件写入状态文件。

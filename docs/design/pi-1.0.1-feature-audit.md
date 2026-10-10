@@ -524,11 +524,12 @@ cost, promptCache, contextWindow, maxTokens, samplingParams, headers, compat
 12. [x] 支持 Provider OAuth、API Key、device code、manual code 和浏览器回调；OpenRouter 真实 OAuth 登录 / 退出已验证。
 13. [x] 登录成功后刷新 Provider、模型列表和当前 Agent 配置；空闲 Agent 自动重连，运行中 Agent 延后生效。
 14. [x] 增加 Provider 状态、退出登录和凭据来源显示；退出登录只对 `auth.json` 来源开放。
-15. [ ] 增加 Provider `!command` Key 配置入口。Pi core 已支持 `apiKey: "!command"`，
-    通过命令 stdout 解析 Key；客户端缺受控输入、校验、凭据来源和 Agent 重连。`auth.provider`
-    已在 MCP 设置页覆盖，不再作为本项阻塞。此项在 2026-10-10 用户确认后重新纳入主线。
+15. [x] 增加 Provider `!command` Key 配置入口。批次 75 提交 `29b6673c7`：Provider 编辑器的
+    凭据来源支持 `加密 API Key | Shell 命令`；命令模式写入 Pi 原生 `apiKey: "!command"`，
+    Pi 使用 configured shell 执行并从 stdout 解析 Key。CodePIddy 不执行命令；支持编辑回填、
+    清除、来源显示、合法来源校验和 Provider 变更后的 Agent 重连。Provider 单测 7 项通过。
 
-批次 43（提交 `5d489c02a`）已完成第 14 项；批次 44（提交 `796171533`）已完成第 13 项；批次 46（提交 `e0e81b4c9`）已完成第 12 项真实 OpenRouter OAuth 验收。阶段 2 其余项已收口；第 15 项只剩 Provider `!command` Key，现重新进入主线，排在批次 72 之后、Pi 1.1.0 runtime 更新之前。
+批次 43（提交 `5d489c02a`）已完成第 14 项；批次 44（提交 `796171533`）已完成第 13 项；批次 46（提交 `e0e81b4c9`）已完成第 12 项真实 OpenRouter OAuth 验收。阶段 2 已收口。
 
 ### 阶段 3：会话和命令补齐
 
@@ -588,12 +589,12 @@ cost, promptCache, contextWindow, maxTokens, samplingParams, headers, compat
 可用性，并且只能在 Codemode 里用 `models.generateImages()` 调用；客户端尚未提供单独的
 默认生图模型选择和图片生成 UI。
 
-下一项补第 15 项 Provider `!command` Key；完成后才更新内置 Pi runtime 到 1.1.0，
-然后恢复阶段 5 回归。
+第 15 项 Provider `!command` Key 已完成。下一步更新内置 Pi runtime 到 1.1.0，随后恢复
+阶段 5 回归。
 
 ### 阶段 5：回归和收尾
 
-35. 等批次 72 和第 15 项 `!command` Key 完成、内置 runtime 更新到 1.1.0 后，
+35. 等批次 72、批次 75 `!command` Key 完成且内置 runtime 更新到 1.1.0 后，
     用 Pi 1.1.0 回归会话、Fork、模型、Thinking、压缩、diff、终端、MCP、登录、Pi Packages
     和 runtime rollback。阶段 5 当前搁置。
 36. 跑：

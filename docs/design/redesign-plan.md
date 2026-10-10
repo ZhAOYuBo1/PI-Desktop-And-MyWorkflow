@@ -73,12 +73,12 @@ docs/design/ui-component-rules.md、docs/design/pi-1.0.1-feature-audit.md、
 docs/design/reference-dsh-workbench.md；要做消息页优化时再读
 docs/design/desktop-transcript-optimization.md。
 
-批次 1-73、支线 74 和批次 72 已实现；批次 72 特殊模型只读目录代码提交 `317087bec`。
-批次 73 消息页 T6-T14/T16 过程投影重构提交 `5097f0666`，Pi runtime 回退修复提交
-`0c7b350c1`，交接文档提交 `c1fa1d8e0`。
+批次 1-73、支线 74、批次 72 和批次 75 已实现；批次 72 特殊模型只读目录代码提交
+`317087bec`。批次 73 消息页 T6-T14/T16 过程投影重构提交 `5097f0666`，Pi runtime
+回退修复提交 `0c7b350c1`。批次 75 Provider `!command` Key 代码提交 `29b6673c7`，
+交接文档提交紧随其后；当前 HEAD 以 `git log -1` 为准。
 `origin/main` 仍是 `48247a85a`，本地 `main` 领先数量以 `git rev-list --count origin/main..HEAD`
-为准；本轮文档提交紧随代码提交，当前 HEAD 以 `git log -1` 为准。先看 `git status`。
-当前 HEAD 以 `git log -1` 为准。不要恢复已删除的 permission / Tavily 专用实现。
+为准；用户未要求时不要推送。不要恢复已删除的 permission / Tavily 专用实现。
 
 消息页过程投影已经完成，不要再重做：
 - `model_change` / `thinking_level_change` 继续保留为独立时间线行，不删除。
@@ -92,17 +92,16 @@ docs/design/desktop-transcript-optimization.md。
 1. 批次 72「特殊模型只读目录」已完成并提交 `317087bec`。它只做运行目录、类型、来源和
    可用性诊断，不是生图配置 / 生成 UI；OpenRouter 内置 image 模型仍需先完成 Provider 登录，
    再通过 Codemode `models.generateImages()` 调用。
-2. 当前第一优先级是第 15 项剩余功能：Provider `!command` Key。Pi core 已支持
-   `apiKey: "!command"`，
-   通过命令输出解析 Key；客户端缺配置入口。先审计现有 Provider 高级 JSON / schema，再决定
-   受控输入、校验、凭据来源显示和 Agent 重连行为。不要自己实现命令执行层，复用 Pi 原生解析。
-   `auth.provider` 已在 MCP 设置页覆盖，不算本项阻塞。
-3. 第 15 项完成后，再更新内置 Pi runtime 到 1.1.0：使用
-   `npm run update:pi-runtime -- <version>`，然后做 runtime smoke test。不要提前用 1.1.0
-   重写 `!command` 的实现。
+2. 批次 75「Provider `!command` Key」已完成并提交 `29b6673c7`。Pi 原生负责执行命令和读取
+   stdout；客户端只提供 `secret | command` 受控来源、命令编辑、校验、来源显示、清除和
+   Agent 重连，不执行命令。
+3. 下一步更新内置 Pi runtime 到 `1.1.0`：使用
+   `npm run update:pi-runtime -- 1.1.0`，随后运行 `npm run build:codepiddy-runtime` 和
+   runtime smoke test。不要提前用 1.1.0 重做 `!command`。
 4. 最后再恢复阶段 5 的完整回归、`PRODUCT.md` / `DESIGN.md` / 审计文档更新和推送。
 
-不要重做已验收功能：工作区文件工作台 / 文档预览、特殊模型只读目录、Provider 无损保存、MCP、Prompt 模板、
+不要重做已验收功能：工作区文件工作台 / 文档预览、特殊模型只读目录、Provider 无损保存、
+Provider `!command` Key、MCP、Prompt 模板、
 Pi Packages、Shell command prefix、Telemetry、Agent 会话管理、Fork、快速定位条、诊断包、
 上下文压缩、Codemode、统一组件规则。
 
@@ -241,17 +240,17 @@ UI 改完 build 通过后自动重启 Electron，不用询问用户。
 - **不改 Pi core（`packages/coding-agent`）**。Pi 可以更新，所有增强必须走它提供的扩展点（`tool_call` / `tool_result` / `tool_execution_*` 等）。
 - 不引入 Tailwind 或第二套框架，沿用现有 Vite + React + 单个 `styles.css` 的组织方式，必要时拆成多个 CSS 分片。
 
-## 当前状态（2026-10-10 批次 72 已提交，主线轮到 Provider `!command` Key）
+## 当前状态（2026-10-10 批次 75 已提交，下一步更新内置 Pi 1.1.0）
 
 ### 主线顺序（2026-10-10 用户确认）
 
 1. 批次 72：特殊模型只读目录，已完成并提交 `317087bec`。
-2. 第 15 项剩余功能：Provider `!command` Key。Pi core 已支持命令型 Key，
-   客户端补受控配置入口、校验、凭据来源和 Agent 重连；MCP 的 `auth.provider` 已完成，不再混在本项。
-3. 以上两项完成后，再更新内置 Pi runtime 到 `1.1.0`，并跑 runtime smoke test。
+2. 批次 75：Provider `!command` Key，已完成并提交 `29b6673c7`。命令型 Key 写入 Pi
+   原生 `models.json`，由 Pi 的 configured shell 执行并读取 stdout；CodePIddy 不执行命令。
+3. 下一步更新内置 Pi runtime 到 `1.1.0`，并跑 runtime smoke test。
 4. 最后恢复阶段 5 的完整回归、最终文档和推送。
 
-T15 长会话窗口化 + minimap 继续搁置，不算主线。阶段 5 不得提前回填到前两项之前。
+T15 长会话窗口化 + minimap 继续搁置，不算主线。阶段 5 不得提前回填到 runtime 更新之前。
 
 ### 批次 72：特殊模型只读目录（已提交 `317087bec`）
 
@@ -269,6 +268,18 @@ T15 长会话窗口化 + minimap 继续搁置，不算主线。阶段 5 不得�
 - 验证已通过：`npm run check`、desktop typecheck、`npm run build:codepiddy`、
   `npm run build:codepiddy-runtime`、扩展单测 2 项、`?demo=1` 宽 / 窄窗截图和真实 Electron
   启动后的快照读取。
+
+### 批次 75：Provider `!command` Key（已提交 `29b6673c7`）
+
+- 「集成 > Provider 与模型」的凭据来源新增 `加密 API Key | Shell 命令`。命令模式把
+  `apiKey: "!command"` 原样写入 `models.json`，由 Pi 使用 configured shell 执行并读取 stdout。
+- CodePIddy 不执行 Provider 命令。编辑已有命令型 Provider 时会回填命令；清除凭据会同时移除
+  加密 Key、环境变量引用或命令字段。Provider 列表显示「Shell 命令输出」来源。
+- 保存 / 删除继续触发现有 Provider 变更回调：空闲 Agent 自动重连，运行中 Agent 延后生效。
+- 共享类型新增 `ProviderApiKeySource` 与只读 `credentialCommand`；主进程校验拒绝未知来源、
+  缺少 API Key / 命令和非法字段。
+- 验证已通过：Provider 单测 7 项、`npm run check`、desktop typecheck、
+  `npm run build:codepiddy`、1600px / 900px demo 截图和真实 Electron 重启。
 
 ### 支线 74：工作区文件内联文档预览（已推送 `48247a85a`）
 
@@ -499,19 +510,21 @@ T15 长会话窗口化 + minimap 继续搁置，不算主线。阶段 5 不得�
 - 已提交：批次 69 Shell command prefix `cab6fa4ff`、批次 70 Telemetry `cc55936ec`、批次 71 Provider 无损保存 `e46d0010e`
 - 已提交并推送：支线 74 工作区文件内联文档预览 `48247a85a`
 
-批次 1-71 和支线 74 工作区文档预览都已提交并推送到 `origin/main`。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
+批次 1-71 和支线 74 工作区文档预览已推送到 `origin/main`；批次 72 和批次 75 已在本地
+`main` 提交。详细过程见下方进度日志和 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md)。
 
 ### 下一步
 
 阶段 3 的 16-23 项已实现；阶段 4 第 24-34 项 Cache Warming、上下文压缩、Codemode、
 Tool Search / Tool Exposure、Prompt Templates、Pi Packages、Shell command prefix、Telemetry、
-静态自定义 Provider 无损配置和特殊模型只读目录均已完成。批次 73 消息页过程投影和支线 74
-也已收口。下一步进入 [pi-1.0.1-feature-audit.md](./pi-1.0.1-feature-audit.md) 阶段 2 第 15 项：
+静态自定义 Provider 无损配置、特殊模型只读目录和 Provider `!command` Key 均已完成。
+批次 73 消息页过程投影和支线 74 也已收口。下一步更新内置 Pi runtime：
 
-1. 审计现有 Provider 高级 JSON / schema、凭据来源显示和 Agent 重连行为。
-2. 增加 Provider `!command` Key 的受控配置入口、校验和错误反馈；复用 Pi 原生解析。
-3. 完成后再更新内置 Pi runtime 到 1.1.0。
-4. 阶段 5 完整回归和收尾在 Pi 1.1.0 更新后执行，当前搁置。
+1. 运行 `npm run update:pi-runtime -- 1.1.0`。
+2. 运行 `npm run build:codepiddy-runtime`。
+3. 验证 SDK 入口、commands、host peers、`quickjs-wasi`、subagent / Codemode 宿主解析、
+   Agent 启动和 model-catalog extension。
+4. 阶段 5 完整回归和收尾在 runtime smoke test 通过后执行，当前搁置。
 
 继续遵守客户端优先原则：能通过 RPC、SDK、配置文件或外壳 helper 实现的功能，不强行做成 slash command；TUI-only 功能不复刻。
 
@@ -1721,6 +1734,29 @@ Tool Search / Tool Exposure、Prompt Templates、Pi Packages、Shell command pre
 - 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、`workspace-fs.test.ts` 6 项、
   560px / 300px 面板宽度的端到端渲染（左右裁切量均为 0）、`?demo=1` 冒烟；真实 Electron 已重启。
 
+### 2026-10-10 批次 72：特殊模型只读目录（已提交 `317087bec`）
+
+- 新增 Agent 进程 `model-catalog` extension，读取 `modelRegistry.getModelsOfType()` /
+  `getAvailableOfType()`，每个 Agent 写入独立 JSON 快照。
+- 桌面端在「Provider 与模型」只读展示 chat / virtual / classifier / image 的类型、来源、
+  API、可用性和限制，支持搜索、分组和分段展开。
+- 真实运行时快照为 chat 1540 / classifier 20 / image 59，无扩展错误，当前无 virtual 模型。
+- 该批次只做诊断；生图仍由 OpenRouter Provider 登录 / Key 加 Codemode
+  `models.generateImages()` 完成，不是生图配置 UI。
+- 验证：`npm run check`、desktop typecheck、`npm run build:codepiddy`、
+  `npm run build:codepiddy-runtime`、扩展单测 2 项、demo 宽 / 窄窗和真实 Electron 快照。
+
+### 2026-10-10 批次 75：Provider `!command` Key（已提交 `29b6673c7`）
+
+- Provider 编辑器新增 `加密 API Key | Shell 命令` 凭据来源；命令模式把
+  `apiKey: "!command"` 写入 Pi 原生 `models.json`，由 Pi 的 configured shell 执行并读取
+  stdout，CodePIddy 不执行命令。
+- 编辑命令型 Provider 时回填命令；清除凭据会移除 safeStorage 密钥、环境变量引用或命令字段；
+  Provider 列表显示「Shell 命令输出」来源。
+- 保存 / 删除复用 Provider 变更回调；空闲 Agent 自动重连，运行中 Agent 延后生效。
+- 验证：Provider 单测 7 项、`npm run check`、desktop typecheck、`npm run build:codepiddy`、
+  1600px / 900px demo 截图和真实 Electron 重启。
+
 ## 待办清单（按优先级，下一批从这里挑）
 
 1. [x] **会话树弹窗**：批次 18 已验收，随 `4473a98` 提交。
@@ -1775,11 +1811,12 @@ Tool Search / Tool Exposure、Prompt Templates、Pi Packages、Shell command pre
 50. [x] **批次 72：特殊模型目录**：已由 Agent 进程 extension 读取完整 runtime 模型目录，只读展示 chat / virtual / classifier / image、来源和可用性；desktop 支持搜索、类型分组和分段展开。代码提交 `317087bec`。本批次只做诊断，不解决生图配置 / 生成入口。RPC `get_available_models` 不能作为唯一数据源；未给 `models.json` 添加无效 image / classifier 类型，未恢复 provider extension。
 51. [x] **批次 73：消息页只依赖 Pi core 原生的优化**：完整范围、审计证据、任务清单 T1-T15 和回归红线见 [desktop-transcript-optimization.md](./desktop-transcript-optimization.md)。原则是只做 Pi core 原生可实现的优化，不碰 `packages/coding-agent` / `coding-agent-runtime` / `packages/ai`，不做扩展 / MCP / subagent 专用卡。T1-T5 已提交 `46f63909f`；T6-T14 和 T16 过程投影重构已提交 `5097f0666`，并通过 `check`、desktop typecheck、build、单测和 `verify:transcript`。T15 长会话窗口化先搁置。
 52. [x] **支线 74：工作区文件内联文档预览（已推送 `48247a85a`）**：docx / xlsx / xls / pptx / pdf 内联渲染，PDF 走本地 `pdfjs-dist` + 同源 worker（CSP 只放行 `connect-src blob:`），老的 `.doc` / `.ppt` 和其他二进制走「用系统默认程序打开」。含窄面板适配、去掉 docx 页面投影、激活标签落盘和 `App.tsx` 既有类型错误修复。
-53. [ ] **第 15 项剩余：Provider `!command` Key**：批次 71 已保留 Provider 高级 JSON 字段，但客户端仍缺命令型 Key 的受控配置入口和行为说明。Pi core 已支持 `apiKey: "!command"`，由命令 stdout 解析 Key；客户端必须复用 Pi 原生解析，不自己实现命令执行层。实现前先审计现有 Provider 高级 JSON、凭据来源显示、非法命令反馈和空闲 Agent 重连。完成后才进入 Pi 1.1.0 runtime 更新。
+53. [x] **第 15 项剩余：Provider `!command` Key（批次 75，提交 `29b6673c7`）**：Provider 编辑器支持 `secret | command` 凭据来源；命令模式写入 Pi 原生 `apiKey: "!command"`，Pi 执行 configured shell 并读取 stdout，客户端不执行命令。编辑回填、清除、来源显示、校验、Provider 重连和 7 项单测已完成。
+54. [ ] **内置 Pi runtime 更新到 1.1.0**：运行 `npm run update:pi-runtime -- 1.1.0`，随后运行 `npm run build:codepiddy-runtime`，验证 SDK 入口、commands、host peers、`quickjs-wasi`、subagent / Codemode 宿主解析、Agent 启动和 model-catalog extension。完成后才恢复阶段 5 回归。
 
 ## 提交状态
 
-批次 55-71 连同支线 64-66 工作区文件工作台、批次 67 Pi Packages、批次 68 边界清理、批次 69 Shell command prefix、批次 70 Telemetry、批次 71 Provider 无损保存、批次 73 消息页优化 T1-T5 和支线 74 工作区文档预览都已推送到 `origin/main`。`origin/main` 为 `48247a85a`；本地 `main` 已在其上追加批次 73 过程投影重构 `5097f0666`、Pi runtime 回退修复 `0c7b350c1`、文档状态提交 `c1fa1d8e0` 和批次 72 特殊模型目录 `317087bec`，具体 HEAD 以 `git log -1` 为准。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`，批次 69 提交 `cab6fa4ff`，批次 70 提交 `cc55936ec`，批次 71 提交 `e46d0010e`，批次 72 提交 `317087bec`，支线 74 文档预览提交 `48247a85a`。批次 73 消息页优化在 T1-T5 `46f63909f` 之后，另有 session 提交了 `03eb42ab3`、`f0c5561bc`、`ab013f758`、`898a46d16`、`d8caf0951`，并用 `59f0ea3a8` 回滚了其中的 pending session 快照实现。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
+批次 55-71 连同支线 64-66 工作区文件工作台、批次 67 Pi Packages、批次 68 边界清理、批次 69 Shell command prefix、批次 70 Telemetry、批次 71 Provider 无损保存、批次 73 消息页优化 T1-T5 和支线 74 工作区文档预览都已推送到 `origin/main`。`origin/main` 为 `48247a85a`；本地 `main` 已在其上追加批次 73 过程投影重构 `5097f0666`、Pi runtime 回退修复 `0c7b350c1`、文档状态提交 `c1fa1d8e0`、批次 72 特殊模型目录 `317087bec` 和批次 75 Provider `!command` Key `29b6673c7`，具体 HEAD 以 `git log -1` 为准。批次 58 Cache Warming 提交 `c17b64abf`，批次 59 云朵图标和 Provider 登录弹窗嵌套滚动条收口提交 `6640bc795`，批次 60 上下文压缩提交 `db4e91195`，批次 61 Codemode 与 Provider 模型刷新提交 `ec4dde669`，批次 62 工具设置与 MCP 自动刷新提交 `6815fc026`，批次 63 Prompt 模板提交 `8a9231079`，支线 64 工作区文件管理提交 `293c6a5e2`，批次 65 工作区文件工作台增强提交 `66f6bbe18`，支线 66 工作区文件撤销栈提交 `a1a2c0870`，批次 67 提交 `3db8f6a37`，批次 68 提交 `65607e721`，批次 69 提交 `cab6fa4ff`，批次 70 提交 `cc55936ec`，批次 71 提交 `e46d0010e`，批次 72 提交 `317087bec`，批次 75 提交 `29b6673c7`，支线 74 文档预览提交 `48247a85a`。批次 73 消息页优化在 T1-T5 `46f63909f` 之后，另有 session 提交了 `03eb42ab3`、`f0c5561bc`、`ab013f758`、`898a46d16`、`d8caf0951`，并用 `59f0ea3a8` 回滚了其中的 pending session 快照实现。另一个 session 还提交了 `fe973c826`、`032505627`、`4909d90dd`、`6592f46d0`、`b3693adba`、`7abba1aa1`、`c7174fadc`、`ebd1ea58b`、`873784d2c`。提交哈希以 `git log -1` 为准。
 
 `E:\trust-demo-project` 是本机测试信任弹窗用的外部目录，不在仓库中。若要在同一机器重复测试，需要先删除 `C:\Users\zhaoy\.pi\agent\trust.json` 中该路径的决定。
 
@@ -1857,12 +1894,13 @@ subagent / codemode 的宿主解析。
 | 2026-10-09 | 消息页 `model_change` / `thinking_level_change` 继续保留为独立时间线行，过程块只包含工具和非最终 assistant 片段 | 参考项目不渲染这类 session entry，但用户明确需要客户端展示；通过独立事件切断过程块同时满足两者 |
 | 2026-10-10 | 主线先做批次 72、再做 Provider `!command` Key，两项完成后再更新内置 Pi runtime 到 1.1.0 | 用户要求先在 1.0.1 基线上补齐功能，避免把实现细节和 runtime 升级耦合；阶段 5 回归在 1.1.0 后执行 |
 | 2026-10-10 | MCP `auth.provider` 已完成；第 15 项只剩 Provider `!command` Key | 原第 15 项混列两个字段，实际剩余缺口只有命令型 Provider Key |
+| 2026-10-10 | Provider `!command` 由 Pi 原生执行，CodePIddy 只管理 `models.json` 引用和 UI | 客户端不能复制 core 的命令执行、缓存和认证解析；直接 Key 继续走 safeStorage，命令型 Key 只保存命令文本 |
 
 ## 待用户确认
 
 - Pi Packages、package 资源和 runtime 更新待用户验收；批次 63-71 和支线 74 已推送到 `origin/main`。
 - 支线 74 工作区文档预览已推送 `48247a85a`；用户已确认 docx/xlsx/pptx/pdf 预览、去阴影、窄面板适配和激活标签持久化可用。
 - 批次 72 特殊模型只读目录已提交 `317087bec`；不要恢复 provider extension 或给 `models.json` 添加假 image / classifier 类型。
-- 下一步补 Provider `!command` Key。Pi core 已支持命令型 Key，客户端只复用它，不自己实现命令执行层；`auth.provider` 已在 MCP 设置页覆盖。
-- `!command` 完成后再更新内置 runtime 到 Pi 1.1.0，最后恢复阶段 5 完整回归和收尾。
+- 批次 75 Provider `!command` Key 已提交 `29b6673c7`；Pi core 仍负责执行命令和解析 stdout，客户端不执行命令。
+- 下一步更新内置 runtime 到 Pi 1.1.0，完成 runtime smoke test 后再恢复阶段 5 完整回归和收尾。
 - 批次 73 消息页 T1-T14/T16 已提交 `5097f0666`；T15 长会话窗口化继续搁置。
