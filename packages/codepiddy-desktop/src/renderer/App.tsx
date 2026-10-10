@@ -53,6 +53,7 @@ import { CompactionSettingsPanel } from "./components/CompactionSettingsPanel.ts
 import { DiagnosticsSettings } from "./components/DiagnosticsSettings.tsx";
 import { FileMentionMenu } from "./components/FileMentionMenu.tsx";
 import { McpSettings } from "./components/McpSettings.tsx";
+import { ModelCatalogSettings } from "./components/ModelCatalogSettings.tsx";
 import { ModelScopeSettings } from "./components/ModelScopeSettings.tsx";
 import { MessageContent } from "./components/message-content.tsx";
 import { ModalShell } from "./components/modal-shell.tsx";
@@ -6389,6 +6390,10 @@ export function App() {
 								activeAgent={activeAgentLocator ?? lastActiveAgentLocatorRef.current}
 								refreshToken={providerSettingsRefreshToken}
 								onSelectionChange={handleModelScopeSelectionChange}
+							/>
+							<ModelCatalogSettings
+								activeAgent={activeAgentLocator ?? lastActiveAgentLocatorRef.current}
+								refreshToken={providerSettingsRefreshToken}
 							/>
 						</div>
 						<div className="settings-section-slot" hidden={settingsSection !== "mcp"}>

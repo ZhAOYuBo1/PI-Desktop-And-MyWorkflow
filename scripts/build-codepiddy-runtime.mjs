@@ -47,6 +47,11 @@ await Promise.all([
 		entryPoints: [path.join(repositoryRoot, "packages", "codepiddy-cache-warming-extension", "index.ts")],
 		outfile: path.join(outputRoot, "extensions", "cache-warming.js"),
 	}),
+	build({
+		...common,
+		entryPoints: [path.join(repositoryRoot, "packages", "codepiddy-model-catalog-extension", "index.ts")],
+		outfile: path.join(outputRoot, "extensions", "model-catalog.js"),
+	}),
 ]);
 
 await Promise.all([

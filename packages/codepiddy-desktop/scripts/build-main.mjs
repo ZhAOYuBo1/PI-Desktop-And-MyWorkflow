@@ -39,6 +39,14 @@ await Promise.all([
     target: "node22",
   }),
   build({
+    entryPoints: ["../codepiddy-model-catalog-extension/index.ts"],
+    outfile: "dist/runtime-extensions/model-catalog.js",
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+  }),
+  build({
     entryPoints: ["src/preload/index.ts"],
     outfile: "dist/preload/index.cjs",
     bundle: true,

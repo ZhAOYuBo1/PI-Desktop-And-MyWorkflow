@@ -489,6 +489,7 @@ export interface CodePIddyClientApi extends ProjectClientApi {
 	getAgentModelSelection(input: AgentInstanceLocator): Promise<AgentModelSelection>;
 	getAgentModelScope(input: AgentInstanceLocator): Promise<AgentModelScope>;
 	refreshAgentModelScope(input: AgentInstanceLocator): Promise<AgentModelRefreshResult>;
+	getAgentModelCatalog(input: AgentInstanceLocator): Promise<SpecialModelCatalogSnapshot | null>;
 	getAgentCommands(input: AgentInstanceLocator): Promise<AgentCommandOption[]>;
 	setAgentModel(input: SetAgentModelInput): Promise<AgentModelSelection>;
 	setAgentModelScope(input: SetAgentModelScopeInput): Promise<AgentModelScope>;
@@ -1236,6 +1237,29 @@ export interface AgentModelScope {
 export interface AgentModelRefreshResult {
 	scope: AgentModelScope;
 	selection: AgentModelSelection;
+}
+
+export type SpecialModelCatalogType = "chat" | "virtual" | "classifier" | "image";
+
+export type SpecialModelCatalogSource = "configured" | "extension" | "virtual";
+
+export interface SpecialModelCatalogEntry {
+	provider: string;
+	id: string;
+	name: string;
+	type: SpecialModelCatalogType;
+	api: string;
+	source: SpecialModelCatalogSource;
+	available: boolean | null;
+	contextWindow?: number;
+	maxTokens?: number;
+}
+
+export interface SpecialModelCatalogSnapshot {
+	version: 1;
+	updatedAt: string;
+	models: SpecialModelCatalogEntry[];
+	errors: string[];
 }
 
 export interface SetAgentModelInput extends AgentInstanceLocator {

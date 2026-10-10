@@ -90,6 +90,7 @@ const channels = {
 	getAgentModelSelection: "codepiddy:agent:model:get",
 	getAgentModelScope: "codepiddy:agent:model:scope:get",
 	refreshAgentModelScope: "codepiddy:agent:model:scope:refresh",
+	getAgentModelCatalog: "codepiddy:agent:model:catalog:get",
 	getAgentCommands: "codepiddy:agent:commands:get",
 	getProjectWriteLeaseStatus: "codepiddy:write-lease:get",
 	clearStaleProjectWriteLease: "codepiddy:write-lease:clear-stale",
@@ -208,6 +209,7 @@ const api: CodePIddyClientApi = {
 	getAgentModelScope: (input: AgentInstanceLocator) => ipcRenderer.invoke(channels.getAgentModelScope, input),
 	refreshAgentModelScope: (input: AgentInstanceLocator): Promise<AgentModelRefreshResult> =>
 		ipcRenderer.invoke(channels.refreshAgentModelScope, input),
+	getAgentModelCatalog: (input: AgentInstanceLocator) => ipcRenderer.invoke(channels.getAgentModelCatalog, input),
 	getAgentCommands: (input: AgentInstanceLocator) => ipcRenderer.invoke(channels.getAgentCommands, input),
 	getProjectWriteLeaseStatus: (projectId: string) =>
 		ipcRenderer.invoke(channels.getProjectWriteLeaseStatus, projectId),

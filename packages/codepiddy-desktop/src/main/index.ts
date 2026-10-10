@@ -67,6 +67,8 @@ import type {
 	SetAgentThinkingInput,
 	ShareAgentSessionResult,
 	ShareSettingsStatus,
+	SpecialModelCatalogEntry,
+	SpecialModelCatalogSnapshot,
 	SwitchAgentSessionInput,
 	TerminalClientEvent,
 	TerminalSessionInfo,
@@ -174,6 +176,7 @@ const channels = {
 	getAgentModelSelection: "codepiddy:agent:model:get",
 	getAgentModelScope: "codepiddy:agent:model:scope:get",
 	refreshAgentModelScope: "codepiddy:agent:model:scope:refresh",
+	getAgentModelCatalog: "codepiddy:agent:model:catalog:get",
 	getAgentCommands: "codepiddy:agent:commands:get",
 	getProjectWriteLeaseStatus: "codepiddy:write-lease:get",
 	clearStaleProjectWriteLease: "codepiddy:write-lease:clear-stale",
@@ -408,6 +411,51 @@ function defaultSessionName(agent: StoredAgentInstance): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseSpecialModelCatalogEntry(value: unknown): SpecialModelCatalogEntry | null {
+	if (!isRecord(value)) return null;
+	if (
+		typeof value.provider !== "string" ||
+		typeof value.id !== "string" ||
+		typeof value.name !== "string" ||
+		typeof value.api !== "string"
+	)
+		return null;
+	if (value.type !== "chat" && value.type !== "virtual" && value.type !== "classifier" && value.type !== "image")
+		return null;
+	if (value.source !== "configured" && value.source !== "extension" && value.source !== "virtual") return null;
+	if (value.available !== true && value.available !== false && value.available !== null) return null;
+	const entry: SpecialModelCatalogEntry = {
+		provider: value.provider,
+		id: value.id,
+		name: value.name,
+		type: value.type,
+		api: value.api,
+		source: value.source,
+		available: value.available,
+	};
+	if (typeof value.contextWindow === "number" && Number.isFinite(value.contextWindow) && value.contextWindow > 0)
+		entry.contextWindow = value.contextWindow;
+	if (typeof value.maxTokens === "number" && Number.isFinite(value.maxTokens) && value.maxTokens > 0)
+		entry.maxTokens = value.maxTokens;
+	return entry;
+}
+
+function parseSpecialModelCatalogSnapshot(value: unknown): SpecialModelCatalogSnapshot {
+	if (!isRecord(value) || value.version !== 1 || typeof value.updatedAt !== "string" || !Array.isArray(value.models))
+		throw new Error("Pi 模型目录快照格式无效");
+	return {
+		version: 1,
+		updatedAt: value.updatedAt,
+		models: value.models.flatMap((entry) => {
+			const parsed = parseSpecialModelCatalogEntry(entry);
+			return parsed ? [parsed] : [];
+		}),
+		errors: Array.isArray(value.errors)
+			? value.errors.filter((entry): entry is string => typeof entry === "string")
+			: [],
+	};
 }
 
 function parseMcpRuntimeSnapshot(value: unknown): McpRuntimeSnapshot {
@@ -841,6 +889,8 @@ async function probePiUpdate(runtime: InstalledPiRuntime, stagingRoot: string, r
 			path.join(extensions, "retry.js"),
 			"--extension",
 			path.join(extensions, "cache-warming.js"),
+			"--extension",
+			path.join(extensions, "model-catalog.js"),
 			"--approve",
 		],
 	});
@@ -1402,6 +1452,20 @@ class AgentManager {
 		return { ...stats, cacheWarming: await this.readCacheWarmingStatus(agent) };
 	}
 
+	private modelCatalogPath(agentInstanceId: string): string {
+		return path.join(this.runtimeRoot, "model-catalog", `${agentInstanceId}.json`);
+	}
+
+	async getModelCatalog(input: AgentInstanceLocator): Promise<SpecialModelCatalogSnapshot | null> {
+		const agent = await this.resolve(input);
+		try {
+			return parseSpecialModelCatalogSnapshot(JSON.parse(await readFile(this.modelCatalogPath(agent.id), "utf8")));
+		} catch (error) {
+			if (isRecord(error) && error.code === "ENOENT") return null;
+			throw error;
+		}
+	}
+
 	/**
 	 * Pi 1.0.1 的 RPC 不返回 session.cacheWarmingStatus，只通过扩展事件暴露每次决策。
 	 * 扩展把最近一次决策写到 runtimeRoot/cache-warming/<agent>.json，这里读取后并入会话统计。
@@ -1898,6 +1962,7 @@ class AgentManager {
 				CODEPIDDY_PROJECT_ROOT: agent.projectRoot,
 				CODEPIDDY_WORK_ITEM_DIR: agent.workItemDirectory,
 				CODEPIDDY_CACHE_WARMING_STATUS_PATH: this.cacheWarmingStatusPath(agent.id),
+				CODEPIDDY_MODEL_CATALOG_PATH: this.modelCatalogPath(agent.id),
 			},
 			args: [
 				...(compiledRuntime
@@ -1933,6 +1998,10 @@ class AgentManager {
 				compiledRuntime
 					? path.join(extensionRoot, "cache-warming.js")
 					: path.join(this.repositoryRoot, "packages", "codepiddy-cache-warming-extension", "index.ts"),
+				"--extension",
+				compiledRuntime
+					? path.join(extensionRoot, "model-catalog.js")
+					: path.join(this.repositoryRoot, "packages", "codepiddy-model-catalog-extension", "index.ts"),
 				...roleSkillPaths.flatMap((skillPath) => ["--skill", skillPath]),
 				"--append-system-prompt",
 				await rolePrompt(agent),
@@ -2381,6 +2450,9 @@ function registerIpcHandlers(
 	);
 	ipcMain.handle(channels.refreshAgentModelScope, (_event, raw: unknown) =>
 		agentManager.refreshModelScope(parseAgentLocator(raw)),
+	);
+	ipcMain.handle(channels.getAgentModelCatalog, (_event, raw: unknown) =>
+		agentManager.getModelCatalog(parseAgentLocator(raw)),
 	);
 	ipcMain.handle(channels.getAgentCommands, (_event, raw: unknown) =>
 		agentManager.getCommands(parseAgentLocator(raw)),
