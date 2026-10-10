@@ -9,7 +9,7 @@
 <p align="center">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-2563eb?style=flat-square" />
   <img alt="Electron" src="https://img.shields.io/badge/client-Electron-334155?style=flat-square" />
-  <img alt="Runtime" src="https://img.shields.io/badge/runtime-Pi-111827?style=flat-square" />
+  <img alt="Runtime" src="https://img.shields.io/badge/runtime-Pi_1.1.0-111827?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-16a34a?style=flat-square" />
 </p>
 
@@ -53,7 +53,7 @@ Pi 仍然是底层事实源。模型、Provider、Session、Tool、Skill、Slash
 
 | 视图 | 能力 |
 | --- | --- |
-| 文件 | 项目文件树、文件名搜索、全宽预览、Markdown 和代码高亮、系统打开、编辑器标签页 |
+| 文件 | 项目文件树、右键与多选操作、复制 / 移动、拖拽、撤销、文件名搜索、多标签编辑、语法高亮、图片及 docx / xlsx / pptx / pdf 预览 |
 | 更改 | 汇总最新一轮 `edit / write` 产生的 diff，按文件分组，展开后原地查看行级变更 |
 | 终端 | 内嵌真实 PTY，使用 `xterm.js` + `node-pty`，支持补全、方向键历史、颜色、选择和全屏程序 |
 
@@ -64,10 +64,11 @@ Pi 仍然是底层事实源。模型、Provider、Session、Tool、Skill、Slash
 设置页覆盖：
 
 - Pi 运行时检查、更新和回退；
-- Provider、模型、认证和常用模型范围；
+- Provider、模型、认证、常用模型范围，以及加密 Key / Shell 命令型 Key；
 - MCP 服务与工具 exposure；
 - Shell 路径和 Pi 原生 `shellCommandPrefix`；
 - 上下文压缩、分支摘要和 per-model override；
+- 内置工具 `defaultTools`（保留 Pi 1.1.0 高级 `+name` / `-name` 条目）；
 - Cache Warming、Telemetry、Codemode 和 Tool Search；
 - Agent Skills、Prompt 模板和 Pi Packages；
 - 消息页的 thinking 显示模式与平滑流式偏好。
@@ -225,13 +226,20 @@ packages/codepiddy-desktop/              Electron Main、Preload 与 React Rende
 packages/codepiddy-core/                 Work Item、Agent Registry、Pi RPC 与写锁
 packages/codepiddy-shared/               共享 IPC 与工作流类型
 packages/codepiddy-agent-skills/         随应用分发的固定 Skill
-packages/coding-agent/                   Pi Coding Agent Runtime
+packages/coding-agent-runtime/          固定内置 Pi Runtime（当前 1.1.0）
 docs/images/                             README 截图
 ```
 
 ## 更新 Pi 内核
 
-在 **设置 → Pi 运行时** 检查新版本，确认后从 npm 安装 `@earendil-works/pi-coding-agent`。CodePIddy 会先在独立目录校验 RPC、模型列表、命令和内置扩展，再切换到新版；现有 Agent 不会在运行中被强制中断，重启客户端后生效。安装或校验失败时保留原版本，新版启动失败会自动回退，也可以手动逐次回退。
+内置 Runtime 固定在 `packages/coding-agent-runtime`，当前为 Pi `1.1.0`。在 **设置 → Pi 运行时** 检查新版本，确认后从 npm 安装 `@earendil-works/pi-coding-agent`。CodePIddy 会先在独立目录校验 SDK、RPC、模型列表、命令和内置扩展，再切换到新版；现有 Agent 不会在运行中被强制中断，重启客户端后生效。安装或校验失败时保留原版本，新版启动失败会自动回退，也可以手动逐次回退。
+
+源码开发模式更新内置 Runtime：
+
+```powershell
+npm run update:pi-runtime -- <version>
+npm run build:codepiddy-runtime
+```
 
 这只更新 Pi 内核，不更新 CodePIddy UI 或项目文件。Windows 安装包自带更新所需的 npm；源码开发模式使用本机 npm。
 
@@ -239,7 +247,7 @@ docs/images/                             README 截图
 
 - Renderer 开启 Sandbox 与 Context Isolation，禁用 Node Integration。
 - IPC 输入做运行时校验。
-- Provider / MCP OAuth 凭据使用 Electron `safeStorage`。
+- Provider / MCP OAuth 凭据使用 Electron `safeStorage`；Provider `!command` 只由 Pi 使用 configured shell 执行。
 - 文件面板只能列出和读取项目根目录内的路径，越界请求被拒绝。
 - 工具启用范围和 MCP exposure 分别由 Pi 原生 `settings.json` 与 `mcp.json` 控制。
 - 多 Agent 之间不做进程内编排，交接靠共享工作树和工作项文档。
