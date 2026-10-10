@@ -3,6 +3,7 @@ import {
 	type CredentialSource,
 	type JsonObject,
 	PROVIDER_APIS,
+	type ProviderApiKeySource,
 	type ProviderInput,
 	type ProviderModelInput,
 	type ProviderModelSummary,
@@ -26,8 +27,9 @@ const DEMO_PROVIDERS: ProviderSummary[] = [
 		api: "openai-completions",
 		advanced: {},
 		extra: {},
-		credentialSource: "codepiddy_secret",
+		credentialSource: "models_json_command",
 		credentialLabel: null,
+		credentialCommand: "security find-generic-password -w -s deepseek",
 		models: [
 			{
 				id: "deepseek-v4-pro",
@@ -102,7 +104,7 @@ function credentialSourceLabel(source: CredentialSource | null, label: string | 
 		case "models_json_key":
 			return "models.json Key";
 		case "models_json_command":
-			return "命令输出 Key";
+			return "Shell 命令输出";
 		case "environment":
 			return label ? `环境变量 ${label}` : "环境变量";
 		case "stored":
@@ -166,6 +168,7 @@ interface Draft {
 	baseUrl: string;
 	api: string;
 	apiKey: string;
+	apiKeySource: ProviderApiKeySource;
 	clearApiKey: boolean;
 	advancedText: string;
 	models: ModelDraft[];
@@ -193,6 +196,7 @@ function emptyDraft(): Draft {
 		baseUrl: "",
 		api: "",
 		apiKey: "",
+		apiKeySource: "secret",
 		clearApiKey: false,
 		advancedText: "{}",
 		models: [emptyModel()],
@@ -221,7 +225,8 @@ function draftFrom(provider: ProviderSummary): Draft {
 		name: provider.name ?? "",
 		baseUrl: provider.baseUrl ?? "",
 		api: provider.api ?? "",
-		apiKey: "",
+		apiKey: provider.credentialSource === "models_json_command" ? (provider.credentialCommand ?? "") : "",
+		apiKeySource: provider.credentialSource === "models_json_command" ? "command" : "secret",
 		clearApiKey: false,
 		advancedText: advancedText(provider.advanced),
 		models: provider.models.length > 0 ? provider.models.map(modelDraftFrom) : [emptyModel()],
@@ -437,7 +442,11 @@ export function ProviderSettings({
 				api: draft.api.trim() || null,
 				advanced: parseAdvancedJson(draft.advancedText, "Provider 高级配置"),
 				models: draft.models.filter((model) => model.id.trim()).map(modelInputFromDraft),
-				...(draft.clearApiKey ? { apiKey: "" } : draft.apiKey.trim() ? { apiKey: draft.apiKey } : {}),
+				...(draft.clearApiKey
+					? { apiKey: "" }
+					: draft.apiKey.trim()
+						? { apiKey: draft.apiKey, apiKeySource: draft.apiKeySource }
+						: {}),
 			};
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : "Provider 配置无效");
@@ -448,7 +457,9 @@ export function ProviderSettings({
 			const credentialSource: CredentialSource = draft.clearApiKey
 				? "none"
 				: draft.apiKey.trim()
-					? "codepiddy_secret"
+					? draft.apiKeySource === "command"
+						? "models_json_command"
+						: "codepiddy_secret"
 					: (existing?.credentialSource ?? "none");
 			const models: ProviderModelSummary[] = (input.models ?? []).map((model) => ({
 				id: model.id,
@@ -475,6 +486,9 @@ export function ProviderSettings({
 					extra: {},
 					credentialSource,
 					credentialLabel: credentialSource === "environment" ? (existing?.credentialLabel ?? null) : null,
+					...(credentialSource === "models_json_command"
+						? { credentialCommand: draft.apiKey.trim().replace(/^!/u, "").trim() }
+						: {}),
 					models,
 				},
 			]);
@@ -526,7 +540,8 @@ export function ProviderSettings({
 					<h2>Provider 与模型</h2>
 					<p>
 						官方 Provider 用账户登录写入 <code>auth.json</code>；自定义接口和模型列表写入 <code>models.json</code>
-						。API Key 由系统加密保存，不落明文。
+						。直接 API Key 由系统加密保存；Shell 命令型 Key 只保存 <code>!command</code>，由 Pi 执行并读取
+						stdout。
 					</p>
 				</div>
 				<div className="skill-settings-actions">
@@ -755,23 +770,65 @@ export function ProviderSettings({
 								onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })}
 							/>
 						</label>
-						<label className="settings-field">
-							<span>API Key</span>
-							<input
-								type="password"
-								value={draft.apiKey}
-								disabled={draft.clearApiKey}
-								placeholder="留空保持不变"
-								onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })}
+						<div className="settings-field">
+							<span>凭据来源</span>
+							<SelectMenu
+								label="凭据来源"
+								value={draft.apiKeySource}
+								options={[
+									{
+										value: "secret",
+										label: "加密 API Key",
+										description: "CodePIddy 使用系统安全存储保存密钥",
+									},
+									{
+										value: "command",
+										label: "Shell 命令",
+										description: "把命令写入 models.json，由 Pi 执行并读取 stdout",
+									},
+								]}
+								onChange={(apiKeySource) =>
+									setDraft({
+										...draft,
+										apiKeySource: apiKeySource as ProviderApiKeySource,
+										apiKey: apiKeySource === draft.apiKeySource ? draft.apiKey : "",
+									})
+								}
 							/>
-						</label>
+						</div>
+						{draft.apiKeySource === "command" ? (
+							<label className="settings-field provider-credential-command">
+								<span>Shell 命令</span>
+								<textarea
+									value={draft.apiKey}
+									disabled={draft.clearApiKey}
+									placeholder="例如：security find-generic-password -w -s provider-key"
+									onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })}
+								/>
+								<small className="provider-field-hint">
+									Pi 使用 configured shell 执行命令并取 stdout；CodePIddy
+									不执行该命令。留空表示不修改现有凭据。
+								</small>
+							</label>
+						) : (
+							<label className="settings-field">
+								<span>API Key</span>
+								<input
+									type="password"
+									value={draft.apiKey}
+									disabled={draft.clearApiKey}
+									placeholder="留空保持不变"
+									onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })}
+								/>
+							</label>
+						)}
 					</div>
 					{providers?.some((provider) => provider.id === draft.id && provider.credentialSource !== "none") ? (
 						<SettingsCheckbox
 							checked={draft.clearApiKey}
 							onChange={(clearApiKey) => setDraft({ ...draft, clearApiKey })}
 						>
-							清除已保存的 API Key
+							清除已保存的凭据
 						</SettingsCheckbox>
 					) : null}
 

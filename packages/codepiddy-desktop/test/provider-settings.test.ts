@@ -266,4 +266,56 @@ describe("provider settings", () => {
 			),
 		).rejects.toThrow("cost");
 	});
+
+	it("stores Pi shell command keys without encrypting them and can clear them", async () => {
+		const store = new AppSettingsStore(userDataDirectory);
+		await store.saveProvider(
+			parseProviderInput({
+				id: "custom",
+				apiKey: "printf sk-command-test",
+				apiKeySource: "command",
+			}),
+		);
+
+		const written = await readModels();
+		const provider = (written.providers as Record<string, Record<string, unknown>>).custom;
+		expect(provider.apiKey).toBe("!printf sk-command-test");
+
+		const [summary] = await store.listProviders();
+		expect(summary?.credentialSource).toBe("models_json_command");
+		expect(summary?.credentialCommand).toBe("printf sk-command-test");
+
+		await store.saveProvider(parseProviderInput({ id: "custom", apiKey: "" }));
+		const cleared = await readModels();
+		const clearedProvider = (cleared.providers as Record<string, Record<string, unknown>>).custom;
+		expect(clearedProvider.apiKey).toBeUndefined();
+	});
+
+	it("normalizes command prefixes and rejects an invalid provider credential source", async () => {
+		const store = new AppSettingsStore(userDataDirectory);
+		await store.saveProvider(
+			parseProviderInput({
+				id: "custom",
+				apiKey: "!echo command-key",
+				apiKeySource: "command",
+			}),
+		);
+		const written = await readModels();
+		const provider = (written.providers as Record<string, Record<string, unknown>>).custom;
+		expect(provider.apiKey).toBe("!echo command-key");
+
+		expect(() =>
+			parseProviderInput({
+				id: "custom",
+				apiKey: "echo key",
+				apiKeySource: "environment",
+			}),
+		).toThrow("来源");
+		expect(() =>
+			parseProviderInput({
+				id: "custom",
+				apiKeySource: "command",
+			}),
+		).toThrow("必须提供");
+	});
 });

@@ -346,6 +346,8 @@ export type CredentialSource =
 	| "codepiddy_secret"
 	| "none";
 
+export type ProviderApiKeySource = "secret" | "command";
+
 export interface AuthMethodSummary {
 	type: AuthMethodType;
 	name: string;
@@ -970,6 +972,7 @@ export interface ProviderSummary {
 	extra: JsonObject;
 	credentialSource: CredentialSource;
 	credentialLabel: string | null;
+	credentialCommand?: string;
 	models: ProviderModelSummary[];
 }
 
@@ -986,6 +989,8 @@ export interface ProviderInput {
 	extra?: JsonObject;
 	/** 省略表示保持已有 Key；空字符串表示清除。 */
 	apiKey?: string;
+	/** 默认按加密 Key 保存；command 表示写 Pi 原生的 `!shell command`。 */
+	apiKeySource?: ProviderApiKeySource;
 	models?: ProviderModelInput[];
 }
 

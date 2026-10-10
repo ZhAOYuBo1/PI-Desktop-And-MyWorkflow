@@ -6175,6 +6175,22 @@ body {
   flex: none;
 }
 
+.provider-credential-command {
+  grid-column: 1 / -1;
+}
+
+.provider-credential-command textarea {
+  min-height: calc(var(--cp-space-4xl) + var(--cp-space-xl));
+  resize: vertical;
+  font-family: var(--cp-font-mono);
+}
+
+.provider-field-hint {
+  color: var(--cp-ink-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .provider-model-list {
   display: grid;
   gap: var(--cp-space-sm);

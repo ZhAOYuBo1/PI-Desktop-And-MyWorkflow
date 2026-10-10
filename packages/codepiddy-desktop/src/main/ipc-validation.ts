@@ -34,6 +34,7 @@ import type {
 	PromptTemplateInput,
 	PromptTemplateLocator,
 	PromptTemplateScope,
+	ProviderApiKeySource,
 	ProviderInput,
 	ProviderModelInput,
 	ProviderModelOverride,
@@ -755,6 +756,12 @@ function providerModelOverridesInput(
 	);
 }
 
+function providerApiKeySourceInput(value: unknown): ProviderApiKeySource | undefined {
+	if (value === undefined) return undefined;
+	if (value === "secret" || value === "command") return value;
+	throw new Error("Provider API Key 来源无效");
+}
+
 function parseProviderModelInput(value: unknown): ProviderModelInput {
 	const model = record(value, "Provider model");
 	const result: ProviderModelInput = {
@@ -800,6 +807,11 @@ export function parseProviderInput(value: unknown): ProviderInput {
 	}
 	result.modelOverrides = providerModelOverridesInput(input.modelOverrides, "Provider modelOverrides");
 	if (input.apiKey !== undefined) result.apiKey = text(input.apiKey, "API Key", 1000, true);
+	const apiKeySource = providerApiKeySourceInput(input.apiKeySource);
+	if (apiKeySource !== undefined) result.apiKeySource = apiKeySource;
+	if (apiKeySource !== undefined && result.apiKey === undefined) {
+		throw new Error("设置 Provider API Key 来源时必须提供 API Key 或命令");
+	}
 	if (input.advanced !== undefined) result.advanced = jsonObject(input.advanced, "Provider 高级字段");
 	if (input.extra !== undefined) result.extra = jsonObject(input.extra, "Provider 高级字段");
 	if (input.models !== undefined) {

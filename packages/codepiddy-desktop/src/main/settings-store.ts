@@ -1515,6 +1515,10 @@ export class AppSettingsStore {
 			.filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]))
 			.map(([id, value]) => {
 				const credential = providerCredentialSource(value.apiKey, Boolean(keys[id]));
+				const credentialCommand =
+					typeof value.apiKey === "string" && value.apiKey.startsWith("!")
+						? value.apiKey.slice(1).trim()
+						: undefined;
 				const extra = extraJsonObject(value, PROVIDER_KNOWN_FIELDS);
 				const provider: ProviderSummary = {
 					id,
@@ -1528,6 +1532,7 @@ export class AppSettingsStore {
 								.filter((model): model is ProviderModelSummary => model !== null)
 						: [],
 				};
+				if (credentialCommand) provider.credentialCommand = credentialCommand;
 				const name = stringOrUndefined(value.name);
 				if (name) provider.name = name;
 				const baseUrl = stringOrUndefined(value.baseUrl);
@@ -1558,12 +1563,23 @@ export class AppSettingsStore {
 		const keys = { ...(secrets.providerApiKeys ?? {}) };
 		if (input.apiKey !== undefined) {
 			const apiKey = input.apiKey.trim();
-			if (apiKey) keys[id] = this.encrypt(apiKey);
-			else delete keys[id];
+			if (!apiKey) {
+				delete keys[id];
+				delete entry.apiKey;
+			} else if ((input.apiKeySource ?? "secret") === "command") {
+				const command = apiKey.replace(/^!/u, "").trim();
+				if (!command) throw new Error("Provider Shell 命令不能为空");
+				delete keys[id];
+				entry.apiKey = `!${command}`;
+			} else {
+				keys[id] = this.encrypt(apiKey);
+				entry.apiKey = `$${providerEnvName(id)}`;
+			}
 			secrets.providerApiKeys = keys;
 			await this.writeSecrets(secrets);
+		} else if (keys[id]) {
+			entry.apiKey = `$${providerEnvName(id)}`;
 		}
-		if (keys[id]) entry.apiKey = `$${providerEnvName(id)}`;
 		providers[id] = entry;
 		await this.writeJsonRecord(this.modelsConfigPath, { ...config, providers });
 		return this.listProviders();
